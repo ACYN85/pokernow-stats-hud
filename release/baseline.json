@@ -1,0 +1,275 @@
+{
+  "buildId": "v1.1.0-public-20260908",
+  "zip": "pokernow-hud-v1.1.0.zip",
+  "sha256": "5A4D4A4613FF8F035958B4227274670AC5B5EE8B6E91ECF4EFA8D6C8B6BEE6CC",
+  "files": [
+    {
+      "path": "actionInference.js",
+      "sha256": "9f3b1e3bcb6713fc5d28c9800124c6865616d19f583fb28178ce907b6ce25ab3"
+    },
+    {
+      "path": "boardCompanionDiagnosticBridge.js",
+      "sha256": "8697a63f35ff006b0da10c0f4d7d7875b9fda4e0eccc216934fbba3a2bcc7373"
+    },
+    {
+      "path": "boardCompanionLayout.js",
+      "sha256": "ef560745438c42dde985ee73f0d4c7af29e61801ecb1ff4fd8abec475296587f"
+    },
+    {
+      "path": "careerBackup.js",
+      "sha256": "1d1c2959cc9722ffe2af7aac89df82c4dbfa36a2be877d36b8acd7069ae9a412"
+    },
+    {
+      "path": "careerBackupPolicy.js",
+      "sha256": "74478059c6e1188617c4d0f8a694fa84a533849c94faecbaa924dd6ef686fbba"
+    },
+    {
+      "path": "careerContributionStore.js",
+      "sha256": "5fbac590fdee167ded8f4d30fcc1b10a3dde27caf59ddf4517443cb5f970f8a1"
+    },
+    {
+      "path": "careerDataSettings.js",
+      "sha256": "a555daca1d104628e047a16aa2e59ff4fd86d46fe987cfda1c5857af1a28253e"
+    },
+    {
+      "path": "careerIndexedStore.js",
+      "sha256": "cb8b2487e641309c1ab8a9c5613d94c87b376ca7a127e026a016d0f1b18f5da0"
+    },
+    {
+      "path": "careerServiceWorker.js",
+      "sha256": "6b532a488ec239cbdab7108196472040001af88589460c5d71cd529af890207d"
+    },
+    {
+      "path": "careerStatsAggregator.js",
+      "sha256": "3c452d268c6c8f4a470625004638bdaf082adb897f44c5258c33f35ecc75e896"
+    },
+    {
+      "path": "content.js",
+      "sha256": "c98ca706e34d20ac99e63ce088d18ca04f8d7b6ae723be690d6294ba147b5a67"
+    },
+    {
+      "path": "filteredStats.js",
+      "sha256": "d75e17eb9243c591f6e0eff1f18bc1d5832428bd529e88f9559fd9069f1f2460"
+    },
+    {
+      "path": "firstHandLifecycle.js",
+      "sha256": "7b224d1bc1ac3beb707d027022bd7f901e7fac96103e27528215e216a88cf09d"
+    },
+    {
+      "path": "flopCBetOpportunityReducer.js",
+      "sha256": "cdc2b9f9624526f07ee209fcd6f48e2716cdc6a6cfe8984a6a1987ee3079b888"
+    },
+    {
+      "path": "gameBreakLifecycle.js",
+      "sha256": "38d7cc625055c22ec11e429ba9fb8acb25c00f3515ee92b9ecc70fe90e52f944"
+    },
+    {
+      "path": "handFinalization.js",
+      "sha256": "c0a79c8ccd7a21e441ee1b67afd4728ce77bc8227a16a8806c6350a671c8d180"
+    },
+    {
+      "path": "handLogDom.js",
+      "sha256": "9d648397464f5d487c0a04487b3c2342c5cb5c76c0d31b618aff7388a354a471"
+    },
+    {
+      "path": "handStatInspector.js",
+      "sha256": "c5aa158628ce31f2dd8a81ba6195fffeab8096da2e0958ffd89f2c5363d3f42d"
+    },
+    {
+      "path": "hostControlTrace.js",
+      "sha256": "4e753140d583f9c78cbbdda863062cb8837c2ae36f5abc5ca1f0fe2d81abf2c9"
+    },
+    {
+      "path": "hud.css",
+      "sha256": "5cc2f09b9f9473d91a9f2c28a4cebc35f2e80245382b86202a959da7787029fe"
+    },
+    {
+      "path": "hudDiagnostics.js",
+      "sha256": "9ba9cb794303172e15dffc21dd5fea9bb4bdfed65fe4975547d328e06ed98c02"
+    },
+    {
+      "path": "hudHealth.js",
+      "sha256": "3228622c376a81ee0fc2389113062aa6a254172e6ef77e725a4f5a84aac43955"
+    },
+    {
+      "path": "hudRuntimeStatus.js",
+      "sha256": "9c060805f1d4809aa3ff806f9c58654bbfc4a68714d3c0e6f9183adcfbd0cd4c"
+    },
+    {
+      "path": "interruptedHandRecovery.js",
+      "sha256": "fb50153e227649bf0dab49e2146ccd15d47426402c3cc818ac8fab2129e128da"
+    },
+    {
+      "path": "leaderboardHudPosition.js",
+      "sha256": "cc391ff1229dda8b3807af4bce9640215b1f8f95fb3415bfddbffc65b747f46b"
+    },
+    {
+      "path": "leaderboardStats.js",
+      "sha256": "8b5764005330951b5ea6e55cd1405322252541d5d2e42ca320429dc70ffd7ce9"
+    },
+    {
+      "path": "liveActionPipeline.js",
+      "sha256": "249a9b663648cde1a649ecaa4a790675f58437ec2bd5e1cb02bbcfbd37f1aa03"
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "a838f64c35896eefda6414667f799f88d02ebf6f6b83348119cab880821bd42b"
+    },
+    {
+      "path": "mockData.js",
+      "sha256": "078803f95777d401dbea89c5f28a15d6c64e2eb8bc62a503442c7d38c6cdb03c"
+    },
+    {
+      "path": "overlayStats.js",
+      "sha256": "8715928bd470a98728e0783424f48e51b8bf033d9fb831d83608c711e88f0a48"
+    },
+    {
+      "path": "ownedHandReloadContinuity.js",
+      "sha256": "9f39ae8fde138896d6033dd8c8e488d2c0cefaf17a0864f839cec460dd02da02"
+    },
+    {
+      "path": "parser.js",
+      "sha256": "a01e99703415bbaa03c93d496c8c45d1c690f8c3ea31539d2bbd2271ae995020"
+    },
+    {
+      "path": "pauseDiagnosticCapture.js",
+      "sha256": "32230dbd76eed2fcf27fcd0e1e8bd0dc123fce20b6f746ddc951cb444dd64118"
+    },
+    {
+      "path": "pauseDiagnosticCaptureMain.js",
+      "sha256": "32230dbd76eed2fcf27fcd0e1e8bd0dc123fce20b6f746ddc951cb444dd64118"
+    },
+    {
+      "path": "pauseLifecycleCapture.js",
+      "sha256": "580bd2defd510302c97131b2f3fa9fd295a358b0c4701e43a573ec690a8c8923"
+    },
+    {
+      "path": "playerDashboard.js",
+      "sha256": "fa391ef5a4b3354d0c9be7c664b8b68cf5e6014b0cfd381149b81a72196f654c"
+    },
+    {
+      "path": "playerNotesStore.js",
+      "sha256": "f19240dc333c914be91c435c0f5c501b99a2175cafb05d09d03730d6372075a3"
+    },
+    {
+      "path": "playerProfileCalibration.js",
+      "sha256": "cab8db968a6429ba118ccbcf83a6e394f5a4ea65ad50c4b1646e06f20cffde72"
+    },
+    {
+      "path": "playerProfileClassifier.js",
+      "sha256": "136582378140e0c02128869981786b799d082d2311617c6a5052b2cc2a95d164"
+    },
+    {
+      "path": "playerProfileExplanation.js",
+      "sha256": "36137d57abbf46f4f9005aa9ce3c4a31cc52992f78c02de5e7fb5733f9a88abc"
+    },
+    {
+      "path": "playerProfilePresentation.js",
+      "sha256": "6f2a993e40f607e36da6c10164d1a88ecffe11eafee96e817a9225191336d8d1"
+    },
+    {
+      "path": "playerProfileScoreInspector.js",
+      "sha256": "2ee66e946faa4f78ddd81f4d9bd1245b848c8f91bb143b4af33eeeeca844bcb2"
+    },
+    {
+      "path": "playerProfileShadowStore.js",
+      "sha256": "fc58911c61eb75d090d4df6abb7fcd9ec7d25ffdf720df0f3cdc8a935440f8ef"
+    },
+    {
+      "path": "pokerNowLifecycleSignal.js",
+      "sha256": "f3db79c2f15f04526cfdb8f580cac89f78e093b37ea18b0fc835efe0803d5162"
+    },
+    {
+      "path": "popup.css",
+      "sha256": "c9484e014b732c8455898aa2be780d88246a0dcde6f76a2251522b30fa91033b"
+    },
+    {
+      "path": "popup.html",
+      "sha256": "a6f6b26670cffafdc72cdd36d00fa0d25f0c6382898f4a5b38621ba0d9717616"
+    },
+    {
+      "path": "popup.js",
+      "sha256": "5427454a9244ccdda6ac05f8ca15ee3e57642b706add21643aee7f44b9cb4d29"
+    },
+    {
+      "path": "positionResolver.js",
+      "sha256": "abea1495e1d39dc2f858cfdf0927ae36b7afaee030157bcc36f34480f5c823c9"
+    },
+    {
+      "path": "potOdds.js",
+      "sha256": "a9b48e425ad39823b0f0010951ea07270f6112f82641659a5ea4f80eff4b9403"
+    },
+    {
+      "path": "potOddsPosition.js",
+      "sha256": "0de9b5ec6367a88324f87c64994ab072b9c0394fe62315ae07a381ecfb779752"
+    },
+    {
+      "path": "preflopOpportunityReducer.js",
+      "sha256": "82cf1ae070913208584e729d4eab6ece80da501532a05feab3341047b5239ea2"
+    },
+    {
+      "path": "runtimeBounds.js",
+      "sha256": "ee53023742a4674cabbae8eeed5d305d03e922fcf0e5e67fec06efc6eb3f2221"
+    },
+    {
+      "path": "runtimeScope.js",
+      "sha256": "ff8f73f67fd68e88d5c22209690497124312074fc37205af62492bf16517aef6"
+    },
+    {
+      "path": "seatOverlay.js",
+      "sha256": "57c55f5c4d83ee180c1e5c4c3a69ef6560625581000169ac9688151f20db0ea2"
+    },
+    {
+      "path": "semanticHandLedger.js",
+      "sha256": "a8a8ab9605ef3d631abaa068a14a183bb5af2639da9f821d0dd65b21affa4b72"
+    },
+    {
+      "path": "sessionRuntime.js",
+      "sha256": "8389517b047b0037ef00c58fc64f0ba4693ba39ef3de2f76fcb85edc129ab11b"
+    },
+    {
+      "path": "sessionStatsCache.js",
+      "sha256": "b6237d839073e21d249954df80ab52ca49feb3eb8e6a419125d6459b6b3efa22"
+    },
+    {
+      "path": "settingsUi.js",
+      "sha256": "6ae46ffc4a06a6363733356b6c21592d042186bf777a7f7347b5bf640638dee0"
+    },
+    {
+      "path": "showdownDiagnosticExporter.js",
+      "sha256": "161af54cd0c8bd925dee76a7d9f00d3a1e7aec69c5eebc4c3dec68a5c4b499e5"
+    },
+    {
+      "path": "showdownStatsReducer.js",
+      "sha256": "13934ac0acc3cb6cb8f506763d806e5395cb99900be07334e0ee387e45cf9e1a"
+    },
+    {
+      "path": "statExplanation.js",
+      "sha256": "66e0b19c3ea20126eac32e3d3d275d3278f4735194a3505bd8b905a4b296dacb"
+    },
+    {
+      "path": "statTooltip.js",
+      "sha256": "6506331e2283024172e8c8cb722ca7e64772e7203d8ea69c65fc33903d9faeff"
+    },
+    {
+      "path": "stats.js",
+      "sha256": "a9fc993ffc4a33fd110b89a483316f74f69182b94d4ea0bb6294cf024e0dda94"
+    },
+    {
+      "path": "tbTrace.js",
+      "sha256": "494052a4e25267909777dae693fb0f1c9c299d6a546616056dc7034543c4a9f2"
+    },
+    {
+      "path": "uiBootstrap.js",
+      "sha256": "63abcb9903635395152f0f86770fa0fc845adf3c5df1113c9369b65c18353849"
+    },
+    {
+      "path": "walkDetection.js",
+      "sha256": "6975eb3f30dd93952df95dcab8b492177232dceb9ea299c0fcfc58b1395e19b6"
+    },
+    {
+      "path": "websocketHook.js",
+      "sha256": "36eb9aebeafb9b482911d3baee16596bddfb1861ce0fb03705076496000bfbe0"
+    }
+  ]
+}

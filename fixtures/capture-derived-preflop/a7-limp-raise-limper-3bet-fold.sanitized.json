@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "privacy-sanitized-capture-derived-protocol",
+  "scenario": {
+    "id": "A7",
+    "label": "limp -> raise -> limper reraises -> original raiser folds",
+    "targetHandId": "A7-HAND"
+  },
+  "provenance": {
+    "origin": "capture-derived behavior shape with source linkage removed",
+    "privacy": "fixture-local aliases and synthetic card labels only"
+  },
+  "frames": [
+    {
+      "sequence": 1,
+      "direction": "incoming",
+      "socketIoEvent": "registered",
+      "rawPayload": "42[\"registered\",{\"gameState\":{\"hI\":\"A7-HAND\",\"gN\":10,\"gT\":[1,0],\"oTC\":{\"1\":[]},\"pot\":0,\"tB\":{\"P1\":10,\"P2\":20},\"cHB\":20,\"mR\":40,\"cPI\":\"P1\",\"pITT\":\"P1\",\"cRPI\":[],\"sBPI\":\"P1\",\"bBPI\":\"P2\",\"dealerID\":\"P1\",\"smallBlind\":10,\"bigBlind\":20,\"iHPI\":[\"P1\",\"P2\"],\"pGS\":{\"P1\":\"inGame\",\"P2\":\"inGame\"},\"pC\":{\"P1\":{\"cards\":[{\"value\":\"SYNTHETIC_CARD_1\",\"showing\":false},{\"value\":\"SYNTHETIC_CARD_2\",\"showing\":false}]},\"P2\":{\"cards\":[{\"showing\":false},{\"showing\":false}]}},\"players\":{\"P1\":{\"stack\":1090},\"P2\":{\"stack\":910}},\"seats\":[[1,\"P1\"],[6,\"P2\"]]}}]"
+    },
+    {
+      "sequence": 2,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 3,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"tB\":{\"P1\":20},\"pITT\":null,\"cRPI\":[\"P1\"],\"pGS\":{}}]"
+    },
+    {
+      "sequence": 4,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"cPI\":\"P2\",\"pITT\":\"P2\"}]"
+    },
+    {
+      "sequence": 5,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 6,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"tB\":{\"P2\":80},\"cHB\":80,\"mR\":140,\"pITT\":null,\"cRPI\":[\"P2\"],\"pGS\":{}}]"
+    },
+    {
+      "sequence": 7,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"cPI\":\"P1\",\"pITT\":\"P1\"}]"
+    },
+    {
+      "sequence": 8,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 9,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"tB\":{\"P1\":240},\"cHB\":240,\"mR\":400,\"pITT\":null,\"cRPI\":[\"P1\"],\"pGS\":{}}]"
+    },
+    {
+      "sequence": 10,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"cPI\":\"P2\",\"pITT\":\"P2\"}]"
+    },
+    {
+      "sequence": 11,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 12,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"pITT\":null,\"pGS\":{\"P2\":\"fold\"}}]"
+    },
+    {
+      "sequence": 13,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"gT\":[1,5],\"tB\":{\"P1\":\"<D>\",\"P2\":\"<D>\"},\"cPI\":null,\"players\":{\"P1\":{\"stack\":1170},\"P2\":{\"stack\":830}},\"gameResult\":{\"P1\":{\"gained\":160}}}]"
+    },
+    {
+      "sequence": 14,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"hI\":\"A7-NEXT\",\"gN\":11,\"gT\":[1,0],\"oTC\":{\"1\":[]},\"tB\":{\"P2\":10,\"P1\":20},\"cHB\":20,\"mR\":40,\"cPI\":\"P2\",\"pITT\":\"P2\",\"cRPI\":[],\"sBPI\":\"P2\",\"bBPI\":\"P1\",\"dealerID\":\"P2\",\"iHPI\":[\"P1\",\"P2\"],\"pGS\":{\"P2\":\"inGame\"},\"pC\":{\"P1\":{\"cards\":[{\"value\":\"SYNTHETIC_CARD_3\",\"showing\":false},{\"value\":\"SYNTHETIC_CARD_4\",\"showing\":false}]},\"P2\":{\"cards\":[{\"showing\":false},{\"showing\":false}]}},\"players\":{},\"gameResult\":\"<D>\"}]"
+    }
+  ]
+}

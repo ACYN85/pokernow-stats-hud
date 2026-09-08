@@ -1,0 +1,11 @@
+{
+  "purpose": "diagnostic reproduction of distinct synthetic WebSocket-source IDs and synthetic Full Log IDs",
+  "hands": [
+    { "ordinal": 1, "liveHandId": "table:socket:synthetic-live-hand-1", "logHandId": "synthetic-log-hand-1", "players": ["PlayerA", "PlayerB"] },
+    { "ordinal": 2, "liveHandId": "table:socket:synthetic-live-hand-2", "logHandId": "synthetic-log-hand-2", "players": ["PlayerA", "PlayerB"] },
+    { "ordinal": 3, "liveHandId": "table:socket:synthetic-live-hand-3", "logHandId": "synthetic-log-hand-3", "players": ["PlayerA"] },
+    { "ordinal": 4, "liveHandId": "table:socket:synthetic-live-hand-4", "logHandId": "synthetic-log-hand-4", "players": ["PlayerA", "PlayerB"] },
+    { "ordinal": 5, "liveHandId": "table:socket:synthetic-live-hand-5", "logHandId": "synthetic-log-hand-5", "players": ["PlayerA", "PlayerB"] },
+    { "ordinal": 6, "liveHandId": "table:socket:synthetic-live-hand-6", "logHandId": "synthetic-log-hand-6", "players": ["PlayerA", "PlayerB"] }
+  ]
+}

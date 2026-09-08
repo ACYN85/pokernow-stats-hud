@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "description": "Synthetic statistical shapes for calibration tests; no player IDs, display names, table IDs, or session metadata.",
+  "cases": [
+    {
+      "id": "R1",
+      "description": "Mature loose-passive shape with selective showdown behavior",
+      "stats": { "handsPlayed": 351, "vpipHands": 224, "vpipOpportunities": 345, "pfrHands": 97, "pfrOpportunities": 345, "afDetails": { "bets": 108, "raises": 11, "calls": 130 }, "threeBetMade": 23, "threeBetOpportunities": 188, "foldToThreeBet": 1, "foldToThreeBetOpportunities": 27, "flopCBetMade": 22, "flopCBetOpportunities": 49, "foldToFlopCBet": 21, "foldToFlopCBetOpportunities": 66, "wentToShowdown": 43, "sawFlopForWTSD": 202, "wonMoneyAtShowdown": 31, "showdownsForWSD": 43 },
+      "baseline": { "primary": "Unknown / Uncertain", "bestCandidate": "Loose Passive", "runnerUp": "Calling Station", "bestScore": 0.4487, "scoreMargin": 0.0606, "confidence": 0.5776, "tags": ["Sticky vs 3B", "Showdown Selective", "High W$SD"] }
+    },
+    {
+      "id": "R2",
+      "description": "Mature LAG control",
+      "stats": { "handsPlayed": 349, "vpipHands": 162, "vpipOpportunities": 341, "pfrHands": 99, "pfrOpportunities": 341, "afDetails": { "bets": 77, "raises": 26, "calls": 68 }, "threeBetMade": 22, "threeBetOpportunities": 159, "foldToThreeBet": 11, "foldToThreeBetOpportunities": 41, "flopCBetMade": 14, "flopCBetOpportunities": 35, "foldToFlopCBet": 23, "foldToFlopCBetOpportunities": 39, "wentToShowdown": 28, "sawFlopForWTSD": 138, "wonMoneyAtShowdown": 19, "showdownsForWSD": 28 },
+      "baseline": { "primary": "LAG", "bestCandidate": "LAG", "runnerUp": "Loose Passive", "bestScore": 0.5055, "scoreMargin": 0.1841, "confidence": 0.7017, "tags": ["3B Heavy", "Sticky vs 3B", "Showdown Selective", "High W$SD"] }
+    },
+    {
+      "id": "R3",
+      "description": "Mature Maniac control",
+      "stats": { "handsPlayed": 349, "vpipHands": 271, "vpipOpportunities": 329, "pfrHands": 216, "pfrOpportunities": 329, "afDetails": { "bets": 199, "raises": 28, "calls": 64 }, "threeBetMade": 52, "threeBetOpportunities": 123, "foldToThreeBet": 6, "foldToThreeBetOpportunities": 24, "flopCBetMade": 73, "flopCBetOpportunities": 114, "foldToFlopCBet": 10, "foldToFlopCBetOpportunities": 25, "wentToShowdown": 46, "sawFlopForWTSD": 217, "wonMoneyAtShowdown": 12, "showdownsForWSD": 46 },
+      "baseline": { "primary": "Maniac", "bestCandidate": "Maniac", "runnerUp": "LAG", "bestScore": 0.8148, "scoreMargin": 0.5759, "confidence": 0.8929, "tags": ["3B Heavy", "Sticky vs 3B", "Showdown Selective", "Low W$SD"] }
+    },
+    {
+      "id": "R4",
+      "description": "Older loose-passive shape with unsupported postflop and showdown statistics",
+      "stats": { "handsPlayed": 201, "vpipHands": 109, "vpipOpportunities": 194, "pfrHands": 32, "pfrOpportunities": 194, "afDetails": { "bets": 48, "raises": 3, "calls": 36 }, "threeBetMade": 10, "threeBetOpportunities": 122, "foldToThreeBet": 1, "foldToThreeBetOpportunities": 5, "flopCBetMade": 0, "flopCBetOpportunities": 0, "foldToFlopCBet": 0, "foldToFlopCBetOpportunities": 0, "wentToShowdown": 0, "sawFlopForWTSD": 0, "wonMoneyAtShowdown": 0, "showdownsForWSD": 0 },
+      "baseline": { "primary": "Unknown / Uncertain", "bestCandidate": "Loose Passive", "runnerUp": "Calling Station", "bestScore": 0.7116, "scoreMargin": 0.0637, "confidence": 0.59, "tags": [] }
+    },
+    {
+      "id": "R5",
+      "description": "Loose shape without Calling Station-specific opportunity evidence",
+      "stats": { "handsPlayed": 137, "vpipHands": 96, "vpipOpportunities": 136, "pfrHands": 38, "pfrOpportunities": 136, "afDetails": { "bets": 44, "raises": 6, "calls": 29 }, "threeBetMade": 0, "threeBetOpportunities": 0, "foldToThreeBet": 0, "foldToThreeBetOpportunities": 0, "flopCBetMade": 0, "flopCBetOpportunities": 0, "foldToFlopCBet": 0, "foldToFlopCBetOpportunities": 0, "wentToShowdown": 0, "sawFlopForWTSD": 0, "wonMoneyAtShowdown": 0, "showdownsForWSD": 0 },
+      "baseline": { "primary": "Calling Station", "bestCandidate": "Calling Station", "runnerUp": "Loose Passive", "bestScore": 0.468, "scoreMargin": 0.1022, "confidence": 0.5899, "tags": [] }
+    },
+    {
+      "id": "R6",
+      "description": "89-hand noisy aggressive shape with tiny 3Bet and showdown denominators",
+      "stats": { "handsPlayed": 89, "vpipHands": 31, "vpipOpportunities": 86, "pfrHands": 19, "pfrOpportunities": 86, "afDetails": { "bets": 8, "raises": 4, "calls": 4 }, "threeBetMade": 3, "threeBetOpportunities": 6, "foldToThreeBet": 0, "foldToThreeBetOpportunities": 0, "flopCBetMade": 0, "flopCBetOpportunities": 0, "foldToFlopCBet": 0, "foldToFlopCBetOpportunities": 0, "wentToShowdown": 4, "sawFlopForWTSD": 7, "wonMoneyAtShowdown": 3, "showdownsForWSD": 4 },
+      "baseline": { "primary": "Unknown / Uncertain", "bestCandidate": "LAG", "runnerUp": "TAG", "bestScore": 0.3988, "scoreMargin": 0.0225, "confidence": 0.4711, "tags": [] }
+    }
+  ]
+}

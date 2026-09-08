@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "privacy-sanitized-capture-derived-protocol",
+  "scenario": {
+    "id": "A2",
+    "label": "open -> 3Bet -> call -> flop CBet -> fold",
+    "targetHandId": "A2-HAND"
+  },
+  "provenance": {
+    "origin": "capture-derived behavior shape with source linkage removed",
+    "privacy": "fixture-local aliases and synthetic card labels only"
+  },
+  "frames": [
+    {
+      "sequence": 1,
+      "direction": "incoming",
+      "socketIoEvent": "registered",
+      "rawPayload": "42[\"registered\",{\"gameState\":{\"hI\":\"A2-HAND\",\"gN\":2,\"gT\":[1,0],\"oTC\":{\"1\":[]},\"pot\":0,\"tB\":{\"P1\":10,\"P2\":20},\"cHB\":20,\"mR\":40,\"cPI\":\"P1\",\"pITT\":\"P1\",\"cRPI\":[],\"sBPI\":\"P1\",\"bBPI\":\"P2\",\"dealerID\":\"P1\",\"smallBlind\":10,\"bigBlind\":20,\"iHPI\":[\"P1\",\"P2\"],\"pGS\":{\"P1\":\"inGame\",\"P2\":\"inGame\"},\"pC\":{\"P1\":{\"cards\":[{\"value\":\"SYNTHETIC_CARD_1\",\"showing\":false},{\"value\":\"SYNTHETIC_CARD_2\",\"showing\":false}]},\"P2\":{\"cards\":[{\"showing\":false},{\"showing\":false}]}},\"players\":{\"P1\":{\"stack\":560},\"P2\":{\"stack\":440}},\"seats\":[[1,\"P1\"],[6,\"P2\"]],\"gameResult\":\"<D>\"}}]"
+    },
+    {
+      "sequence": 2,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 3,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"tB\":{\"P1\":60},\"cHB\":60,\"mR\":100,\"pITT\":null,\"cRPI\":[\"P1\"],\"pGS\":{}}]"
+    },
+    {
+      "sequence": 4,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"cPI\":\"P2\",\"pITT\":\"P2\"}]"
+    },
+    {
+      "sequence": 5,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 6,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"tB\":{\"P2\":160},\"cHB\":160,\"mR\":260,\"pITT\":null,\"cRPI\":[\"P2\"],\"pGS\":{}}]"
+    },
+    {
+      "sequence": 7,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"cPI\":\"P1\",\"pITT\":\"P1\"}]"
+    },
+    {
+      "sequence": 8,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 9,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"tB\":{\"P1\":160},\"pITT\":null,\"cRPI\":[\"P2\",\"P1\"],\"pGS\":{}}]"
+    },
+    {
+      "sequence": 10,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"gT\":[1,1],\"oTC\":{\"1\":[\"SYNTHETIC_CARD_3\",\"SYNTHETIC_CARD_4\",\"SYNTHETIC_CARD_5\"]},\"pot\":320,\"tB\":{\"P1\":\"<D>\",\"P2\":\"<D>\"},\"cHB\":0,\"mR\":20,\"cPI\":\"P2\",\"pITT\":\"P2\",\"cRPI\":[],\"pC\":{\"P1\":{},\"P2\":{}},\"players\":{\"P1\":{\"stack\":400},\"P2\":{\"stack\":280}}}]"
+    },
+    {
+      "sequence": 11,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 12,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"tB\":{\"P2\":100},\"cHB\":100,\"mR\":200,\"pITT\":null,\"cRPI\":[\"P2\"],\"pGS\":{}}]"
+    },
+    {
+      "sequence": 13,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"cPI\":\"P1\",\"pITT\":\"P1\"}]"
+    },
+    {
+      "sequence": 14,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{}]"
+    },
+    {
+      "sequence": 15,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"pITT\":null,\"pGS\":{\"P1\":\"fold\"}}]"
+    },
+    {
+      "sequence": 16,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"gT\":[1,5],\"pot\":0,\"tB\":{\"P2\":\"<D>\"},\"cPI\":null,\"players\":{\"P2\":{\"stack\":600}},\"gameResult\":{\"P2\":{\"gained\":320}}}]"
+    },
+    {
+      "sequence": 17,
+      "direction": "incoming",
+      "socketIoEvent": "gC",
+      "rawPayload": "42[\"gC\",{\"hI\":\"A2-NEXT\",\"gN\":3,\"gT\":[1,0],\"oTC\":{\"1\":[]},\"tB\":{\"P2\":10,\"P1\":20},\"cHB\":20,\"mR\":40,\"cPI\":\"P2\",\"pITT\":\"P2\",\"cRPI\":[],\"sBPI\":\"P2\",\"bBPI\":\"P1\",\"dealerID\":\"P2\",\"iHPI\":[\"P1\",\"P2\"],\"pGS\":{\"P1\":\"inGame\"},\"pC\":{\"P1\":{\"cards\":[{\"value\":\"SYNTHETIC_CARD_6\",\"showing\":false},{\"value\":\"SYNTHETIC_CARD_7\",\"showing\":false}]},\"P2\":{\"cards\":[{\"showing\":false},{\"showing\":false}]}},\"players\":{},\"gameResult\":\"<D>\"}]"
+    }
+  ]
+}

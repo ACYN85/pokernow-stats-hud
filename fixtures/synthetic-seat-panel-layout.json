@@ -1,0 +1,24 @@
+{
+  "fixtureKind": "synthetic-layout",
+  "panelSelector": ".table-player > .table-player-infos-ctn",
+  "panelComputedStyle": { "backgroundColor": "rgba(51, 51, 51, 0.76)", "position": "relative", "overflow": "hidden", "borderRadius": "3px" },
+  "innerContainer": { "selector": ".infos-ctn-container", "backgroundColor": "rgba(0, 0, 0, 0)", "height": 0 },
+  "separateSeatSiblings": [".player-table-signals-container.top", ".emoji-container", ".table-player-cards", ".table-player-status-icon", ".player-table-signals-container.bottom"],
+  "observedStates": ["away", "offline"],
+  "observedDecorations": ["win count", "rebuy count"],
+  "unavailableStates": ["active", "folded", "in-next-hand", "custom-avatar"],
+  "extensionHudCount": 0,
+  "currentHudRect": null,
+  "viewport": { "width": 640, "height": 576 },
+  "seats": [
+    { "name": "PlayerA", "seatSelector": ".table-player.table-player-1.offline", "panelRect": { "left": 340, "top": 356, "width": 116, "height": 41, "bottom": 397 }, "nameRect": { "left": 400, "top": 366, "width": 26, "height": 10 }, "panelCenterX": 398, "nameCenterX": 413, "nameCenterBias": 15 },
+    { "name": "PlayerB", "seatSelector": ".table-player.table-player-2.offline", "panelRect": { "left": 185, "top": 356, "width": 116, "height": 41, "bottom": 397 }, "nameRect": { "left": 245, "top": 366, "width": 26, "height": 10 }, "panelCenterX": 243, "nameCenterX": 258, "nameCenterBias": 15 },
+    { "name": "PlayerC", "seatSelector": ".table-player.table-player-8.offline", "panelRect": { "left": 474, "top": 150, "width": 116, "height": 41, "bottom": 191 }, "nameRect": { "left": 534, "top": 161, "width": 26, "height": 10 }, "panelCenterX": 532, "nameCenterX": 547, "nameCenterBias": 15 }
+  ],
+  "wideViewport": { "width": 1280, "height": 800 },
+  "wideSeats": [
+    { "name": "PlayerA", "panelRect": { "left": 680, "top": 536, "width": 230, "height": 82, "bottom": 618 }, "panelCenterX": 795, "nameCenterX": 825, "nameCenterBias": 30, "nameBoxBottom": 578, "nameCandidatePassesDiscoverySize": true, "oldNameSubtreeTop": 586, "panelCanonicalTop": 626 },
+    { "name": "PlayerB", "panelRect": { "left": 372, "top": 536, "width": 230, "height": 82, "bottom": 618 }, "panelCenterX": 487, "nameCenterX": 507, "nameCenterBias": 20, "nameBoxBottom": 578, "nameCandidatePassesDiscoverySize": true, "oldNameSubtreeTop": 586, "panelCanonicalTop": 626 },
+    { "name": "PlayerC", "panelRect": { "left": 948, "top": 125, "width": 230, "height": 82, "bottom": 207 }, "panelCenterX": 1063, "nameCenterX": 1089, "nameCenterBias": 26, "nameBoxBottom": 167, "nameCandidatePassesDiscoverySize": true, "oldNameSubtreeTop": 175, "panelCanonicalTop": 215 }
+  ]
+}

@@ -1,0 +1,70 @@
+'use strict';
+
+var assert = require('assert');
+var fs = require('fs');
+var capture = require('./pauseDiagnosticCapture.js');
+var manifest = require('./manifest.json');
+
+var sentinel = { hands: 7, vpip: 0.42, lifecycleEpoch: 9, walkCount: 2, runtimeStatus: 'live' };
+var sentinelBefore = JSON.stringify(sentinel);
+var disabled = capture.createState({ buildId: 'disabled', createdAt: 1 });
+assert.strictEqual(disabled.enabled, false);
+assert.strictEqual(capture.armMarker(disabled, 'pause', 100), null);
+assert.strictEqual(capture.recordEntry(disabled, { api: 'keyboard', payload: { code: 'KeyP' } }), null);
+assert.strictEqual(disabled.entries.length, 0, 'disabled diagnostics are inert');
+
+var state = capture.createState({ enabled: true, buildId: 'window-test', extensionVersion: '0.1.0', createdAt: 1000 });
+capture.recordEntry(state, { timestamp: 8000, api: 'fetch', direction: 'outbound', payload: 'pre-arm-boundary' });
+capture.recordEntry(state, { timestamp: 7999, api: 'fetch', direction: 'outbound', payload: 'too-early' });
+var pause = capture.armMarker(state, 'pause', 10000);
+assert.strictEqual(pause.status, 'active');
+assert.strictEqual(pause.windowStart, 8000);
+assert.strictEqual(pause.windowEnd, 18000);
+assert.strictEqual(pause.correlationStartSource, 'marker-armed');
+assert.strictEqual(pause.activationObserved, 'unknown');
+var pointer = capture.consumeNextClick(state, { trusted: true, extensionOwned: false, visibleText: 'Pause' }, 10100);
+assert.strictEqual(pointer.activationOnly, true, 'a pointer is context, not a capture prerequisite');
+assert.strictEqual(state.pendingMarker.checkpointId, pause.checkpointId, 'pointer does not consume or finish the window');
+capture.recordActivation(state, pause.checkpointId, 'keyboard', { code: 'KeyP' }, 10200);
+assert.strictEqual(pause.activationObserved, 'keyboard', 'keyboard activation context is retained without classifying the key');
+capture.recordEntry(state, { timestamp: 18000, api: 'websocket', direction: 'incoming', payload: 'post-arm-boundary' });
+capture.recordEntry(state, { timestamp: 18001, api: 'xhr', direction: 'incoming', payload: 'too-late' });
+capture.recordEntry(state, { timestamp: 11000, api: 'dom-mutation', direction: 'observed', payload: { text: 'changed' } });
+capture.recordPageState(state, 'during-window', pause.checkpointId, { gameStatus: 'unknown' }, 14000);
+capture.completeMarkerWindow(state, pause.checkpointId, 18100);
+assert.strictEqual(pause.status, 'completed');
+assert.strictEqual(state.pendingMarker, null);
+
+var resume = capture.armMarker(state, 'resume', 20000);
+capture.recordEntry(state, { timestamp: 20010, api: 'websocket', direction: 'outgoing', payload: '42["action",{"type":"UR"}]' });
+capture.recordActivation(state, resume.checkpointId, 'transport-only', { api: 'websocket' }, 20010);
+capture.completeMarkerWindow(state, resume.checkpointId, 28100);
+assert.strictEqual(resume.activationObserved, 'transport-only');
+assert.strictEqual(capture.captureValidity(state).valid, true, 'completed Pause and Resume windows are valid without clicks');
+var correlated = capture.correlatedEntries(state);
+assert.ok(correlated.some(function (entry) { return entry.timestamp === 8000 && entry.millisecondsFromMarkerArm === -2000; }), 'two-second pre-arm buffer is retained');
+assert.ok(!correlated.some(function (entry) { return entry.timestamp === 7999; }));
+assert.ok(correlated.some(function (entry) { return entry.timestamp === 18000 && entry.markerCorrelations.some(function (item) { return item.checkpointId === pause.checkpointId && item.millisecondsFromMarkerArm === 8000; }); }), 'eight-second post-arm boundary is included');
+assert.ok(!correlated.some(function (entry) { return entry.timestamp === 18001 && entry.markerCorrelations.some(function (item) { return item.checkpointId === pause.checkpointId; }); }), 'traffic after the Pause window is not attributed to that window');
+var exported = capture.createExport(state, {}, 30000);
+assert.strictEqual(exported.schemaVersion, 2);
+assert.strictEqual(exported.captureMode.clickRequired, false);
+assert.strictEqual(exported.captureValidity.valid, true);
+assert.ok(exported.candidateTransportFrames.every(function (entry, index, all) { return index === 0 || all[index - 1].timestamp <= entry.timestamp; }), 'candidate transport frames are ordered relative to marker arms');
+assert.ok(exported.correlatedStateAndDomChanges.some(function (item) { return item.recordType === 'dom-mutation'; }));
+assert.ok(exported.correlatedStateAndDomChanges.some(function (item) { return item.recordType === 'state-snapshot'; }));
+
+var secret = capture.recordEntry(state, { timestamp: 20500, api: 'fetch', url: 'https://example.test/?token=private', payload: { authorization: 'secret', headers: { cookie: 'secret' } } });
+assert.ok(!/private|"secret"/.test(JSON.stringify(secret)), 'redaction remains active');
+for (var i = 0; i < 1000; i += 1) capture.recordEntry(state, { timestamp: 21000 + i, api: 'fetch', payload: 'x'.repeat(1600) });
+assert.strictEqual(state.entries.length, capture.LIMITS.maxEntries, 'entry buffer remains bounded');
+assert.ok(capture.exportJson(state, {}, 40000).length <= capture.LIMITS.maxExportBytes + 200, 'export remains size bounded');
+
+var isolated = manifest.content_scripts.find(function (entry) { return entry.js.includes('content.js'); });
+assert.ok(isolated.js.indexOf('pauseDiagnosticCapture.js') < isolated.js.indexOf('content.js'));
+var content = fs.readFileSync('./content.js', 'utf8');
+['Mark Pause Window', 'Mark Resume Window', 'keyboard, button, menu, or touch'].forEach(function (text) { assert.ok(content.includes(text), text + ' workflow is packaged'); });
+assert.ok(!content.includes('captureMarkedPageClick'), 'click-consumption workflow is removed');
+assert.ok(content.includes("recordActivation(pauseDiagnosticCaptureState"), 'activation context is diagnostic-only');
+assert.strictEqual(JSON.stringify(sentinel), sentinelBefore, 'capture never mutates poker lifecycle/statistics state');
+console.log('Activation-independent bounded Pause/Resume capture tests passed.');

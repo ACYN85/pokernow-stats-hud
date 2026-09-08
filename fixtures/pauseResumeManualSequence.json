@@ -1,0 +1,64 @@
+{
+  "fixtureId": "synthetic-manual-pause-resume-sequence",
+  "source": "synthetic transport-only sequence",
+  "buildId": "synthetic-pause-window",
+  "absoluteTimestampsAvailable": false,
+  "verifiedHostInSuppliedSummary": false,
+  "sequence": [
+    {
+      "order": 1,
+      "direction": "outgoing",
+      "raw": "42[\"action\",{\"type\":\"UP\"}]",
+      "candidateRole": "pause-side candidate"
+    },
+    {
+      "order": 2,
+      "direction": "incoming",
+      "raw": null,
+      "candidateRole": "post-UP game context",
+      "eventName": "gC",
+      "payloadProvidedInRequest": false
+    },
+    {
+      "order": 3,
+      "direction": "outgoing",
+      "raw": "42[\"action\",{\"type\":\"ATB\"}]",
+      "candidateRole": "post-transition action"
+    },
+    {
+      "order": 4,
+      "direction": "outgoing",
+      "raw": "42[\"action\",{\"type\":\"UR\"}]",
+      "candidateRole": "resume-side candidate"
+    },
+    {
+      "order": 5,
+      "direction": "incoming",
+      "raw": null,
+      "candidateRole": "post-UR game context",
+      "eventName": "gC",
+      "payloadProvidedInRequest": false
+    },
+    {
+      "order": 6,
+      "direction": "outgoing",
+      "raw": "42[\"action\",{\"type\":\"ATB\"}]",
+      "candidateRole": "post-transition action"
+    },
+    {
+      "order": 7,
+      "direction": "incoming",
+      "raw": null,
+      "candidateRole": "later game context",
+      "eventName": "gC",
+      "payloadProvidedInRequest": false
+    }
+  ],
+  "analysis": {
+    "UP": "Temporally associated with the synthetic Pause-side transition, but exact semantics are not proven.",
+    "UR": "Temporally associated with the synthetic Resume-side transition, but exact semantics are not proven.",
+    "ATB": "Appears after both candidate transitions, so it is not specific to Pause or Resume.",
+    "productionDecision": "diagnostic-only",
+    "reason": "The example intentionally omits exact timestamps, verified-host metadata, repetition/idempotence evidence, and decoded state-field changes proving lifecycle semantics."
+  }
+}

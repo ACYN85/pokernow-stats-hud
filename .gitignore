@@ -1,0 +1,83 @@
+# Generated outputs, packages, caches, and local worktrees
+/outputs/
+/work/
+/dist/
+/build/
+/coverage/
+/.cache/
+/node_modules/
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
+*.map
+*.bak
+*.orig
+*.rej
+*.crdownload
+*.log
+*.out
+*.err
+*.tmp
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+.eslintcache
+
+# Browser/network captures and local data
+/.har files/
+*.har
+*.pcap
+*.pcapng
+*.jsonl
+*.ndjson
+*.dmp
+*.db
+*.sqlite
+*.sqlite3
+/fixtures/board-companion/captured/
+fixtures/**/captured/
+Cookies
+Login Data
+Web Data
+Local State
+**/Session Storage/
+**/IndexedDB/
+**/Extension State/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+credentials*.json
+service-account*.json
+token*.json
+cookies*.json
+storage*.json
+*_secret.json
+*_secrets.json
+*.local
+*.secret
+*.secrets
+*.credential
+*.credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+
+# Local editor and agent configuration
+/.codex/
+/.agents/
+/.vscode/
+/.idea/
+*.code-workspace
+*.crx

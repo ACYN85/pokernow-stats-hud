@@ -1,0 +1,45 @@
+{
+  "fixtureId": "synthetic-host-pause-resume",
+  "schemaVersion": 2,
+  "source": "synthetic activation-window fixture",
+  "captureValidity": { "valid": true },
+  "identity": {
+    "localUserPlayerId": "owner-1",
+    "tableOwnerPlayerId": "owner-1",
+    "localUserIsVerifiedHost": true
+  },
+  "pauseWindow": {
+    "markerArmedAt": 1000,
+    "markerPurpose": "synthetic-correlation-only",
+    "events": [
+      {
+        "timestamp": 4004,
+        "millisecondsFromMarkerArm": 3004,
+        "direction": "outgoing",
+        "socketIoEventName": "action",
+        "payload": { "type": "UP" },
+        "raw": "42[\"action\",{\"type\":\"UP\"}]"
+      }
+    ],
+    "expectedAuthoritativePauseState": "paused",
+    "expectedDisplay": { "badge": "Paused", "footer": "PokerNow game is paused." }
+  },
+  "resumeWindow": {
+    "markerArmedAt": 5000,
+    "markerPurpose": "synthetic-correlation-only",
+    "events": [
+      {
+        "timestamp": 6490,
+        "millisecondsFromMarkerArm": 1490,
+        "direction": "outgoing",
+        "socketIoEventName": "action",
+        "payload": { "type": "UR" },
+        "raw": "42[\"action\",{\"type\":\"UR\"}]"
+      }
+    ],
+    "expectedAuthoritativePauseState": "resumed",
+    "expectedDisplay": { "badge": "Live", "footer": "PokerNow game is actively running." }
+  },
+  "verifiedMapping": { "UP": "Pause", "UR": "Resume" },
+  "productionSource": "synthetic-host-outgoing-command"
+}

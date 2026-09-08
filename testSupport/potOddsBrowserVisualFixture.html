@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Phase 1.9 pot-odds visual fixture</title>
+  <link rel="stylesheet" href="../hud.css">
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #07111d; color: #fff; font-family: Arial, sans-serif; }
+    .fixture-table { position: fixed; inset: 36px; border-radius: 48%; background: radial-gradient(ellipse at center, #17614f 0%, #0c453a 54%, #072e29 75%); box-shadow: 0 0 0 14px #3b2517, 0 20px 55px #0009; }
+    .hero-seat { position: fixed; border-radius: 28px; background: #091521bb; border: 1px solid #ffffff26; }
+    .hero-name { position: absolute; left: 18px; top: 20px; font-weight: 800; }
+    .hero-stack { position: absolute; left: 18px; top: 48px; color: #9fb5c8; }
+    .table-player-cards { position: fixed; width: 92px; height: 62px; }
+    .table-player-card { position: absolute; top: 0; width: 44px; height: 62px; border-radius: 6px; background: #fafafa; color: #19202a; border: 2px solid #d8dee7; box-sizing: border-box; display: grid; place-items: center; font-weight: 900; font-size: 18px; }
+    .table-player-card:nth-child(1) { left: 0; }
+    .table-player-card:nth-child(2) { left: 48px; }
+    .self-hud { position: fixed; padding: 5px 8px; border-radius: 8px; background: #08121ae8; border: 1px solid #5eead466; color: #d9fffa; font-size: 11px; }
+    .actions { position: fixed; right: 70px; bottom: 44px; display: flex; gap: 10px; }
+    .actions button { padding: 12px 22px; border-radius: 10px; border: 0; font-weight: 800; }
+    .actions .call { background: #2dd4bf; }
+    .legend { position: fixed; left: 24px; top: 18px; color: #d8e7f5; font-size: 13px; }
+    .legend strong { color: #5eead4; }
+  </style>
+</head>
+<body>
+  <div class="fixture-table"></div>
+  <div class="legend"><strong>Phase 1.9 visual fixture</strong> · CALL 100 · fixed left/top · no DevTools dependency</div>
+  <section class="hero-seat"><div class="hero-name">playerA (You)</div><div class="hero-stack">$420</div></section>
+  <div class="table-player-cards"><div class="table-player-card">9h</div><div class="table-player-card">8s</div></div>
+  <div class="self-hud">VPIP 25 · PFR 18 · AF 2.4</div>
+  <div class="actions"><button>FOLD</button><button class="call">CALL 100</button><button>RAISE</button></div>
+  <div id="pnhud-pot-odds-root" data-pnhud-owned="true"><aside id="pnhud-hero-pot-odds" class="pnhud-hero-pot-odds" aria-label="Current hand pot odds"></aside></div>
+  <script src="../potOdds.js?build=phase19-simple-stable"></script>
+  <script>
+    (function () {
+      'use strict';
+      var decision = { status: 'supported', amountToCall: 100, currentEligiblePot: 460, potAfterCall: 560, requiredEquity: 100 / 560 };
+      var host = document.getElementById('pnhud-hero-pot-odds');
+      window.__phase19InitialHost = host;
+      var heroSeat = document.querySelector('.hero-seat');
+      var cardContainer = document.querySelector('.table-player-cards');
+      var selfHud = document.querySelector('.self-hud');
+      var semanticFingerprint = PokerPotOdds.decisionRenderFingerprint(decision, true);
+      var counters = { renderPasses: 0, placementAttempts: 0, domWrites: 0 };
+
+      function applyFixtureGeometry() {
+        var full = innerWidth >= 1400;
+        var geometry = full
+          ? { seat: [1100, 650, 320, 220], cards: [1180, 700], hud: [1288, 620] }
+          : { seat: [650, 650, 320, 220], cards: [730, 700], hud: [838, 620] };
+        heroSeat.style.left = geometry.seat[0] + 'px'; heroSeat.style.top = geometry.seat[1] + 'px';
+        heroSeat.style.width = geometry.seat[2] + 'px'; heroSeat.style.height = geometry.seat[3] + 'px';
+        cardContainer.style.left = geometry.cards[0] + 'px'; cardContainer.style.top = geometry.cards[1] + 'px';
+        selfHud.style.left = geometry.hud[0] + 'px'; selfHud.style.top = geometry.hud[1] + 'px';
+      }
+
+      function render(trigger) {
+        counters.renderPasses += 1;
+        applyFixtureGeometry();
+        if (!host.querySelector('.pnhud-pot-odds')) { host.innerHTML = PokerPotOdds.widgetHtml(decision); counters.domWrites += 1; }
+        if (host.hidden) { host.hidden = false; counters.domWrites += 1; }
+        var cardNodes = Array.from(document.querySelectorAll('.table-player-card'));
+        var rects = cardNodes.map(function (node) { return node.getBoundingClientRect(); });
+        var left = Math.min.apply(null, rects.map(function (rect) { return rect.left; }));
+        var top = Math.min.apply(null, rects.map(function (rect) { return rect.top; }));
+        var right = Math.max.apply(null, rects.map(function (rect) { return rect.right; }));
+        var bottom = Math.max.apply(null, rects.map(function (rect) { return rect.bottom; }));
+        var cardRect = { left: left, top: top, width: right - left, height: bottom - top };
+        var hudRect = selfHud.getBoundingClientRect();
+        var measuredHostRect = host.querySelector('.pnhud-pot-odds').getBoundingClientRect();
+        var placement = PokerPotOdds.heroPlacement({
+          viewport: { width: innerWidth, height: innerHeight },
+          size: { width: measuredHostRect.width || host.offsetWidth || 250, height: measuredHostRect.height || host.offsetHeight || 34 },
+          cardRect: cardRect,
+          obstacleRects: [hudRect]
+        });
+        counters.placementAttempts += 1;
+        var nextLeft = placement.left + 'px';
+        var nextTop = placement.top + 'px';
+        var nextVisibility = placement.safe ? 'visible' : 'hidden';
+        if (host.style.left !== nextLeft) { host.style.left = nextLeft; counters.domWrites += 1; }
+        if (host.style.top !== nextTop) { host.style.top = nextTop; counters.domWrites += 1; }
+        if (host.style.visibility !== nextVisibility) { host.style.visibility = nextVisibility; counters.domWrites += 1; }
+        requestAnimationFrame(function () {
+          var pill = host.querySelector('.pnhud-pot-odds');
+          var pillRect = pill.getBoundingClientRect();
+          var style = getComputedStyle(pill);
+          window.__phase19Audit = {
+            trigger: trigger, viewport: { width: innerWidth, height: innerHeight }, semanticFingerprint: semanticFingerprint,
+            counters: Object.assign({}, counters),
+            placement: placement, hostConnected: host.isConnected, pillConnected: pill.isConnected, sameInitialHost: host === window.__phase19InitialHost,
+            pillRect: { left: pillRect.left, top: pillRect.top, right: pillRect.right, bottom: pillRect.bottom, width: pillRect.width, height: pillRect.height },
+            cardRect: cardRect, gap: Math.round(cardRect.left - pillRect.right), display: style.display,
+            visibility: style.visibility, opacity: style.opacity, position: getComputedStyle(host).position,
+            inlineLeft: host.style.left, inlineTop: host.style.top, inlineTransform: host.style.transform,
+            rootParent: document.getElementById('pnhud-pot-odds-root').parentElement.tagName,
+            rootZIndex: getComputedStyle(document.getElementById('pnhud-pot-odds-root')).zIndex,
+            visible: host.isConnected && pill.isConnected && pillRect.width > 0 && pillRect.height > 0 && pillRect.right > 0 && pillRect.left < innerWidth && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.01
+          };
+          document.documentElement.dataset.ready = 'true';
+        });
+      }
+
+      addEventListener('resize', function () { document.documentElement.dataset.ready = 'false'; render('viewport resize'); });
+      render('initial full-width render');
+    })();
+  </script>
+</body>
+</html>

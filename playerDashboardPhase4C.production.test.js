@@ -1,0 +1,14 @@
+'use strict';
+var assert = require('assert'); var fs = require('fs'); var content = fs.readFileSync('./content.js', 'utf8'); var css = fs.readFileSync('./hud.css', 'utf8');
+assert.match(content, /cachedSessionFilteredStats\(playerDashboardState\.playerId, positionFilters\)/, 'Session Position uses the revision-keyed certified filtered aggregation cache');
+assert.match(content, /careerIndexedService\.careerDashboardStats\(playerId, \{[\s\S]*?position: position,[\s\S]*?opponentMode: opponentMode/, 'Career Position uses the combined service-worker dashboard query');
+['threeBet','foldToThreeBet','foldToFlopCBet'].forEach(function (statId) { assert.ok(content.includes("'" + statId + "'")); });
+assert.match(content, /filters\.selfPlayerId = localUserPlayerId/, 'relational UI supplies only canonical runtime self identity');
+assert.match(content, /PokerPlayerDashboard\.requestMatches\(playerDashboardState, requestSnapshot\)/, 'career responses are bound to the complete filter snapshot');
+assert.match(content, /playerDashboardState\.position = null;[\s\S]*playerDashboardState\.opponentMode = 'overall'/, 'new player dashboard resets local filters safely');
+var noteStart = content.indexOf('function savePlayerDashboardNote'); var noteEnd = content.indexOf('function clearPlayerDashboardNote', noteStart);
+assert.doesNotMatch(content.slice(noteStart, noteEnd), /position|opponentMode|FilteredStats/, 'notes remain independent of filters');
+assert.match(css, /pnhud-dashboard-relational-grid/); assert.match(css, /pnhud-dashboard-opponent/); assert.match(css, /pnhud-dashboard-position/);
+assert.match(css, /overflow: auto; overscroll-behavior: contain/, 'bounded internal dashboard scrolling remains');
+assert.doesNotMatch(content, /VPIP.*counterpart|counterpart.*VPIP|PFR.*counterpart|counterpart.*PFR/i, 'no nonrelational Vs You semantics are introduced');
+console.log('Phase 4C production wiring, certified API ownership, race guard, notes separation, and bounded layout tests passed.');

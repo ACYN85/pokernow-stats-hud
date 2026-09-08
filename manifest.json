@@ -1,0 +1,104 @@
+{
+  "manifest_version": 3,
+  "name": "PokerNow Stats HUD",
+  "version": "1.1.0",
+  "description": "Live PokerNow HUD with Session and Career statistics, player profiles, dashboards, and local data backups.",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab"
+  ],
+  "action": {
+    "default_title": "PokerNow Stats HUD",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "careerServiceWorker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pokernow.com/games/*",
+        "https://www.pokernow.com/games/*"
+      ],
+      "js": [
+        "runtimeScope.js",
+        "showdownDiagnosticExporter.js",
+        "pauseDiagnosticCaptureMain.js",
+        "boardCompanionDiagnosticBridge.js",
+        "websocketHook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://pokernow.com/games/*",
+        "https://www.pokernow.com/games/*"
+      ],
+      "js": [
+        "runtimeScope.js",
+        "showdownDiagnosticExporter.js",
+        "pauseDiagnosticCapture.js",
+        "hudDiagnostics.js",
+        "hudHealth.js",
+        "firstHandLifecycle.js",
+        "gameBreakLifecycle.js",
+        "hudRuntimeStatus.js",
+        "pokerNowLifecycleSignal.js",
+        "pauseLifecycleCapture.js",
+        "hostControlTrace.js",
+        "interruptedHandRecovery.js",
+        "ownedHandReloadContinuity.js",
+        "handLogDom.js",
+        "walkDetection.js",
+        "stats.js",
+        "mockData.js",
+        "parser.js",
+        "actionInference.js",
+        "tbTrace.js",
+        "liveActionPipeline.js",
+        "handFinalization.js",
+        "positionResolver.js",
+        "semanticHandLedger.js",
+        "preflopOpportunityReducer.js",
+        "flopCBetOpportunityReducer.js",
+        "showdownStatsReducer.js",
+        "careerStatsAggregator.js",
+        "filteredStats.js",
+        "sessionStatsCache.js",
+        "sessionRuntime.js",
+        "runtimeBounds.js",
+        "careerContributionStore.js",
+        "careerIndexedStore.js",
+        "careerBackupPolicy.js",
+        "careerDataSettings.js",
+        "statExplanation.js",
+        "handStatInspector.js",
+        "playerProfileScoreInspector.js",
+        "playerProfileClassifier.js",
+        "playerProfilePresentation.js",
+        "playerProfileExplanation.js",
+        "playerProfileShadowStore.js",
+        "playerProfileCalibration.js",
+        "playerNotesStore.js",
+        "playerDashboard.js",
+        "overlayStats.js",
+        "leaderboardStats.js",
+        "leaderboardHudPosition.js",
+        "statTooltip.js",
+        "settingsUi.js",
+        "seatOverlay.js",
+        "uiBootstrap.js",
+        "boardCompanionLayout.js",
+        "potOddsPosition.js",
+        "potOdds.js",
+        "content.js"
+      ],
+      "css": [
+        "hud.css"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

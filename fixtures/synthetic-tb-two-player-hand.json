@@ -1,0 +1,41 @@
+{
+  "source": "synthetic preflop patch sequence",
+  "players": {
+    "P1": "playerA",
+    "P2": "playerB"
+  },
+  "smallBlindPlayerId": "P1",
+  "bigBlindPlayerId": "P2",
+  "patches": [
+    { "recordId": 7, "timestamp": 1000, "cPI": "P1", "pITT": "P1", "cRPI": [], "tB": { "P1": 1, "P2": 2 }, "stacks": { "P1": 255, "P2": 241 } },
+    { "recordId": 8, "timestamp": 9305, "cPI": "P1", "cRPI": ["P1"], "tB": { "P1": 6, "P2": 2 }, "stacks": { "P1": 255, "P2": 241 } },
+    { "recordId": 9, "timestamp": 10146, "cPI": "P2", "pITT": "P2", "cRPI": ["P1"], "tB": { "P1": 6, "P2": 2 }, "stacks": { "P1": 255, "P2": 241 } },
+    { "recordId": 11, "timestamp": 11238, "cPI": "P2", "cRPI": ["P1", "P2"], "tB": { "P1": 6, "P2": 6 }, "stacks": { "P1": 255, "P2": 241 } },
+    { "recordId": 12, "timestamp": 12109, "cPI": "P2", "pITT": "P2", "cRPI": [], "tB": { "P1": "<D>", "P2": "<D>" }, "stacks": { "P1": 249, "P2": 235 } },
+    { "recordId": 14, "timestamp": 21620, "cPI": "P2", "cRPI": ["P2"], "tB": { "P1": "<D>", "P2": 4 }, "stacks": { "P1": 249, "P2": 235 } },
+    { "recordId": 15, "timestamp": 22416, "cPI": "P1", "pITT": "P1", "cRPI": ["P2"], "tB": { "P1": "<D>", "P2": 4 }, "stacks": { "P1": 249, "P2": 235 } },
+    { "recordId": 17, "timestamp": 32764, "cPI": "P1", "cRPI": ["P2", "P1"], "tB": { "P1": 4, "P2": 4 }, "stacks": { "P1": 249, "P2": 235 } },
+    { "recordId": 18, "timestamp": 33608, "cPI": "P2", "pITT": "P2", "cRPI": [], "tB": { "P1": "<D>", "P2": "<D>" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 20, "timestamp": 35091, "cPI": "P2", "cRPI": ["P2"], "tB": { "P1": "<D>", "P2": "check" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 21, "timestamp": 35911, "cPI": "P1", "pITT": "P1", "cRPI": ["P2"], "tB": { "P1": "<D>", "P2": "check" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 22, "timestamp": 35995, "cPI": "P1", "cRPI": ["P2", "P1"], "tB": { "P1": "check", "P2": "check" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 23, "timestamp": 36794, "cPI": "P2", "pITT": "P2", "cRPI": [], "tB": { "P1": "<D>", "P2": "<D>" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 25, "timestamp": 39760, "cPI": "P2", "cRPI": ["P2"], "tB": { "P1": "<D>", "P2": "check" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 26, "timestamp": 40682, "cPI": "P1", "pITT": "P1", "cRPI": ["P2"], "tB": { "P1": "<D>", "P2": "check" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 28, "timestamp": 45136, "cPI": "P1", "cRPI": ["P1"], "tB": { "P1": 4, "P2": "check" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 29, "timestamp": 45936, "cPI": "P2", "pITT": "P2", "cRPI": ["P1"], "tB": { "P1": 4, "P2": "check" }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 31, "timestamp": 58112, "cPI": "P2", "cRPI": ["P1", "P2"], "tB": { "P1": 4, "P2": 4 }, "stacks": { "P1": 245, "P2": 231 } },
+    { "recordId": 32, "timestamp": 58971, "cRPI": ["P1", "P2"], "tB": { "P1": "<D>", "P2": "<D>" }, "stacks": { "P1": 269, "P2": 227 }, "settlement": true }
+  ],
+  "expectedActions": [
+    { "playerId": "P1", "action": "raise", "street": "preflop", "amount": 6 },
+    { "playerId": "P2", "action": "call", "street": "preflop", "amount": 4 },
+    { "playerId": "P2", "action": "bet", "street": "flop", "amount": 4 },
+    { "playerId": "P1", "action": "call", "street": "flop", "amount": 4 },
+    { "playerId": "P2", "action": "check", "street": "turn", "amount": 0 },
+    { "playerId": "P1", "action": "check", "street": "turn", "amount": 0 },
+    { "playerId": "P2", "action": "check", "street": "river", "amount": 0 },
+    { "playerId": "P1", "action": "bet", "street": "river", "amount": 4 },
+    { "playerId": "P2", "action": "call", "street": "river", "amount": 4 }
+  ]
+}

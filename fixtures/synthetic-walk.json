@@ -1,0 +1,22 @@
+{
+  "source": "synthetic heads-up walk fixture",
+  "gameId": "synthetic-game-walk",
+  "handId": "synthetic-walk-hand",
+  "street": "preflop",
+  "players": {
+    "P1": { "name": "playerA" },
+    "P2": { "name": "playerB" }
+  },
+  "beforeSettlement": {
+    "sBPI": "P1",
+    "bBPI": "P2",
+    "iHPI": ["P1", "P2"],
+    "tB": { "P1": 10, "P2": 20 },
+    "board": [],
+    "bigBlindCheck": false
+  },
+  "settlementPatch": {
+    "tB": { "P1": "<D>", "P2": "<D>" },
+    "gameResult": { "P2": { "position": 1 } }
+  }
+}

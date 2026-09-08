@@ -1,0 +1,36 @@
+{
+  "source": "production cold-start lifecycle race reconstructed from content.js storage and websocket initialization order",
+  "players": [
+    { "playerId": "p1", "name": "PlayerA", "blindType": "small" },
+    { "playerId": "p2", "name": "PlayerB", "blindType": "big" }
+  ],
+  "scenarios": {
+    "coldBeforeFirstHand": {
+      "startupType": "cold-start",
+      "beforeStorageReady": [
+        { "frameId": "cold-1", "type": "lobby", "handId": null }
+      ],
+      "afterStorageReady": [
+        { "frameId": "cold-2", "type": "hand-start", "handId": "cold-hand-1" },
+        { "frameId": "cold-3", "type": "settlement", "handId": "cold-hand-1" }
+      ]
+    },
+    "coldInitialHandSnapshotPresent": {
+      "startupType": "cold-start",
+      "beforeStorageReady": [
+        { "frameId": "present-1", "type": "hand-start", "handId": "present-hand-1" }
+      ],
+      "afterStorageReady": [
+        { "frameId": "present-2", "type": "settlement", "handId": "present-hand-1" }
+      ]
+    },
+    "firstHandAfterReset": {
+      "startupType": "reset-session",
+      "beforeStorageReady": [],
+      "afterStorageReady": [
+        { "frameId": "reset-1", "type": "hand-start", "handId": "reset-hand-1" },
+        { "frameId": "reset-2", "type": "settlement", "handId": "reset-hand-1" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,30 @@
+# Public 1.1.0 live-validation matrix
+
+Release: 1.1.0. This public copy contains deterministic automated evidence only; it does not include a signed-in session transcript, raw browser capture, or live screenshot.
+
+“MANUAL VALIDATION REQUIRED” means the behavior depends on a real signed-in browser/table and is not represented by public fixture data. “AUTOMATED CERTIFIED / LIVE NOT OBSERVED” means the deterministic support boundary is covered, but a specific live observation is not included in this release record.
+
+| Practical case | Automated evidence (representative test) | Live evidence / status |
+| --- | --- | --- |
+| Normal finalized hand flow | coreStatsContinuity.production | MANUAL VALIDATION REQUIRED; no session transcript included |
+| BB walk | statsWalk; walkSettlement.production; multiwayWalk.production | Synthetic walk fixture is replayed automatically; individual final-soak walks are not enumerated |
+| Reload continuity | ownedHandReloadContinuity.production; breakReloadRestart.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for a specifically recorded final-soak reload boundary |
+| Reconnect continuity | interruptedHandRecovery; pausedLifecycleRecovery.production; transport ordering | AUTOMATED CERTIFIED / LIVE NOT OBSERVED; no claim of missed-action recovery |
+| Pause/break/rejoin | verifiedHostPauseResume.production; gameBreakLifecycle.production | Synthetic Pause/Resume activation-window fixture; remaining break/rejoin branches AUTOMATED CERTIFIED / LIVE NOT OBSERVED |
+| Showdown | showdownStatsAuthoritative.production; showdownStatsContentPath.production | MANUAL VALIDATION REQUIRED; individual live settlement cases not included |
+| Mucked showdown | showdownStatsReducer; showdownStatsAuthoritative.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for bounded check-through membership |
+| F3B, including qualifying squeeze caller | preflopMultiwayFoldToThreeBet; sanitizedCaptureDerivedPreflopFixtures.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for the sanitized fixture case |
+| Flop CBet / FCB | flopCBetContentPath.production; flopCBetVisibleIntegration.production | Earlier explicit live validation recorded in FLOP_CBET_DESIGN.md; no new per-branch RC live claim |
+| Side-pot / split / ambiguous settlement | showdownStatsReducer; sanitizedCaptureDerivedPreflopFixtures.production; short-all-in scenario | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for all rare pot/eligibility combinations; conservative exclusions remain |
+| Seat HUD default / Reset / painted centering | seatHudLivePanelBody.production; seatHudCanonicalPositioning | MANUAL VALIDATION REQUIRED; public fixture uses synthetic painted-body measurements |
+| Seat HUD drag / manual offset / clamp | overlayGripLive.production; seatHudVisualPanelDom.production | MANUAL VALIDATION REQUIRED; no live interaction transcript included |
+| Session / Career seat source | seatHudSourceSwitch.production | MANUAL VALIDATION REQUIRED |
+| Chat layering / launcher hierarchy | seatHudLayeringFinalization.production | MANUAL VALIDATION REQUIRED |
+| Log / Ledger / Replayer / account-menu masking | seatHudLedgerSuppression.production; seatHudVisualPanelDom.production | MANUAL VALIDATION REQUIRED |
+| Settings blockers / pointer masking | settingsUi.production; seatHudLayeringFinalization.production | MANUAL VALIDATION REQUIRED |
+| Player dashboard / profiles / explanations | playerDashboardPhase4C; playerProfileExplanation; finalUiProfileClarity | MANUAL VALIDATION REQUIRED; every filter/sample gate is not individually observed |
+| Career persistence / backup / restore | careerServiceWorker; careerSupersession; careerBackupCorruption | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for a separately recorded restore/size/race scenario |
+| Pot Odds preflop / postflop | potOddsPersistentPreflopUi.production; potOddsStableVisibilityAndLiveDrag.production | MANUAL VALIDATION REQUIRED; rare eligibility cases remain limited |
+| Pot Odds drag / Reset / board continuity | boardCompanionLiveUxFinalization.production; potOddsDraggablePosition.production | MANUAL VALIDATION REQUIRED; no live geometry transcript included |
+
+Test names omit the common `.test.js` suffix for readability. Exact file membership is in `testSuites.js`. Automated certification describes the defined support boundary, not universal poker-variant correctness. Live-unobserved rare cases are documented limitations, not fabricated passes.

@@ -1,0 +1,54 @@
+'use strict';
+
+var assert = require('assert');
+var fs = require('fs');
+var manifest = require('./manifest.json');
+
+var content = fs.readFileSync('./content.js', 'utf8');
+var css = fs.readFileSync('./hud.css', 'utf8');
+var registry = fs.readFileSync('./overlayStats.js', 'utf8');
+var isolated = manifest.content_scripts.find(function (entry) { return entry.js.includes('content.js'); });
+
+assert.ok(isolated.js.includes('statTooltip.js'));
+assert.ok(isolated.js.indexOf('overlayStats.js') < isolated.js.indexOf('statTooltip.js'));
+assert.ok(isolated.js.indexOf('statTooltip.js') < isolated.js.indexOf('content.js'));
+assert.strictEqual((content.match(/statTooltipElement = document\.createElement\('div'\)/g) || []).length, 1, 'single tooltip DOM owner');
+assert.ok(content.includes("var statTooltipId = 'pnhud-stat-tooltip'"));
+assert.ok(content.includes('statTooltipElement.id = statTooltipId'));
+assert.ok(content.includes("statTooltipElement.setAttribute('role', 'tooltip')"));
+assert.ok(content.includes("target.setAttribute('aria-describedby', statTooltipElement.id)"));
+assert.ok(content.includes("activeStatTooltipTarget.removeAttribute('aria-describedby')"));
+assert.ok(content.includes("event.key === 'Escape' && statTooltipUiDiagnostics.tooltipVisible"));
+assert.ok(content.includes("document.addEventListener('pointerover', handleStatTooltipPointerOver, true)"));
+assert.ok(content.includes("document.addEventListener('focusin', handleStatTooltipFocusIn, true)"));
+assert.ok(content.includes('statTooltipListenersInstalled'), 'delegated listeners have one owner');
+assert.ok(content.includes('closeStatTooltip(\'HUD rerender or scope change\')'), 'scope/rerender closes stale tooltip');
+assert.ok(content.includes("return '<th>' + statTooltipTargetHtml"), 'headers use generic formula targets');
+assert.ok(content.includes("statTooltipTargetHtml(definition, value, playerKey"), 'leaderboard values use player formula targets');
+assert.ok(content.includes("return '<td>' + statTooltipTargetHtml(definition, value, playerKey, currentStatsScope) + '</td>'"), 'AF and other leaderboard values retain the same tooltip-trigger markup without a presentation-only cell class');
+assert.ok(!content.includes('pnhud-af'), 'production leaderboard cells no longer receive the AF dotted-underline class');
+assert.ok(!/td\.pnhud-af|text-decoration:\s*underline\s+dotted/.test(css), 'production CSS contains no AF dotted underline rule');
+assert.ok(content.includes('statTooltipTargetHtml(item.definition, item.label'), 'row-grouped seat segments use the same tooltip path');
+assert.ok(content.includes("event.target.closest('.pnhud-stat-tooltip-target, .pnhud-profile-tooltip-target')"), 'profile chips reuse the single delegated tooltip listener path');
+assert.ok(content.includes("target.classList.contains('pnhud-profile-tooltip-target')"), 'the tooltip owner recognizes profile-chip targets');
+assert.ok(content.includes('PokerSeatOverlay.visibleProfilePresentation(tooltipProfile, true)'), 'tooltip identity comes from the allow-listed displayed-profile presentation');
+assert.ok(content.includes('PokerSeatOverlay.profileTooltipHtml(tooltipProfile, true, target.dataset.pnhudProfileSource, target.dataset.pnhudSeatStatSource)'), 'profile-fit copy and truthful Session/Career source note come from the pure seat-overlay presentation helper');
+assert.ok(content.includes('PokerStatTooltip.choosePlacement(profileAnchor'), 'profile tooltip reuses the established viewport placement helper');
+assert.ok(content.includes("var grip = event.target.closest && event.target.closest('.pnhud-overlay-grip')") && content.includes('if (!grip || !element.contains(grip)) return;'), 'seat dragging rejects tooltip/profile targets because only the owned grip can begin it');
+assert.ok(content.includes("'[data-pnhud-interactive]', '.pnhud-stat-tooltip-target'"), 'the shared leaderboard drag exclusion still rejects tooltip targets');
+assert.ok(css.includes('#pnhud-stat-tooltip { position: fixed;'));
+assert.ok(css.includes('pointer-events: none'));
+assert.ok(css.includes('.pnhud-stat-tooltip-target:focus-visible'));
+assert.ok(css.includes('.pnhud-profile-tooltip-target:focus-visible'), 'profile tooltip trigger retains keyboard focus accessibility');
+assert.ok(content.includes('statTooltipUi: cloneJson(statTooltipUiDiagnostics)'));
+assert.ok(content.includes('model.displayRows || [model.numerator, model.denominator]'), 'optional metadata row order feeds the generic renderer');
+assert.ok(content.includes("model.summary ? '<p class=\"pnhud-tooltip-summary\">'"), 'optional CB/FCB made-from-opportunities summary uses the generic tooltip renderer');
+assert.ok(registry.includes("fullName: 'Flop CBet'"));
+assert.ok(registry.includes("fullName: 'Fold to Flop CBet'"));
+assert.ok(!registry.includes("customizable: false"), 'CB/FCB reuse the existing visibility controls without changing tooltip ownership');
+assert.ok(css.includes('.pnhud-tooltip-summary'));
+assert.ok(registry.includes("var components = [count('Bets', bets), count('Raises', raises)];"), 'AF components contain Bets and Raises only');
+assert.ok(registry.includes('displayRows: [numerator].concat(components, [denominator])'), 'AF owns its exact nonduplicated display order');
+assert.ok(!registry.includes('Passive actions'), 'AF denominator is never mislabeled as passive actions');
+
+console.log('Single-instance accessible leaderboard and seat stat tooltip production tests passed.');

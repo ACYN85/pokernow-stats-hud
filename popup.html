@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>PokerNow Stats HUD</title><link rel="stylesheet" href="popup.css"></head>
+  <body>
+    <main>
+      <h1>PokerNow Stats HUD <span>LIVE</span></h1>
+      <p>Choose how the HUD appears on PokerNow game pages.</p>
+      <div class="display-choices" role="group" aria-label="HUD display mode">
+        <button data-display-mode="seat-overlays-only">Seat overlays only</button>
+        <button data-display-mode="seat-overlays-leaderboard">Overlays + details</button>
+        <button data-display-mode="leaderboard-only">Details only</button>
+        <button data-display-mode="hidden">Off</button>
+      </div>
+      <p class="section-label">Legacy leaderboard range</p>
+      <div class="choices" role="group" aria-label="Displayed dataset">
+        <button data-mode="session">This session</button>
+        <button data-mode="allTime">Session (legacy)</button>
+      </div>
+      <p class="foot">Both legacy range buttons show Session data on live tables. Choose Career in HUD Settings or the player dashboard. Unfinished hands are excluded.</p>
+      <p class="section-label">Overlay layout</p>
+      <div class="layout-controls">
+        <button id="pnhud-unlock-overlays">Unlock overlay dragging</button>
+        <button id="pnhud-lock-overlays">Lock overlay positions</button>
+        <button id="pnhud-reset-overlays">Reset overlay positions</button>
+      </div>
+      <p class="layout-status" id="pnhud-layout-status">Positions locked</p>
+      <label class="debug-option"><input type="checkbox" id="pnhud-debug-seat-identity"> Show seat identity labels</label>
+      <label class="debug-option"><input type="checkbox" id="pnhud-show-withheld-placeholders"> Show withheld overlay placeholders</label>
+      <p class="build-id" id="pnhud-popup-build-id">Build unavailable</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

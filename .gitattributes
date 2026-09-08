@@ -1,2 +1,6 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Preserve audited production bytes, including existing mixed line endings.
+* -text whitespace=cr-at-eol
+# Markdown hard breaks and two inherited test-only formatting cases are intentional.
+*.md whitespace=cr-at-eol,-blank-at-eol
+pauseLifecycleCapture.test.js whitespace=cr-at-eol,-blank-at-eol
+walkLifecycleContinuity.production.test.js whitespace=cr-at-eol,-blank-at-eof
