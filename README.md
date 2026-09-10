@@ -87,11 +87,9 @@ See [Testing](TESTING.md) for additional details.
 
 See [Privacy](PRIVACY.md) and [Known Limitations](KNOWN_LIMITATIONS.md) for additional details.
 
-## AI-assisted development
+## Development Disclosure
 
-This project was developed with substantial assistance from OpenAI Codex. I directed the product, selected features and behavior, reproduced and prioritized defects, tested the extension in live PokerNow sessions, validated fixes, and set acceptance criteria. Codex assisted substantially with implementation, testing, refactoring, and documentation.
-
-The project reflects a human-directed, AI-assisted engineering workflow focused on iterative development, validation, and product decision-making.
+This project was developed in part with OpenAI Codex assistance. I directed the product and feature decisions, tested the extension in live PokerNow sessions, reproduced and prioritized defects, validated fixes, and iterated on the implementation.
 
 ## Technical documentation
 
