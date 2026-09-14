@@ -94,7 +94,7 @@ assert.ok(content.includes('PokerHudSettings.ACCENT_THEMES'));
 
 assert.deepStrictEqual(overlays.visibilityForMode('hidden'), { mode: 'hidden', overlaysVisible: false, detailsVisible: false });
 assert.deepStrictEqual(bootstrap.visibilityForMode('hidden'), { mode: 'hidden', overlaysVisible: false, detailsVisible: false });
-assert.ok(content.includes('settingsLauncherId, settingsPanelId'), 'root recovery watches the settings surfaces');
+assert.ok(content.includes('var stableRootIds = [detailsRootId, overlayRootId, toggleRootId, settingsLauncherId, settingsPanelId]'), 'root recovery watches persistent Settings ownership; Players is tab content');
 
 function clickProductionControl(harness, selector) {
   var target = harness.document.querySelector(selector);

@@ -115,22 +115,24 @@ assertSameBase(zeroReference, manualReference, 'drag cannot mutate canonical lay
 assert.deepStrictEqual(manualReference.offset, [75, -30]);
 assertPanel(manualReference, 485, 240, 'manual canonical + offset');
 
-var manualSamples = [];
-frame(harness, 'gC', activeState('STABLE-3'), 'manual-preflop'); manualSamples.push(snapshot(harness, '10 manual preflop'));
-harness.fixture.mountCommunityBoard(harnessApi.boardRectsForLayout('live-full')); frame(harness, 'gC', { gT: ['holdem', 1], board: ['Ah', 'Kd', '2c'] }, 'manual-flop'); manualSamples.push(snapshot(harness, '11 manual flop'));
-harness.fixture.mountCommunityBoard(turnRects); frame(harness, 'gC', { gT: ['holdem', 2], board: ['Ah', 'Kd', '2c', '7s'] }, 'manual-turn'); manualSamples.push(snapshot(harness, '12 manual turn'));
-harness.fixture.mountCommunityBoard(riverRects); frame(harness, 'gC', { gT: ['holdem', 3], board: ['Ah', 'Kd', '2c', '7s', 'Jh'] }, 'manual-river'); manualSamples.push(snapshot(harness, '13 manual river'));
-frame(harness, 'gC', { pGS: { playerA: 'fold', playerB: 'inGame' }, cPI: 'playerB', pITT: 'playerB' }, 'manual-fold'); manualSamples.push(snapshot(harness, '14 fold remains persistent'));
-frame(harness, 'gC', { gameResult: { winnerId: 'playerB', complete: true }, cPI: null, pITT: null }, 'manual-hand-end'); harness.fixture.removeCommunityBoard(); harness.runFor(240, 16); manualSamples.push(snapshot(harness, '15 manual between hands'));
-frame(harness, 'gC', activeState('STABLE-4', { players: { playerA: { id: 'playerA', name: 'playerA', stack: 0, allIn: true }, playerB: { id: 'playerB', name: 'playerB', stack: 0, allIn: true } } }), 'manual-allin-next-hand'); manualSamples.push(snapshot(harness, '16 all-in next hand'));
-manualSamples.forEach(function (sample) { assertSameBase(manualReference, sample, sample.label); assert.deepStrictEqual(sample.offset, [75, -30], sample.label + ': exact feature offset'); assertPanel(sample, 485, 240, sample.label); assert.strictEqual(sample.host, stableHost, sample.label + ': same host'); });
+frame(harness, 'gC', activeState('STABLE-3'), 'manual-preflop');
+var manualPreflop = snapshot(harness, '10 manual preflop');
+assertSameBase(manualReference, manualPreflop, manualPreflop.label); assert.deepStrictEqual(manualPreflop.offset, [75, -30]); assertPanel(manualPreflop, 485, 240, manualPreflop.label);
+harness.fixture.mountCommunityBoard(harnessApi.boardRectsForLayout('live-full')); frame(harness, 'gC', { gT: ['holdem', 1], board: ['Ah', 'Kd', '2c'] }, 'manual-flop');
+var canonicalSamples = [snapshot(harness, '11 first measured board resets manual offset')];
+harness.fixture.mountCommunityBoard(turnRects); frame(harness, 'gC', { gT: ['holdem', 2], board: ['Ah', 'Kd', '2c', '7s'] }, 'manual-turn'); canonicalSamples.push(snapshot(harness, '12 turn'));
+harness.fixture.mountCommunityBoard(riverRects); frame(harness, 'gC', { gT: ['holdem', 3], board: ['Ah', 'Kd', '2c', '7s', 'Jh'] }, 'manual-river'); canonicalSamples.push(snapshot(harness, '13 river'));
+frame(harness, 'gC', { pGS: { playerA: 'fold', playerB: 'inGame' }, cPI: 'playerB', pITT: 'playerB' }, 'manual-fold'); canonicalSamples.push(snapshot(harness, '14 fold remains persistent'));
+frame(harness, 'gC', { gameResult: { winnerId: 'playerB', complete: true }, cPI: null, pITT: null }, 'manual-hand-end'); harness.fixture.removeCommunityBoard(); harness.runFor(240, 16); canonicalSamples.push(snapshot(harness, '15 between hands'));
+frame(harness, 'gC', activeState('STABLE-4', { players: { playerA: { id: 'playerA', name: 'playerA', stack: 0, allIn: true }, playerB: { id: 'playerB', name: 'playerB', stack: 0, allIn: true } } }), 'manual-allin-next-hand'); canonicalSamples.push(snapshot(harness, '16 all-in next hand'));
+canonicalSamples.forEach(function (sample) { assertSameBase(zeroReference, sample, sample.label); assert.deepStrictEqual(sample.offset, [0, 0], sample.label + ': exact feature offset'); assertPanel(sample, 410, 270, sample.label); assert.strictEqual(sample.host, stableHost, sample.label + ': same host'); });
 
 click(harness, '#pnhud-settings-launcher');
 var settingsOpen = snapshot(harness, '17 Settings opens');
-assertSameBase(manualReference, settingsOpen, 'Settings open'); assertPanel(settingsOpen, 485, 240, 'Settings open'); assert.strictEqual(settingsOpen.settingsVisible, true);
+assertSameBase(zeroReference, settingsOpen, 'Settings open'); assertPanel(settingsOpen, 410, 270, 'Settings open'); assert.strictEqual(settingsOpen.settingsVisible, true);
 click(harness, '[data-settings-section="general"]');
 var tabChanged = snapshot(harness, '18 Settings switches tabs');
-assertSameBase(manualReference, tabChanged, 'Settings tab switch'); assertPanel(tabChanged, 485, 240, 'Settings tab switch');
+assertSameBase(zeroReference, tabChanged, 'Settings tab switch'); assertPanel(tabChanged, 410, 270, 'Settings tab switch');
 click(harness, '[data-settings-section="hud"]');
 var epochBeforeReset = snapshot(harness, 'Settings HUD tab restored').epoch;
 click(harness, '.pnhud-reset-pot-odds-position');
@@ -195,14 +197,17 @@ assert.deepStrictEqual(harness.evaluationErrors, []);
 // The visible flop is only 182px wide; its complete five-card slot is 306px.
 var delayed = harnessApi.createHarness({
   gameId: 'delayed-measured-board', layout: 'live-full', liveCardDom: true,
-  boardDom: false, persistentBoardSlot: false, viewport: { width: 1280, height: 665 }, initialNow: 1000
+  boardDom: false, persistentBoardSlot: false, viewport: { width: 1280, height: 665 }, initialNow: 1000,
+  initialStorage: { hudUiPreferences: settings.merge(settings.DEFAULTS, { potOddsOffsetX: 40, potOddsOffsetY: -15 }) }
 });
 frame(delayed, 'registered', { currentPlayer: { id: 'playerA', name: 'playerA' }, gameState: activeState('DELAYED-1') }, 'delayed-preflop');
 var bootstrap = snapshot(delayed, 'unmeasured preflop');
+assert.deepStrictEqual(bootstrap.offset, [40, -15], 'provisional preflop placement preserves the prior user offset');
 var measuredCards = Array.from({ length: 5 }, function (_unused, index) { return harnessApi.rect(430 + 62 * index, 260, 58, 80); });
 delayed.fixture.mountCommunityBoard(measuredCards.slice(0, 3));
 frame(delayed, 'gC', { gT: ['holdem', 1], board: ['Ah', 'Kd', '2c'] }, 'delayed-first-flop');
 var calibrated = snapshot(delayed, 'measured flop replaces bootstrap');
+assert.deepStrictEqual(calibrated.offset, [0, 0], 'first measured flop both corrects provisional geometry and resets the offset');
 assert.strictEqual(calibrated.epoch, bootstrap.epoch, 'first measurement completes the existing table epoch');
 assert.strictEqual(calibrated.board.left, 430, 'bootstrap cannot remain authoritative after credible flop geometry arrives');
 assert.strictEqual(calibrated.board.width, 306, 'full five-card envelope, never the visible three-card union');

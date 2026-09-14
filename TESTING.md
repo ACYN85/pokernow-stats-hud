@@ -1,6 +1,6 @@
 # Public 1.1.0 testing and certification
 
-Automated behavioral coverage, immutable release integrity, and signed-in live validation are distinct evidence layers. The public Build ID is `v1.1.0-public-20260908`.
+Automated behavioral coverage, immutable release integrity, and signed-in live validation are distinct evidence layers. The promoted V1.1 package Build ID is `v1.1.0-rc3-20260913-1702`.
 
 ## Normal behavioral suites
 
@@ -11,7 +11,7 @@ node runTests.js fast
 node runTests.js full
 ```
 
-`fast` contains **169 test files**. `full` contains **189 behavioral test files**, including every checked-in root behavioral `*.test.js`. `testSuites.test.js` enforces membership. Counts refer to test files, not assertions or hands.
+`fast` contains **187 test files**. `full` contains **206 behavioral test files**, including every checked-in root behavioral `*.test.js`. `testSuites.test.js` enforces membership. Counts refer to test files, not assertions or hands.
 
 The protocol fixtures used by reducer and content-path tests are privacy-sanitized, de-identified, capture-derived behavioral fixtures. They preserve event shape while replacing player/card values and removing timestamps, source filenames, hashes, URLs, account data, and game/hand/session/player identifiers. They are deterministic regression evidence, not live certification.
 
@@ -24,7 +24,7 @@ node scripts/release.js validate
 node runTests.js release
 ```
 
-`release` contains **1 test file**, `releaseMetadata.test.js`. It verifies synchronized release identity, 67 safe production paths, exact public-baseline hashes, deterministic ZIP structure, drift rejection, documentation links, and packaging contracts.
+`release` contains **1 test file**, `releaseMetadata.test.js`. It verifies synchronized release identity, 68 safe production paths, exact public-baseline hashes, deterministic ZIP structure, drift rejection, documentation links, and packaging contracts.
 
 Maintainer release wrappers can record fingerprint-bound results and package only after all gates pass:
 
@@ -37,7 +37,7 @@ node scripts/release.js gates
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
 ```
 
-The focused release set has **42 test files**. Wrapper output is generated under `outputs/` and is ignored by Git.
+The focused release set has **63 test files**. Wrapper output is generated under `outputs/` and is ignored by Git.
 
 ## Browser-shaped and live evidence
 

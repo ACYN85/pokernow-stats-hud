@@ -12,6 +12,8 @@
   var RECORD_SCHEMA_VERSION = 3;
   var SUPPORTED_RECORD_SCHEMA_VERSIONS = Object.freeze([1, 2, 3]);
   var AGGREGATE_SCHEMA_VERSION = 2;
+  var PROFILE_CONTEXT_VERSION = 2;
+  var PROFILE_PROJECTION_VERSION = 1;
   var COUNTER_FIELDS = Object.freeze([
     'hands', 'vpipMade', 'vpipOpportunities', 'pfrMade', 'pfrOpportunities',
     'postflopAggressiveActions', 'postflopCalls', 'threeBetMade', 'threeBetOpportunities',
@@ -132,22 +134,31 @@
     return increased ? null : 'superseding record must advance a semantic version';
   }
 
-  function resolveActiveRecords(candidates) {
+  /* One resolver for synchronous queries and cooperative derived-index backfill. */
+  function* resolutionSteps(candidates) {
     var rejectedRecords = [];
     var physical = [];
     var byFingerprint = new Map();
-    (candidates || []).forEach(function (candidate) {
+    var work = 0;
+    for (var candidate of (candidates || [])) {
+      if (++work % 256 === 0) yield;
       var record = clone(candidate);
       var error = validateRecord(record);
-      if (error) { rejectedRecords.push({ handKey: record && record.handKey || null, fingerprint: record && record.fingerprint || null, reason: error }); return; }
-      if (byFingerprint.has(record.fingerprint)) { rejectedRecords.push({ handKey: record.handKey, fingerprint: record.fingerprint, reason: 'duplicate physical record' }); return; }
+      if (error) { rejectedRecords.push({ handKey: record && record.handKey || null, fingerprint: record && record.fingerprint || null, reason: error }); continue; }
+      if (byFingerprint.has(record.fingerprint)) { rejectedRecords.push({ handKey: record.handKey, fingerprint: record.fingerprint, reason: 'duplicate physical record' }); continue; }
       byFingerprint.set(record.fingerprint, record); physical.push(record);
-    });
+    }
     var groups = new Map();
-    physical.forEach(function (record) { if (!groups.has(record.handKey)) groups.set(record.handKey, []); groups.get(record.handKey).push(record); });
+    for (var physicalRecord of physical) {
+      if (++work % 256 === 0) yield;
+      if (!groups.has(physicalRecord.handKey)) groups.set(physicalRecord.handKey, []);
+      groups.get(physicalRecord.handKey).push(physicalRecord);
+    }
     var activeRecords = [];
     var quarantinedHandKeys = [];
-    groups.forEach(function (group, handKey) {
+    for (var groupEntry of groups) {
+      if (++work % 256 === 0) yield;
+      var handKey = groupEntry[0]; var group = groupEntry[1];
       var roots = group.filter(function (record) { return !record.supersedesFingerprint; });
       var successors = new Map();
       var failure = null;
@@ -177,22 +188,51 @@
         quarantinedHandKeys.push(handKey);
         rejectedRecords.push({ handKey: handKey, fingerprint: null, reason: failure });
       } else activeRecords.push(tips[0]);
-    });
+    }
     activeRecords.sort(function (left, right) { return left.handKey.localeCompare(right.handKey); });
     physical.sort(function (left, right) { return left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); });
     return { physicalRecords: physical, activeRecords: activeRecords, rejectedRecords: rejectedRecords, quarantinedHandKeys: quarantinedHandKeys };
   }
+  function resolveActiveRecords(candidates) {
+    var steps = resolutionSteps(candidates); var step;
+    do { step = steps.next(); } while (!step.done);
+    return step.value;
+  }
 
+  function emptyProfileProjection(playerId) {
+    return {
+      version: PROFILE_PROJECTION_VERSION,
+      playerId: String(playerId),
+      latestDisplayName: '',
+      lastSeenAt: 0,
+      recordCount: 0,
+      counters: emptyCounters(),
+      profileContext: { version: PROFILE_CONTEXT_VERSION, preflopTableSizeSum: 0, preflopTableSizeOpportunities: 0 }
+    };
+  }
   function emptyAggregate() { return { schemaVersion: AGGREGATE_SCHEMA_VERSION, ledgerRecordCount: 0, physicalRecordCount: 0, quarantinedHandCount: 0, players: {}, semanticVersionCoverage: {} }; }
   function addRecord(aggregate, record) {
     record.players.forEach(function (entry) {
       var playerId = String(entry.playerId);
       var player = aggregate.players[playerId];
-      if (!player) player = aggregate.players[playerId] = { playerId: playerId, latestDisplayName: '', lastSeenAt: 0, recordCount: 0, counters: emptyCounters(), positionCoverage: { trackedHands: 0, earliestTrackedAt: null } };
+      if (!player) player = aggregate.players[playerId] = { playerId: playerId, latestDisplayName: '', lastSeenAt: 0, recordCount: 0, counters: emptyCounters(), positionCoverage: { trackedHands: 0, earliestTrackedAt: null }, profileProjection: emptyProfileProjection(playerId) };
       if (entry.displayName && Number(record.finalizedAt || 0) >= player.lastSeenAt) player.latestDisplayName = String(entry.displayName);
       player.lastSeenAt = Math.max(player.lastSeenAt, Number(record.finalizedAt || 0));
       player.recordCount += 1;
       COUNTER_FIELDS.forEach(function (field) { player.counters[field] += entry.counters[field]; });
+      // Career archetypes use a detached, rebuildable projection whose counters and
+      // table context come from the same authoritative 3+ handed contribution set.
+      // Schema-v3 exact counts remain usable when position naming is unsupported;
+      // heads-up and unknown/legacy counts are excluded without inference.
+      if (record.schemaVersion >= 3 && entry.position && Number.isInteger(entry.position.dealtPlayerCount) && entry.position.dealtPlayerCount >= 3) {
+        var profile = player.profileProjection;
+        if (entry.displayName && Number(record.finalizedAt || 0) >= profile.lastSeenAt) profile.latestDisplayName = String(entry.displayName);
+        profile.lastSeenAt = Math.max(profile.lastSeenAt, Number(record.finalizedAt || 0));
+        profile.recordCount += 1;
+        COUNTER_FIELDS.forEach(function (field) { profile.counters[field] += entry.counters[field]; });
+        profile.profileContext.preflopTableSizeSum += entry.position.dealtPlayerCount * entry.counters.vpipOpportunities;
+        profile.profileContext.preflopTableSizeOpportunities += entry.counters.vpipOpportunities;
+      }
       if (entry.position && entry.position.status === 'supported' && entry.position.dealtPosition) {
         player.positionCoverage.trackedHands += Number(entry.counters.hands || 0);
         player.positionCoverage.earliestTrackedAt = player.positionCoverage.earliestTrackedAt === null
@@ -212,6 +252,26 @@
     aggregate.quarantinedHandCount = resolved.quarantinedHandKeys.length;
     return { aggregate: aggregate, acceptedRecords: resolved.physicalRecords, activeRecords: resolved.activeRecords, rejectedRecords: resolved.rejectedRecords, quarantinedHandKeys: resolved.quarantinedHandKeys };
   }
+  // Aggregates records that have already passed the shared logical-hand resolver.
+  // This is derived-query infrastructure; it never accepts or persists authority.
+  function aggregateActiveRecords(records) {
+    var aggregate = emptyAggregate();
+    (records || []).forEach(function (record) { addRecord(aggregate, record); });
+    aggregate.physicalRecordCount = (records || []).length;
+    return aggregate;
+  }
+  async function rebuildCooperatively(records, yieldControl) {
+    var steps = resolutionSteps(records); var step;
+    do { step = steps.next(); if (!step.done) await yieldControl(); } while (!step.done);
+    var resolved = step.value; var aggregate = emptyAggregate();
+    for (var index = 0; index < resolved.activeRecords.length; index += 1) {
+      if (index && index % 256 === 0) await yieldControl();
+      addRecord(aggregate, resolved.activeRecords[index]);
+    }
+    aggregate.physicalRecordCount = resolved.physicalRecords.length;
+    aggregate.quarantinedHandCount = resolved.quarantinedHandKeys.length;
+    return { aggregate: aggregate, acceptedRecords: resolved.physicalRecords, activeRecords: resolved.activeRecords, rejectedRecords: resolved.rejectedRecords, quarantinedHandKeys: resolved.quarantinedHandKeys };
+  }
   function createState(records) {
     var rebuilt = rebuild(records || []);
     var byFingerprint = new Map(); var byHand = new Map(); var activeByHand = new Map();
@@ -227,6 +287,7 @@
     var group = state.byHand.get(record.handKey) || [];
     if (!group.length && record.supersedesFingerprint) return { accepted: false, duplicate: false, conflict: true, reason: state.byFingerprint.has(record.supersedesFingerprint) ? 'cross-hand supersession is forbidden' : 'missing supersession predecessor' };
     if (group.length) {
+      if (!state.activeByHand.has(record.handKey)) return { accepted: false, duplicate: false, conflict: true, reason: 'logical hand is quarantined' };
       if (!record.supersedesFingerprint) return { accepted: false, duplicate: false, conflict: true, reason: 'conflicting duplicate hand key requires explicit supersession' };
       var predecessor = state.byFingerprint.get(record.supersedesFingerprint);
       if (!predecessor) return { accepted: false, duplicate: false, conflict: true, reason: 'missing supersession predecessor' };
@@ -263,12 +324,12 @@
   function playerList(state) { return Object.keys(state.aggregate.players).sort().map(function (playerId) { return playerStats(state, playerId); }); }
 
   return Object.freeze({
-    STORAGE_SCHEMA_VERSION: STORAGE_SCHEMA_VERSION, RECORD_SCHEMA_VERSION: RECORD_SCHEMA_VERSION, SUPPORTED_RECORD_SCHEMA_VERSIONS: SUPPORTED_RECORD_SCHEMA_VERSIONS, AGGREGATE_SCHEMA_VERSION: AGGREGATE_SCHEMA_VERSION,
+    STORAGE_SCHEMA_VERSION: STORAGE_SCHEMA_VERSION, RECORD_SCHEMA_VERSION: RECORD_SCHEMA_VERSION, SUPPORTED_RECORD_SCHEMA_VERSIONS: SUPPORTED_RECORD_SCHEMA_VERSIONS, AGGREGATE_SCHEMA_VERSION: AGGREGATE_SCHEMA_VERSION, PROFILE_CONTEXT_VERSION: PROFILE_CONTEXT_VERSION, PROFILE_PROJECTION_VERSION: PROFILE_PROJECTION_VERSION,
     CURRENT_SEMANTIC_VERSIONS: CURRENT_SEMANTIC_VERSIONS, SUPPORTED_SEMANTIC_VERSIONS: SUPPORTED_SEMANTIC_VERSIONS,
     POSITION_SCHEMA_VERSION: POSITION_SCHEMA_VERSION, POSITION_LABELS: POSITION_LABELS,
     SEMANTIC_VERSION_FIELDS: SEMANTIC_VERSION_FIELDS, COUNTER_FIELDS: COUNTER_FIELDS, emptyCounters: emptyCounters,
     fingerprint: fingerprint, validateRecord: validateRecord, validateTransition: validateTransition, resolveActiveRecords: resolveActiveRecords,
-    rebuild: rebuild, createState: createState, append: append, exactAggregate: exactAggregate, records: records, activeRecords: activeRecords,
+    rebuild: rebuild, rebuildCooperatively: rebuildCooperatively, aggregateActiveRecords: aggregateActiveRecords, createState: createState, append: append, exactAggregate: exactAggregate, records: records, activeRecords: activeRecords,
     deriveCounters: deriveCounters, derivePlayer: derivePlayer, playerStats: playerStats, playerList: playerList
   });
 });

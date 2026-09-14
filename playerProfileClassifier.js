@@ -212,14 +212,26 @@
     var opportunities = nonnegativeInteger(stats && stats.preflopTableSizeOpportunities);
     var required = nonnegativeInteger(stats && stats.vpipOpportunities);
     var effective = sum !== null && opportunities > 0 ? sum / opportunities : null;
-    var complete = sum !== null && opportunities !== null && required !== null && required > 0 &&
+    var exactComplete = sum !== null && opportunities !== null && required !== null && required > 0 &&
       opportunities === required && Number.isFinite(effective) && effective >= 2;
+    // Partial coverage is an explicit caller policy. Session callers omit it and
+    // retain the exact all-opportunity contract byte-for-byte.
+    var partialPolicy = config.tableContext.partialCoverage && typeof config.tableContext.partialCoverage === 'object'
+      ? config.tableContext.partialCoverage : null;
+    var minimumPartialOpportunities = partialPolicy ? nonnegativeInteger(partialPolicy.minimumOpportunities) : null;
+    var minimumCoverageRatio = partialPolicy && Number.isFinite(Number(partialPolicy.minimumCoverageRatio))
+      ? clamp(Number(partialPolicy.minimumCoverageRatio), 0, 1) : null;
+    var coverageRatio = opportunities !== null && required > 0 ? opportunities / required : 0;
+    var partialSupported = Boolean(!exactComplete && partialPolicy && partialPolicy.enabled === true && sum !== null &&
+      opportunities <= required && opportunities >= minimumPartialOpportunities && coverageRatio >= minimumCoverageRatio &&
+      Number.isFinite(effective) && effective >= 2);
+    var complete = exactComplete || partialSupported;
     var headsUp = complete && effective < config.tableContext.minimumSupportedSize;
     var denominator = Math.max(1, config.tableContext.referenceSize - config.tableContext.minimumSupportedSize);
     var shortHandedness = complete
       ? clamp((config.tableContext.referenceSize - effective) / denominator, 0, 1)
       : 0;
-    return {
+    var result = {
       supported: complete && !headsUp,
       applied: complete && !headsUp && shortHandedness > 0,
       status: !complete ? 'unsupported' : headsUp ? 'heads_up_unsupported' : 'supported',
@@ -234,6 +246,22 @@
         ? (required === 0 ? 'zero_preflop_opportunities' : 'incomplete_or_missing_exact_table_context')
         : headsUp ? 'heads_up_archetype_vocabulary_not_calibrated' : null
     };
+    if (partialPolicy) {
+      result.exactCoverageComplete = exactComplete;
+      result.coverageRatio = round(coverageRatio);
+      result.minimumPartialOpportunities = minimumPartialOpportunities;
+      result.minimumCoverageRatio = minimumCoverageRatio;
+      if (!complete && required > 0) {
+        result.unsupportedReason = opportunities === 0
+          ? 'missing_exact_table_context'
+          : opportunities < minimumPartialOpportunities
+            ? 'insufficient_exact_table_context_opportunities'
+            : coverageRatio < minimumCoverageRatio
+              ? 'insufficient_exact_table_context_coverage'
+              : 'invalid_exact_table_context';
+      }
+    }
+    return result;
   }
 
   function adjustedDefinitions(definitions, context, config) {
@@ -306,8 +334,11 @@
     var bets = nonnegativeInteger(stats && stats.afDetails && stats.afDetails.bets);
     var raises = nonnegativeInteger(stats && stats.afDetails && stats.afDetails.raises);
     var calls = nonnegativeInteger(stats && stats.afDetails && stats.afDetails.calls);
-    var valid = bets !== null && raises !== null && calls !== null;
-    var aggressive = valid ? bets + raises : null;
+    // Career preserves the exact combined count, without a bet/raise split.
+    var combined = stats && stats.afDetails && Object.prototype.hasOwnProperty.call(stats.afDetails, 'aggressiveActions')
+      ? nonnegativeInteger(stats.afDetails.aggressiveActions) : null;
+    var valid = calls !== null && (combined !== null || bets !== null && raises !== null);
+    var aggressive = valid ? (combined !== null ? combined : bets + raises) : null;
     var decisions = valid ? aggressive + calls : 0;
     var frequency = rateFeature('aggressionFrequency', aggressive, decisions, prior);
     var rawInfinity = valid && aggressive > 0 && calls === 0;
@@ -326,7 +357,7 @@
       confidence: frequency.confidence,
       supported: frequency.supported,
       unsupportedReason: frequency.unsupportedReason,
-      sourceFeatures: ['afDetails.bets', 'afDetails.raises', 'afDetails.calls']
+      sourceFeatures: combined !== null ? ['afDetails.aggressiveActions', 'afDetails.calls'] : ['afDetails.bets', 'afDetails.raises', 'afDetails.calls']
     };
     return { frequency: frequency, af: af };
   }

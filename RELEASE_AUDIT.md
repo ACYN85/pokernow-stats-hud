@@ -1,6 +1,6 @@
 # Public release audit
 
-This portfolio copy contains the extension source, deterministic tests, release tooling, documentation, and de-identified fixtures needed for local development. It intentionally contains no inherited Git history, browser account data, raw network captures, generated archives, work snapshots, or machine-specific paths.
+This public repository contains the extension source, deterministic tests, release tooling, documentation, and de-identified fixtures needed for local development. It intentionally contains no private-development Git history, browser account data, raw network captures, generated archives, work snapshots, or machine-specific paths.
 
 ## Public-copy scope
 
@@ -8,7 +8,8 @@ This portfolio copy contains the extension source, deterministic tests, release 
 - Behavioral suites retain lifecycle, reducer, persistence, identity, dashboard, profile, layout, diagnostic, performance, and packaging coverage.
 - Protocol fixtures are privacy-sanitized, de-identified, capture-derived behavioral fixtures. They retain minimum event shapes but use fixture aliases and synthetic cards. Source filenames, hashes, timestamps, URLs, headers, account/display names, and game/hand/session/player identifiers are not preserved.
 - These fixtures are not raw captures, session exports, or signed-in live certification.
-- The production package uses the allowlist in `release/production-files.json`; tests, docs, fixtures, and generated output are excluded from the extension archive.
+- The production package uses the 68-file allowlist in `release/production-files.json`; tests, docs, fixtures, and generated output are excluded from the extension archive.
+- The deterministic V1.1 archive SHA-256 is `F5C25F377EDA9C2F6FADEB7C5180862E601FDC890B174BB26AE0C5DA92C005E9`.
 
 ## Privacy boundary
 
@@ -24,4 +25,4 @@ Signed-in PokerNow validation remains a separate requirement. Repository fixture
 
 ## Publication hygiene
 
-Before a future initial commit, review the full file list and rerun credential, identifier, absolute-path, capture-file, and filename scans. Keep outputs, archives, captures, browser storage, databases, logs, local secrets, and agent/editor state outside the repository. This directory is a new public source tree rather than a continuation of the private repository's history.
+Before publication, review the full file list and rerun credential, identifier, absolute-path, capture-file, and filename scans. Keep outputs, archives, captures, browser storage, databases, logs, local secrets, and agent/editor state outside the repository. Public commits remain separate from the private development repository's history.

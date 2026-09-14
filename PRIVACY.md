@@ -1,6 +1,6 @@
 # Privacy and local data — public 1.1.0
 
-This note describes the audited 67-file release, not PokerNow's own privacy policy or the behavior of other extensions.
+This note describes the audited 68-file release, not PokerNow's own privacy policy or the behavior of other extensions.
 
 ## What is observed
 

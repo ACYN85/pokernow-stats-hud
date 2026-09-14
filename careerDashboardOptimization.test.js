@@ -10,10 +10,11 @@ var dashboard = require('./playerDashboard.js');
 
 function equivalent(result, records, playerId, filters) {
   var selected = records.filter(function (record) { return record.players.some(function (entry) { return entry.playerId === playerId; }); });
-  assert.deepStrictEqual(result.core, !selected.length && !filters.position ? null : filtered.careerStatsFiltered(selected, playerId, { position: filters.position || null }));
+  var scope = { position: filters.position || null, situation: filters.situation || null };
+  assert.deepStrictEqual(result.core, !selected.length && !scope.position && !scope.situation ? null : filtered.careerStatsFiltered(selected, playerId, scope));
   var relational = {};
   if (filters.opponentMode !== 'overall') ['threeBet', 'foldToThreeBet', 'foldToFlopCBet'].forEach(function (statId) {
-    relational[statId] = filtered.careerStatsFiltered(selected, playerId, { position: filters.position || null, statId: statId, counterpartMode: filters.opponentMode, selfPlayerId: filters.selfPlayerId });
+    relational[statId] = filtered.careerStatsFiltered(selected, playerId, { position: scope.position, situation: scope.situation, statId: statId, counterpartMode: filters.opponentMode, selfPlayerId: filters.selfPlayerId });
   });
   assert.deepStrictEqual(result.relational, relational, 'all relational counters, derived values, filters and coverage match independent queries');
 }
@@ -46,6 +47,25 @@ async function backendChecks(browserMode) {
         }
       }
     }
+    await driver.reset(records, false);
+    var overallSample = await driver.sample('subject', { situation: 'overall', opponentMode: 'overall', selfPlayerId: 'me' });
+    assert.strictEqual(overallSample.result.query.playerRecordRetrievals, 0, 'warm Overall uses the aggregate cache without history retrieval');
+    var overallProfile = overallSample.result.profileStats;
+    for (var situation of ['ip', 'oop']) {
+      var situationRequest = { situation: situation, opponentMode: 'overall', selfPlayerId: 'me' };
+      var situationSample = await driver.sample('subject', situationRequest);
+      equivalent(situationSample.result, records, 'subject', situationRequest);
+      assert.strictEqual(situationSample.passes, 1, 'each new situation resolves player history once');
+      assert.strictEqual(situationSample.result.query.playerRecordRetrievals, 1);
+      assert.deepStrictEqual(situationSample.result.profileStats, overallProfile, 'situation filters do not change the all-hand cached profile projection');
+      var situationHit = await driver.sample('subject', situationRequest);
+      assert.strictEqual(situationHit.passes, 0); assert.strictEqual(situationHit.result.query.dashboardCacheHit, true);
+    }
+    var composedSituation = { situation: 'ip', opponentMode: 'others', selfPlayerId: 'me' };
+    var composedSample = await driver.sample('subject', composedSituation);
+    equivalent(composedSample.result, records, 'subject', composedSituation);
+    assert.strictEqual(composedSample.passes, 1, 'situation and three relational views share one resolution');
+    assert.strictEqual(composedSample.result.query.playerRecordRetrievals, 1);
     var request = { position: 'SB', opponentMode: 'self', selfPlayerId: 'me' };
     await driver.reset(records, false);
     var initial = await driver.sample('subject', request);

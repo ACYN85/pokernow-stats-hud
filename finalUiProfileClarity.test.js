@@ -88,7 +88,7 @@ var before = classifier.classify(suppliedStats);
 explanation.explain({ record: supplied.record, presentation: hidden, decomposition: classifier.scoreDecomposition(suppliedStats) });
 assert.deepStrictEqual(classifier.classify(suppliedStats), before, 'explanation generation leaves classifier output bit-for-bit unchanged');
 var classifierHash = crypto.createHash('sha256').update(fs.readFileSync('./playerProfileClassifier.js')).digest('hex').toUpperCase();
-assert.strictEqual(classifierHash, '136582378140E0C02128869981786B799D082D2311617C6A5052B2CC2A95D164', 'classifier source remains byte-identical to the certified starting candidate');
+assert.strictEqual(classifierHash, '2C187D62B46EF7B6EF693065766669804B97888D533752927F46B62FCC57A870', 'classifier source remains byte-identical to the accepted V1.1 feature baseline');
 var adapterSource = fs.readFileSync('./playerProfileExplanation.js', 'utf8');
 ['minimumPrimaryScore: 0.42', 'minimumScoreMargin: 0.08', 'minimumVisibleHands: 40'].forEach(function (copiedThreshold) { assert.strictEqual(adapterSource.includes(copiedThreshold), false, 'no classifier/presentation decision threshold is duplicated: ' + copiedThreshold); });
 

@@ -1,0 +1,65 @@
+'use strict';
+const assert=require('assert');
+const api=require('./testSupport/potOddsProductionVisibilityHarness.js');
+const pointer=require('./testSupport/productionPointerEventHarness.js');
+const h=api.createHarness({transformContentSource:s=>s.replace(/\n\}\)\(\);\s*$/,`
+ var geometryStatReads=0; var originalSessionRead=cachedSessionPlayerStats; var originalFilteredRead=cachedSessionFilteredStats; var originalCareerRead=loadPlayerDashboardCareer;
+ cachedSessionPlayerStats=function(){geometryStatReads++;return originalSessionRead.apply(this,arguments);};
+ cachedSessionFilteredStats=function(){geometryStatReads++;return originalFilteredRead.apply(this,arguments);};
+ loadPlayerDashboardCareer=function(){geometryStatReads++;return originalCareerRead.apply(this,arguments);};
+ globalThis.geometryTest={open:openPlayerDashboard,close:closePlayerDashboard,reset:resetPlayerDashboardPosition,stop:function(){cleanupExtension('geometry test');},seedPlayers:function(){trackedPlayersState.summaries=[{playerId:'from-settings',latestDisplayName:'Settings Player',hands:500,lastSeenAt:1000}];trackedPlayersState.loading=false;renderTrackedPlayers();},reads:function(){return geometryStatReads;},geometry:function(){return playerDashboardGeometry.geometry;},positionCustomized:function(){return playerDashboardGeometry.positionCustomized;},state:function(){return {playerId:playerDashboardState.playerId,note:playerDashboardState.note,mode:playerDashboardState.mode,position:playerDashboardState.position,opponentMode:playerDashboardState.opponentMode};}};
+})();`)});
+const run=s=>h.evaluate('geometryTest.'+s);
+const geometry=()=>JSON.parse(JSON.stringify(run('geometry()')));
+assert.deepStrictEqual(h.evaluationErrors,[]);h.runFor(500);
+run('open("a","Player A")');
+let panel=h.document.getElementById('pnhud-player-dashboard');pointer.installPointerCapture(panel);
+const original={left:628,top:90,width:560,height:680};
+panel.getBoundingClientRect=()=>Object.assign({},original,geometry()||{});
+assert.equal(geometry(),null);assert.ok(!panel.style.left&&!panel.style.width,'original CSS remains authoritative');
+function down(target,x,y){const reads=run('reads()');pointer.bubble(h,target,pointer.pointerEvent('pointerdown',target,{clientX:x,clientY:y}));assert.equal(run('reads()'),reads);}
+function move(x,y){const reads=run('reads()');pointer.documentPointer(h,'pointermove',panel,{clientX:x,clientY:y});assert.equal(run('reads()'),reads,'pointer movement makes zero Career/Session reads');}
+function up(){pointer.documentPointer(h,'pointerup',panel);}
+const beforeQueries=h.seatDiscoveryQueryCount();const beforeWrites=h.storageWrites.length;
+const header=panel.querySelector('.pnhud-dashboard-drag-handle');assert.ok(header);
+const listeners=()=> (h.document._listeners.pointermove||[]).length;
+const baseline=listeners();
+['.pnhud-dashboard-close','.pnhud-dashboard-note','[data-dashboard-position]','[data-dashboard-mode="career"]'].forEach(selector=>{down(panel.querySelector(selector),700,100);assert.equal(listeners(),baseline,'controls never drag');});
+down(header,700,100);assert.equal(listeners(),baseline+1);move(700,100);assert.equal(geometry(),null,'grab has no jump');move(600,140);assert.deepStrictEqual(geometry(),{left:528,top:130,width:560,height:680});up();assert.equal(listeners(),baseline);
+assert.equal(run('positionCustomized()'),true);
+const resetReads=run('reads()'),resetWrites=h.storageWrites.length,resetDiscovery=h.seatDiscoveryQueryCount();run('reset()');
+assert.equal(run('positionCustomized()'),false);assert.equal(panel.style.left,'');assert.equal(panel.style.top,'');assert.equal(panel.style.right,'');assert.equal(panel.style.transform,'');
+assert.equal(geometry().width,560);assert.equal(geometry().height,680,'position reset preserves size');
+assert.equal(run('reads()'),resetReads);assert.equal(h.storageWrites.length,resetWrites);assert.equal(h.seatDiscoveryQueryCount(),resetDiscovery);
+down(header,700,100);move(600,140);up();assert.equal(run('positionCustomized()'),true,'dragging still works after reset');
+down(panel.querySelector('.pnhud-dashboard-drag-handle'),600,140);const origin=geometry();move(610,150);move(600,140);assert.deepStrictEqual(geometry(),origin,'returning pointer to grab origin restores geometry');up();
+const moved=geometry();run('open("b","Player B")');assert.deepStrictEqual(geometry(),moved);assert.equal(h.count('#pnhud-player-dashboard'),1);assert.equal(panel._listeners.pointerdown.length,1);
+let resize=panel.querySelector('.pnhud-dashboard-resize');assert.ok(resize);down(resize,1080,800);move(900,650);up();assert.equal(geometry().width,380);assert.equal(geometry().height,530);
+down(panel.querySelector('.pnhud-dashboard-resize'),900,650);move(-2000,-2000);up();assert.equal(geometry().width,320);assert.equal(geometry().height,240);
+const sized=geometry();run('close()');run('open("c","Player C")');assert.deepStrictEqual(geometry(),sized);assert.equal(h.count('#pnhud-player-dashboard'),1);
+assert.equal(h.seatDiscoveryQueryCount(),beforeQueries,'pointer movement performs no Seat HUD discovery');assert.equal(h.storageWrites.length,beforeWrites,'geometry never persists');
+run('close()');
+const settingsLauncher=h.document.getElementById('pnhud-settings-launcher');
+pointer.bubble(h,settingsLauncher,pointer.pointerEvent('click',settingsLauncher));
+const playersTab=h.document.querySelector('[data-settings-section="players"]');assert.ok(playersTab,'Settings contains Players tab');
+pointer.bubble(h,playersTab,pointer.pointerEvent('click',playersTab));run('seedPlayers()');
+assert.equal(h.count('#pnhud-tracked-players'),1);assert.equal(h.count('#pnhud-tracked-players-launcher'),0);
+const row=h.document.querySelector('[data-tracked-player-id="from-settings"]');assert.ok(row);
+pointer.bubble(h,row,pointer.pointerEvent('click',row));
+assert.equal(h.document.getElementById('pnhud-settings-panel').hidden,false);assert.equal(h.count('#pnhud-player-dashboard'),1);assert.equal(run('state().playerId'),'from-settings');assert.deepStrictEqual(geometry(),sized);
+const overlayTab=h.document.querySelector('[data-settings-section="overlay"]');pointer.bubble(h,overlayTab,pointer.pointerEvent('click',overlayTab));
+const resetButton=h.document.querySelector('.pnhud-reset-player-dashboard-position');assert.ok(resetButton,'Overlay settings exposes Dashboard position reset');
+const beforeResetState=run('state()'),beforeResetSize={width:geometry().width,height:geometry().height},uiResetReads=run('reads()'),uiResetWrites=h.storageWrites.length,uiResetDiscovery=h.seatDiscoveryQueryCount();pointer.bubble(h,resetButton,pointer.pointerEvent('click',resetButton));
+assert.equal(run('positionCustomized()'),false);assert.deepStrictEqual(run('state()'),beforeResetState,'reset preserves Dashboard identity/data controls and notes');
+assert.deepStrictEqual({width:geometry().width,height:geometry().height},beforeResetSize,'Settings reset preserves resized dimensions');
+assert.equal(run('reads()'),uiResetReads);assert.equal(h.storageWrites.length,uiResetWrites);assert.equal(h.seatDiscoveryQueryCount(),uiResetDiscovery);
+down(panel.querySelector('.pnhud-dashboard-drag-handle'),600,150);move(500,180);up();run('close()');run('reset()');run('open("closed-reset","Closed Reset")');
+assert.equal(run('positionCustomized()'),false);assert.equal(panel.style.left,'','closed reset makes next open canonical');
+for(const selector of ['.pnhud-dashboard-drag-handle','.pnhud-dashboard-resize']) {down(panel.querySelector(selector),600,150);assert.equal(listeners(),baseline+1);run('close()');assert.equal(listeners(),baseline);run('open("a","Player A")');}
+down(panel.querySelector('.pnhud-dashboard-resize'),600,150);move(9000,9000);up();assert.ok(geometry().left+geometry().width<=h.context.innerWidth-8);assert.ok(geometry().top+geometry().height<=h.context.innerHeight-8);
+h.setViewport(300,200);run('reset()');assert.equal(panel.style.left,'');assert.equal(panel.style.transform,'','narrow reset delegates to responsive CSS');assert.ok(geometry().width<=284&&geometry().height<=184);
+run('close()');h.setViewport(900,600);run('reset()');run('open("medium","Medium")');assert.equal(panel.style.left,'');assert.equal(panel.style.transform,'','medium reset delegates to responsive CSS');
+run('close()');h.setViewport(1440,900);run('reset()');run('open("wide","Wide")');assert.equal(panel.style.left,'');assert.equal(panel.style.transform,'','wide reset delegates to responsive CSS');
+run('close()');h.setViewport(240,160);run('open("d","Player D")');assert.ok(geometry().width<=232);assert.ok(geometry().height<=152);
+down(panel.querySelector('.pnhud-dashboard-drag-handle'),20,20);run('stop()');assert.equal(listeners(),baseline);assert.equal(panel._listeners.pointerdown.length,0);assert.equal(h.count('#pnhud-player-dashboard'),0);
+console.log('Dashboard production default geometry, drag, resize, controls, identity, reopen, min/max, viewport recovery and cleanup passed.');

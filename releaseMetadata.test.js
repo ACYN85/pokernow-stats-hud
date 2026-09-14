@@ -9,7 +9,7 @@ if (process.platform === 'win32') {
   const script = fs.readFileSync(path.join(release.root, 'scripts/package-release.ps1'), 'utf8');
   assert(script.includes('$expected = Get-Content -LiteralPath'), 'PowerShell inventory assignment must not wrap the JSON array');
   const ps = path.join(process.env.SystemRoot || 'C:/Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
-  const result = cp.spawnSync(ps, ['-NoProfile', '-Command', "$expected = Get-Content -LiteralPath '" + inventoryPath + "' -Raw | ConvertFrom-Json; if ($expected.Count -ne 67 -or $expected -cnotcontains 'manifest.json') { exit 1 }"], { encoding: 'utf8' });
+  const result = cp.spawnSync(ps, ['-NoProfile', '-Command', "$expected = Get-Content -LiteralPath '" + inventoryPath + "' -Raw | ConvertFrom-Json; if ($expected.Count -ne 68 -or $expected -cnotcontains 'manifest.json' -or $expected -cnotcontains 'trackedPlayers.js') { exit 1 }"], { encoding: 'utf8' });
   assert.strictEqual(result.status, 0, 'Windows PowerShell 5.1 inventory shape: ' + result.stderr);
 }
 assert.deepStrictEqual(release.freeze(), release.validate());
@@ -33,4 +33,4 @@ const actual = fs.readFileSync(path.join(release.root, 'seatOverlay.js'));
 const baseline = release.baseline.files.find(f => f.path === 'seatOverlay.js');
 const crypto = require('crypto');
 assert.notStrictEqual(crypto.createHash('sha256').update(Buffer.concat([actual, Buffer.from('// drift')])).digest('hex'), baseline.sha256);
-console.log('Public release metadata/docs, 67-file exact freeze, unsafe/duplicate paths, deterministic ZIP/CRC and drift guards passed.');
+console.log('Public release metadata/docs, 68-file exact freeze, unsafe/duplicate paths, deterministic ZIP/CRC and drift guards passed.');

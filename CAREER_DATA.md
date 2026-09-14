@@ -26,6 +26,8 @@ Player notes use `pokerNowHudPlayerNotesV1` in `chrome.storage.local`, keyed by 
 
 ## Source selection
 
+V1.1 keeps three rebuildable, revision-keyed derived views alongside the immutable ledger: lightweight tracked-player summaries, exact supported 3+ handed profile projections, and fixed-window Recent Trends. Summary heads accelerate enumeration but never decide statistical authority; quarantine and supersession are resolved from authoritative records. Trends use only positive safe-integer `finalizedAt` values for chronology, while undated accepted hands remain in overall Career totals. Dashboard filtered queries share resolution only within a single batch request and do not retain resolved snapshots across requests.
+
 Seat HUD Career queries are batched/deduplicated with stale-response guards. Dashboard Session/Career and position/relational filters aggregate supported stored contributions. Numeric Career selection does not switch the Session-derived profile classifier to a new Career model. The legacy leaderboard range controls do not query Career.
 
 See [Architecture](ARCHITECTURE.md), [Privacy](PRIVACY.md), [Known Limitations](KNOWN_LIMITATIONS.md), and [Testing](TESTING.md).

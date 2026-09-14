@@ -38,7 +38,7 @@ assert.ok(content.indexOf('playerDashboardState.profile = playerDashboardProfile
 assert.ok(dashboard.includes('Why this profile?') && dashboard.includes('Profile Guide') && dashboard.includes('Advanced details'));
 assert.ok(dashboard.includes('<details class="pnhud-dashboard-profile-explanation">'), 'explanation is compact and collapsed by default');
 assert.ok(dashboard.includes('Why no profile is shown'), 'hidden profiles retain an explanation path');
-assert.ok(dashboard.includes('Current profile is not recalculated by dashboard filters.'), 'existing profile/filter ownership text remains visible');
+assert.ok(require('./playerDashboard.js').render({ mode: 'session', profile: {} }).includes('Current profile is not recalculated by dashboard filters.'), 'existing profile/filter ownership text remains visible');
 assert.ok(seatOverlay.includes('profileExplanation.DEFINITIONS[archetype].description'), 'seat tooltip and dashboard guide share one archetype-description source');
 assert.ok(css.includes('.pnhud-dashboard-profile-explanation') && css.includes('.pnhud-dashboard-profile-guide') && css.includes('.pnhud-dashboard-profile-advanced'));
 

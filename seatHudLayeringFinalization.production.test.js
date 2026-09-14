@@ -60,6 +60,7 @@ function suppressionHarness(surfaces) {
     seatOverlayController: { records: new Map([['stable-1', { element: card, lastPlacement: { left: 321, top: 222 }, entry: { statSource: sourceMode } }]]) },
     seatOverlayLayer: root, visibleSeatHudSurfaces: function () { return surfaces; },
     seatHudLogPanelState: { open: false, panel: null, mode: null, panelType: null },
+    trackedPlayersState: { open: false },
     hudUiPreferences: { settingsOpen: false, seatHudStatSource: sourceMode },
     seatHudBlockingPanelState: {}, seatHudPositionDiagnostics: new Map([['stable-1', { requestedHudRect: { left: 321, top: 222 }, renderedHudRect: { left: 321, top: 222 } }]]),
     nativePanelLayeringDiagnostics: [], lastNativePanelLayeringSignature: '',
@@ -90,6 +91,14 @@ harness.context.hudUiPreferences.settingsOpen = false;
 harness.context.applyNativePanelOcclusion('extension Settings closed');
 assert.strictEqual(harness.classState['pnhud-seat-huds-blocked'], false, 'closing Settings restores HUD presentation');
 assert.strictEqual(harness.card.style.transform, 'translate3d(321px,222px,0)', 'Settings suppression preserves exact position');
+harness.context.trackedPlayersState.open = true;
+harness.context.hudUiPreferences.settingsOpen = true;
+harness.context.applyNativePanelOcclusion('Tracked Players opened');
+assert.strictEqual(harness.classState['pnhud-seat-huds-blocked'], true, 'Settings Players tab preserves Settings Seat HUD suppression');
+harness.context.trackedPlayersState.open = false;
+harness.context.hudUiPreferences.settingsOpen = false;
+harness.context.applyNativePanelOcclusion('Tracked Players closed');
+assert.strictEqual(harness.classState['pnhud-seat-huds-blocked'], false, 'closing Tracked Players restores Seat HUD presentation');
 
 var ledgerPanel = element({ className: 'ledger', text: 'Full Log' });
 var ledger = { kind: 'ledger', blocking: false, expanded: true, element: ledgerPanel };

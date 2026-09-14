@@ -238,6 +238,7 @@ assert.deepStrictEqual(storageKeyNames, [
   'activeHand',
   'finalizedHandIds',
   'hostControl',
+  'potOddsBoardReset',
   'sessionMeta',
   'mode',
   'displayMode',
@@ -287,7 +288,7 @@ assert.strictEqual(count(contentSource, /chrome\.storage\.local\.get\s*\(/g), 4,
 assert.match(contentSource, /function resetOverlayPositions[\s\S]*?chrome\.storage\.local\.get\(null,[\s\S]*?chrome\.storage\.local\.remove\(keys/, 'the explicit reset enumerates only to clear every per-game Seat HUD manual-offset namespace');
 assert.strictEqual(count(contentSource, /chrome\.storage\.local\.getKeys\s*\(/g), 0, 'the content context never enumerates career storage keys');
 
-assert.strictEqual(count(contentSource, /\.addEventListener\s*\(/g), 63, 'the only new listener declarations are the feature-owned pot-odds pointer/mouse drag lifecycle');
+assert.strictEqual(count(contentSource, /\.addEventListener\s*\(/g), 66, 'listener declarations remain bounded; the three V1.1 additions are the single-root Tracked Players click/input/change handlers');
 assert.strictEqual(count(contentSource, /window\.addEventListener\s*\(/g), 6, 'no extra window listener was introduced');
 assert.strictEqual(count(contentSource, /document\.addEventListener\s*\(/g), 24, 'pot odds add only bounded move/up/cancel drag listeners; no visibility listener returns');
 assert.strictEqual(count(contentSource, /new\s+MutationObserver\s*\(/g), 6, 'only the current hero seat/card observer remains from the pot-odds integration');

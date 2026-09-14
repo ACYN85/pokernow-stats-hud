@@ -73,12 +73,46 @@
     return placement;
   }
 
+  function createBoardResetState(snapshot) {
+    snapshot = snapshot || {};
+    return {
+      handId: snapshot.handId === null || snapshot.handId === undefined ? null : String(snapshot.handId),
+      applied: snapshot.applied === true,
+      sequence: Math.max(0, Math.floor(finite(snapshot.sequence, 0)))
+    };
+  }
+
+  function observeAuthoritativeBoard(state, observation) {
+    observation = observation || {};
+    var handId = observation.handId === null || observation.handId === undefined || observation.handId === '<D>'
+      ? null
+      : String(observation.handId);
+    if (!state || !handId) return { reset: false, reason: !state ? 'reset state unavailable' : 'authoritative hand ID unavailable' };
+    var newHand = state.handId !== handId;
+    if (newHand) {
+      state.handId = handId;
+      state.applied = false;
+    }
+    var measuredBoardCardCount = Math.max(0, Math.floor(finite(observation.measuredBoardCardCount, 0)));
+    var authoritativeStreet = String(observation.authoritativeStreet || '').toLowerCase();
+    var postflopStreetVerified = /^(?:flop|turn|river)$/.test(authoritativeStreet);
+    if (state.applied) return { reset: false, handId: handId, newHand: newHand, reason: 'canonical reset already applied for this hand' };
+    if (!postflopStreetVerified || observation.canonicalBoardVerified !== true || measuredBoardCardCount < 3) {
+      return { reset: false, handId: handId, newHand: newHand, reason: 'waiting for first authoritative measured postflop board', measuredBoardCardCount: measuredBoardCardCount, authoritativeStreet: authoritativeStreet || null };
+    }
+    state.applied = true;
+    state.sequence += 1;
+    return { reset: true, handId: handId, newHand: newHand, reason: 'first authoritative measured postflop board for hand', measuredBoardCardCount: measuredBoardCardCount, authoritativeStreet: authoritativeStreet, sequence: state.sequence };
+  }
+
   var api = Object.freeze({
     VIEWPORT_MARGIN: VIEWPORT_MARGIN,
     normalizeOffset: normalizeOffset,
     offsetFromDrag: offsetFromDrag,
     place: place,
-    deterministicFallback: deterministicFallback
+    deterministicFallback: deterministicFallback,
+    createBoardResetState: createBoardResetState,
+    observeAuthoritativeBoard: observeAuthoritativeBoard
   });
   root.PokerPotOddsPosition = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

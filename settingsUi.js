@@ -3,7 +3,7 @@
   'use strict';
 
   var VERSION = 11;
-  var SECTIONS = Object.freeze(['general', 'overlay', 'hud', 'appearance', 'career-data', 'diagnostics', 'about']);
+  var SECTIONS = Object.freeze(['general', 'overlay', 'hud', 'appearance', 'players', 'career-data', 'diagnostics', 'about']);
   var HUD_SIZES = Object.freeze(['small', 'default', 'large']);
   var OPPORTUNITY_STATS_LAYOUTS = Object.freeze(['combined', 'stacked']);
   var SEAT_HUD_STAT_SOURCES = Object.freeze(['session', 'career']);

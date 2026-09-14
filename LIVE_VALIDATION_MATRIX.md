@@ -10,7 +10,7 @@ Release: 1.1.0. This public copy contains deterministic automated evidence only;
 | BB walk | statsWalk; walkSettlement.production; multiwayWalk.production | Synthetic walk fixture is replayed automatically; individual final-soak walks are not enumerated |
 | Reload continuity | ownedHandReloadContinuity.production; breakReloadRestart.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for a specifically recorded final-soak reload boundary |
 | Reconnect continuity | interruptedHandRecovery; pausedLifecycleRecovery.production; transport ordering | AUTOMATED CERTIFIED / LIVE NOT OBSERVED; no claim of missed-action recovery |
-| Pause/break/rejoin | verifiedHostPauseResume.production; gameBreakLifecycle.production | Synthetic Pause/Resume activation-window fixture; remaining break/rejoin branches AUTOMATED CERTIFIED / LIVE NOT OBSERVED |
+| Pause/break/rejoin and sparse next-hand ownership | verifiedHostPauseResume.production; lifecycleReleaseBlocker.production; sessionPauseIdleOracle.production | Synthetic Pause/Resume and sparse lifecycle fixtures; remaining live branches AUTOMATED CERTIFIED / LIVE NOT OBSERVED |
 | Showdown | showdownStatsAuthoritative.production; showdownStatsContentPath.production | MANUAL VALIDATION REQUIRED; individual live settlement cases not included |
 | Mucked showdown | showdownStatsReducer; showdownStatsAuthoritative.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for bounded check-through membership |
 | F3B, including qualifying squeeze caller | preflopMultiwayFoldToThreeBet; sanitizedCaptureDerivedPreflopFixtures.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for the sanitized fixture case |
@@ -22,9 +22,13 @@ Release: 1.1.0. This public copy contains deterministic automated evidence only;
 | Chat layering / launcher hierarchy | seatHudLayeringFinalization.production | MANUAL VALIDATION REQUIRED |
 | Log / Ledger / Replayer / account-menu masking | seatHudLedgerSuppression.production; seatHudVisualPanelDom.production | MANUAL VALIDATION REQUIRED |
 | Settings blockers / pointer masking | settingsUi.production; seatHudLayeringFinalization.production | MANUAL VALIDATION REQUIRED |
-| Player dashboard / profiles / explanations | playerDashboardPhase4C; playerProfileExplanation; finalUiProfileClarity | MANUAL VALIDATION REQUIRED; every filter/sample gate is not individually observed |
+| Player dashboard drag / resize / Reset Position | playerDashboardGeometry.production; playerDashboardGeometry.browser | MANUAL VALIDATION REQUIRED; the optional browser-shaped test runs only with `--browser` |
+| Career profiles / explanations | careerPlayerProfile; playerProfileExplanation; finalUiProfileClarity | MANUAL VALIDATION REQUIRED; every filter/sample gate is not individually observed |
+| Tracked Players browser | trackedPlayers; trackedPlayers.production | MANUAL VALIDATION REQUIRED for signed-in Settings and dashboard navigation |
+| Exact heads-up-postflop IP/OOP | situationalDashboard; situationalDashboard.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for all provenance exclusions |
+| Career Recent Trends | careerTrends; careerTrendsService; careerTrends.production | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for chronology, revision, cache, and race boundaries |
 | Career persistence / backup / restore | careerServiceWorker; careerSupersession; careerBackupCorruption | AUTOMATED CERTIFIED / LIVE NOT OBSERVED for a separately recorded restore/size/race scenario |
 | Pot Odds preflop / postflop | potOddsPersistentPreflopUi.production; potOddsStableVisibilityAndLiveDrag.production | MANUAL VALIDATION REQUIRED; rare eligibility cases remain limited |
-| Pot Odds drag / Reset / board continuity | boardCompanionLiveUxFinalization.production; potOddsDraggablePosition.production | MANUAL VALIDATION REQUIRED; no live geometry transcript included |
+| Pot Odds drag / per-hand Reset / board continuity | boardCompanionLiveUxFinalization.production; potOddsDraggablePosition.production | MANUAL VALIDATION REQUIRED; no live geometry transcript included |
 
 Test names omit the common `.test.js` suffix for readability. Exact file membership is in `testSuites.js`. Automated certification describes the defined support boundary, not universal poker-variant correctness. Live-unobserved rare cases are documented limitations, not fabricated passes.

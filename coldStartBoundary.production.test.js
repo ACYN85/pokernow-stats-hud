@@ -73,6 +73,17 @@ assert.strictEqual(lifecycle.evaluateColdStartBoundaryOverride(completeSignature
 assert.strictEqual(lifecycle.evaluateColdStartBoundaryOverride(completeSignature({ noFinalizedHands: false, noPreviousHandCommitted: false })), false, 'the override is disabled after the first committed hand');
 assert.strictEqual(lifecycle.evaluateColdStartBoundaryOverride(completeSignature({ startupType: 'reset-session' })), false, 'Reset Session during a hand is not treated as cold startup');
 
+var rearmed = completeSignature({ startupType: 'reset-session', lifecycleAcquisitionPending: true, noFinalizedHands: false, noPreviousHandCommitted: false });
+assert.strictEqual(lifecycle.evaluateColdStartBoundaryOverride(rearmed).lifecycleAcquisition, true, 'rearmed acquisition reuses the complete deal proof despite prior Session history');
+[
+  { noActiveHand: false }, { observedPreDealBaseline: false }, { holeCardsDetected: false },
+  { mappedPlayersVerified: false }, { inHandPlayerIds: ['player-a', 'unmapped'] },
+  { smallBlindPlayerId: 'player-b', bigBlindPlayerId: 'player-b' }, { currentPlayerId: 'unmapped' },
+  { playerInTurnId: null }, { lifecycleAcquisitionPending: false }
+].forEach(function (missing) {
+  assert.strictEqual(lifecycle.evaluateColdStartBoundaryOverride(Object.assign({}, rearmed, missing)), false, 'rearm cannot substitute for complete safe deal evidence: ' + JSON.stringify(missing));
+});
+
 ['inHandPlayerIds', 'smallBlindPlayerId', 'bigBlindPlayerId', 'currentPlayerId', 'playerInTurnId'].forEach(function (field) {
   var missing = {};
   missing[field] = field === 'inHandPlayerIds' ? [] : null;

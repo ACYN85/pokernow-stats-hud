@@ -33,4 +33,4 @@ The reducer has synthetic coverage for explicit pot/board identities and rich wi
 - Showdown: `showdownStatsReducer.js`, `semanticHandLedger.js`; [showdown design](SHOWDOWN_STATS_DESIGN.md).
 - Per-hand explanations: `statExplanation.js`; authoritative reducers remain the source of truth.
 
-The release freeze gate reverses only the documented metadata/text edits and requires all 67 production hashes to match the signed-off baseline. No counter definitions or semantic schemas changed for RC1.
+The release freeze gate requires all 68 production hashes to match the signed-off V1.1 package baseline. V1.1 adds derived Career views and exact situation filtering without changing the established counter definitions.

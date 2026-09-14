@@ -1,6 +1,6 @@
 # Public 1.1.0 release runbook
 
-This runbook targets version `1.1.0`, tag `v1.1.0`, and Build ID `v1.1.0-public-20260908`. Run it from a clean future Git checkout with Node.js, Git, and PowerShell available. No npm installation or external package is required.
+This runbook targets version `1.1.0`, tag `v1.1.0`, and promoted package Build ID `v1.1.0-rc3-20260913-1702`. Run it from a clean Git checkout with Node.js, Git, and PowerShell available. No npm installation or external package is required.
 
 ## Review and behavioral validation
 
@@ -41,6 +41,6 @@ The packer uses the sorted `release/production-files.json` allowlist, fixed arch
 
 Automated fixtures do not replace signed-in validation. Load the package in desktop Chrome and perform the checks in [LIVE_VALIDATION_MATRIX.md](LIVE_VALIDATION_MATRIX.md) without committing live captures or private records.
 
-After every gate passes, review and explicitly stage only intended source, tests, privacy-sanitized fixtures, documentation, and release tools. Configure the maintainer's Git identity locally, inspect `git diff --cached --check`, and create the initial public commit and annotated `v1.1.0` tag according to the hosting policy. Never force-replace a published tag or rewrite published history.
+After every gate passes, review and explicitly stage only intended source, tests, privacy-sanitized fixtures, documentation, and release tools. Configure the maintainer's Git identity locally, inspect `git diff --cached --check`, create the release commit, and add annotated tag `v1.1.0` only when publication is authorized. Never force-replace a published tag or rewrite published history.
 
 For a future version, update `release/config.json`, manifest metadata, synchronized Build IDs, expected-ID tests, documentation, and the public baseline together. Generate a baseline only from an independently reviewed release tree; never weaken the integrity test to conceal drift.

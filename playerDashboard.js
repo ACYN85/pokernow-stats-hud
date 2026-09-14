@@ -7,9 +7,18 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   var PROFILE_ORDER = Object.freeze(['Nit', 'TAG', 'LAG', 'Tight Passive', 'Loose Passive', 'Calling Station', 'Maniac']);
+  // Forty exact observations retain the existing Career table-context maturity
+  // gate. The profile projection itself contains only exact 3+ handed history.
+  var CAREER_CONTEXT_POLICY = Object.freeze({ enabled: true, minimumOpportunities: 40, minimumCoverageRatio: 0.10 });
   var POSITION_OPTIONS = Object.freeze(['BTN', 'CO', 'HJ', 'LJ', 'UTG', 'UTG+1', 'UTG+2', 'SB', 'BB']);
+  var SITUATION_OPTIONS = Object.freeze([
+    Object.freeze({ value: 'overall', label: 'Overall' }),
+    Object.freeze({ value: 'ip', label: 'In position' }),
+    Object.freeze({ value: 'oop', label: 'Out of position' })
+  ]);
   var CORE_IDS = Object.freeze(['hands', 'vpip', 'pfr', 'af', 'flopCBet', 'wtsd', 'wsd']);
   var RELATIONAL_IDS = Object.freeze(['threeBet', 'foldToThreeBet', 'foldToFlopCBet']);
+  var TREND_IDS = Object.freeze(['vpip', 'pfr', 'af', 'threeBet', 'foldToThreeBet', 'flopCBet', 'foldToFlopCBet', 'wtsd', 'wsd']);
   function esc(value) { return String(value === undefined || value === null ? '' : value).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function integer(value) { return Math.max(0, Number(value || 0)); }
   function percent(numerator, denominator) { return denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : null; }
@@ -94,41 +103,232 @@
     var tableMessage = explanation.tableSize && explanation.tableSize.applied ? '<p class="pnhud-dashboard-profile-table-note">' + esc(explanation.tableSize.message) + '</p>' : '';
     return '<details class="pnhud-dashboard-profile-explanation"><summary><span aria-hidden="true">\u24d8</span> Why this profile?</summary><div class="pnhud-dashboard-profile-explanation-body"><h4>' + esc(explanation.title) + '</h4><p>' + esc(explanation.description) + '</p><dl class="pnhud-dashboard-profile-metrics"><div><dt>Current fit</dt><dd>' + esc(fitText(currentFit)) + '</dd></div><div><dt>Confidence</dt><dd>' + esc(fitText(explanation.confidence)) + '</dd></div><div><dt>Sample</dt><dd>' + esc(explanation.hands) + ' hands</dd></div></dl><p class="pnhud-dashboard-profile-summary">' + esc(explanation.summary) + '</p>' + (explanation.fitCompetition ? '<p class="pnhud-dashboard-profile-competition">' + esc(explanation.fitCompetition) + '</p>' : '') + profileEvidenceHtml(explanation) + profileGateHtml(explanation) + tableMessage + '<p class="pnhud-dashboard-profile-fit-note">' + esc(explanation.fitExplanation) + '</p>' + profileAdvancedHtml(explanation) + '</div></details>' + profileGuideHtml(explanation);
   }
-  function profileHtml(profile) {
-    if (!profile) return '<section class="pnhud-dashboard-section"><h3>Current profile</h3><p class="pnhud-dashboard-empty">No current profile available.</p></section>';
+  function profileHtml(profile, mode) {
+    var title = mode === 'career' ? 'Career profile · 3+ handed' : 'Current profile';
+    var unavailable = mode === 'career' && profile && profile.availability && profile.availability.message
+      ? profile.availability.message
+      : mode === 'career' ? 'Career profile inputs are unavailable.' : 'No current profile available.';
+    if (!profile) return '<section class="pnhud-dashboard-section"><h3>' + title + '</h3><p class="pnhud-dashboard-empty">' + unavailable + '</p></section>';
     var displayed = profile.displayedArchetype || null; var raw = profile.rawArchetype || null; var scores = profile.rawScores || {};
+    var showFit = mode !== 'career' || !profile.availability || profile.availability.available === true;
     var rows = PROFILE_ORDER.map(function (name) { var score = Number(scores[name]); var value = Number.isFinite(score) && score >= 0 ? Math.round(score * 1000) / 10 : 0; return '<div><span>' + esc(name) + '</span><strong>' + value + '%</strong></div>'; }).join('');
-    var labels = '<p class="pnhud-dashboard-profile-labels">' + (displayed ? 'Displayed profile: <strong>' + esc(displayed) + '</strong>' : 'Displayed profile unavailable') + (raw && raw !== displayed ? '<span>Current raw classification: <strong>' + esc(raw) + '</strong></span>' : '') + '</p>';
-    return '<section class="pnhud-dashboard-section"><h3>Current profile</h3>' + labels + profileExplanationHtml(profile.explanation) + '<h4>Profile fit</h4><div class="pnhud-dashboard-profile-fit">' + rows + '</div><p class="pnhud-dashboard-help">Current profile is not recalculated by dashboard filters. Compatibility scores are independent and are not probabilities.</p></section>';
+    var sample = mode === 'career' && profile ? '<span>Based on ' + integer(profile.hands) + ' supported 3+ handed Career ' + (integer(profile.hands) === 1 ? 'hand' : 'hands') + '</span>' : '';
+    var labels = (mode === 'career' && !displayed ? '<p class="pnhud-dashboard-empty">' + unavailable + '</p>' : '') + '<p class="pnhud-dashboard-profile-labels">' + (displayed ? 'Displayed profile: <strong>' + esc(displayed) + '</strong>' : 'Displayed profile unavailable') + (raw && raw !== displayed ? '<span>Current raw classification: <strong>' + esc(raw) + '</strong></span>' : '') + sample + '</p>';
+    var scopeHelp = mode === 'career' ? ' Heads-up and unknown table-size hands are excluded from Career archetype classification.' : '';
+    return '<section class="pnhud-dashboard-section"><h3>' + title + '</h3>' + labels + profileExplanationHtml(profile.explanation) + (showFit ? '<h4>Profile fit</h4><div class="pnhud-dashboard-profile-fit">' + rows + '</div>' : '') + '<p class="pnhud-dashboard-help">' + title + ' is not recalculated by dashboard filters.' + scopeHelp + ' Compatibility scores are independent and are not probabilities.</p></section>';
   }
-  function positionControl(position) {
+  function unavailableCareerProfile(reason, message, diagnostics) {
+    return { displayedArchetype: null, rawArchetype: null, rawScores: {}, hands: diagnostics && diagnostics.careerHands || 0,
+      explanation: null, availability: { available: false, reason: reason, message: message, diagnostics: diagnostics || {} } };
+  }
+  // Thin exact-counter adapter; all classification rules remain in the shared engine.
+  function careerProfile(stats, classifier, presentation, explanation) {
+    if (!stats || stats.version !== 1 || !stats.counters || !stats.profileContext || stats.profileContext.version !== 2) {
+      return unavailableCareerProfile('malformed_or_unavailable_aggregate_inputs', 'Career profile inputs are unavailable.', {});
+    }
+    var c = stats.counters; var context = stats.profileContext;
+    var mapping = { handsPlayed: 'hands', vpipHands: 'vpipMade', vpipOpportunities: 'vpipOpportunities', pfrHands: 'pfrMade', pfrOpportunities: 'pfrOpportunities', threeBetMade: 'threeBetMade', threeBetOpportunities: 'threeBetOpportunities', foldToThreeBet: 'foldToThreeBet', foldToThreeBetOpportunities: 'foldToThreeBetOpportunities', flopCBetMade: 'flopCBetMade', flopCBetOpportunities: 'flopCBetOpportunities', foldToFlopCBet: 'foldToFlopCBet', foldToFlopCBetOpportunities: 'foldToFlopCBetOpportunities', wentToShowdown: 'wtsdMade', sawFlopForWTSD: 'wtsdOpportunities', wonMoneyAtShowdown: 'wsdMade', showdownsForWSD: 'wsdOpportunities' };
+    var fields = Object.values(mapping).concat(['postflopAggressiveActions', 'postflopCalls']);
+    var malformed = !stats.playerId || fields.some(function (key) { return !Number.isInteger(c[key]) || c[key] < 0; }) ||
+      [['vpipMade','vpipOpportunities'],['pfrMade','pfrOpportunities'],['threeBetMade','threeBetOpportunities'],['foldToThreeBet','foldToThreeBetOpportunities'],['flopCBetMade','flopCBetOpportunities'],['foldToFlopCBet','foldToFlopCBetOpportunities'],['wtsdMade','wtsdOpportunities'],['wsdMade','wsdOpportunities']].some(function (pair) { return c[pair[0]] > c[pair[1]]; });
+    if (!Number.isInteger(context.preflopTableSizeSum) || !Number.isInteger(context.preflopTableSizeOpportunities) || context.preflopTableSizeOpportunities < 0 || context.preflopTableSizeOpportunities > c.vpipOpportunities ||
+        context.preflopTableSizeSum < 2 * context.preflopTableSizeOpportunities || context.preflopTableSizeSum > 9 * context.preflopTableSizeOpportunities) malformed = true;
+    var diagnostics = { careerHands: Number.isInteger(c.hands) ? c.hands : 0,
+      vpipOpportunities: Number.isInteger(c.vpipOpportunities) ? c.vpipOpportunities : 0,
+      pfrOpportunities: Number.isInteger(c.pfrOpportunities) ? c.pfrOpportunities : 0,
+      exactTableContextOpportunities: Number.isInteger(context.preflopTableSizeOpportunities) ? context.preflopTableSizeOpportunities : 0,
+      tableContextCoverageRatio: c.vpipOpportunities > 0 ? Math.round(context.preflopTableSizeOpportunities / c.vpipOpportunities * 10000) / 10000 : 0,
+      effectiveTableSize: context.preflopTableSizeOpportunities > 0 ? Math.round(context.preflopTableSizeSum / context.preflopTableSizeOpportunities * 10000) / 10000 : null,
+      minimumTableContextOpportunities: CAREER_CONTEXT_POLICY.minimumOpportunities,
+      minimumTableContextCoverageRatio: CAREER_CONTEXT_POLICY.minimumCoverageRatio };
+    if (malformed) return unavailableCareerProfile('malformed_or_unavailable_aggregate_inputs', 'Career profile inputs are unavailable.', diagnostics);
+    var input = { playerId: String(stats.playerId), player: stats.latestDisplayName,
+      preflopTableSizeSum: context.preflopTableSizeSum, preflopTableSizeOpportunities: context.preflopTableSizeOpportunities,
+      afDetails: { aggressiveActions: c.postflopAggressiveActions, calls: c.postflopCalls } };
+    Object.keys(mapping).forEach(function (key) { input[key] = c[mapping[key]]; });
+    var classifierOptions = { config: { tableContext: { partialCoverage: CAREER_CONTEXT_POLICY } } };
+    var record = classifier.classify(input, classifierOptions); record.hands = input.handsPlayed;
+    var displayed = presentation.resolveSnapshotProfile(record);
+    diagnostics.tableContextStatus = record.tableContext.status;
+    diagnostics.tableContextReason = record.tableContext.unsupportedReason;
+    diagnostics.exactTableContextCoverageComplete = record.tableContext.exactCoverageComplete;
+    diagnostics.classifierStatus = record.primary.classificationStatus;
+    diagnostics.classifierReason = record.primary.unsupportedReason;
+    diagnostics.bestCandidate = record.primary.bestCandidate;
+    diagnostics.bestScore = record.primary.scores && record.primary.bestCandidate ? record.primary.scores[record.primary.bestCandidate] : null;
+    diagnostics.fitMargin = record.primary.scoreMargin;
+    diagnostics.presentationStatus = displayed.status;
+    diagnostics.presentationReason = displayed.reason;
+    var reason = null; var message = null;
+    if (c.hands === 0) { reason = 'no_supported_multiway_sample'; message = 'No supported 3+ handed Career sample is available for profiling.'; }
+    else if (c.hands < presentation.DEFAULT_POLICY.minimumVisibleHands) { reason = 'insufficient_multiway_hands'; message = 'Not enough 3+ handed Career data for a reliable profile.'; }
+    else if (!record.features.vpipRate.supported || !record.features.pfrRate.supported || !record.features.vpipPfrGap.supported || !record.features.pfrVpipRatio.supported) { reason = 'insufficient_core_stat_support'; message = 'Not enough supported 3+ handed Career VPIP/PFR history for a reliable profile.'; }
+    else if (!record.tableContext.supported) {
+      reason = 'insufficient_table_context_coverage';
+      message = 'Not enough supported 3+ handed table-context history for a reliable profile.';
+    } else if (record.primary.classificationStatus === 'ambiguous') { reason = 'ambiguous_archetype_fit'; message = 'The supported 3+ handed sample does not fit one archetype strongly enough yet.'; }
+    else if (record.primary.classificationStatus !== 'supported') { reason = 'insufficient_core_stat_support'; message = 'Not enough supported 3+ handed Career statistical evidence for a reliable profile.'; }
+    else if (!displayed.visible) { reason = 'profile_maturity_or_strength_gate'; message = 'The supported 3+ handed Career sample has not yet met the maturity and strength requirements.'; }
+    return { displayedArchetype: reason ? null : displayed.archetype, rawArchetype: record.primary.archetype,
+      rawScores: record.primary.scores, hands: record.hands,
+      availability: { available: !reason, reason: reason, message: message, diagnostics: diagnostics },
+      explanation: reason ? null : explanation.explain({ record: record, presentation: displayed, decomposition: classifier.scoreDecomposition(input, classifierOptions) }) };
+  }
+  function situationLabel(situation) { var option = SITUATION_OPTIONS.find(function (candidate) { return candidate.value === situation; }); return option ? option.label : 'Overall'; }
+  function situationControl(situation) {
+    var options = SITUATION_OPTIONS.map(function (option) { return '<option value="' + option.value + '"' + (situation === option.value ? ' selected' : '') + '>' + option.label + '</option>'; });
+    return '<label class="pnhud-dashboard-situation"><span>Situation</span><select data-dashboard-situation aria-label="Situation filter">' + options.join('') + '</select></label>';
+  }
+  function positionControl(position, disabled) {
     var options = ['<option value="">All positions</option>'].concat(POSITION_OPTIONS.map(function (label) { return '<option value="' + label + '"' + (position === label ? ' selected' : '') + '>' + label + '</option>'; }));
-    return '<label class="pnhud-dashboard-position"><span>Position</span><select data-dashboard-position aria-label="Position filter">' + options.join('') + '</select></label>';
+    return '<label class="pnhud-dashboard-position"><span>Position</span><select data-dashboard-position aria-label="Position filter"' + (disabled ? ' disabled title="Position is available for Overall only"' : '') + '>' + options.join('') + '</select></label>';
   }
   function opponentControl(state) {
     var mode = state.opponentMode || 'overall'; var unavailable = !state.selfPlayerId; var selfDashboard = Boolean(state.selfPlayerId && String(state.selfPlayerId) === String(state.playerId));
     function button(value, text, disabled, title) { return '<button type="button" data-dashboard-opponent="' + value + '" aria-pressed="' + (mode === value) + '" class="' + (mode === value ? 'active' : '') + '"' + (disabled ? ' disabled' : '') + (title ? ' title="' + esc(title) + '"' : '') + '>' + text + '</button>'; }
     return '<div class="pnhud-dashboard-opponent" role="group" aria-label="Relational opponent context"><span>Opponent</span><div>' + button('overall', 'Overall', false) + button('self', 'Vs You', unavailable || selfDashboard, selfDashboard ? 'Self-vs-self comparisons are not meaningful' : unavailable ? 'Canonical self identity is unavailable' : '') + button('others', 'Vs Everyone Else', unavailable, unavailable ? 'Canonical self identity is unavailable' : '') + '</div></div>';
   }
-  function coverageHtml(state, coverage, mode, position) {
-    coverage = coverage || {}; var total = integer(mode === 'career' ? coverage.totalCareerHands : coverage.totalSessionHands); var tracked = integer(coverage.positionTrackedHands); var matched = integer(coverage.matchedPositionHands);
+  function coverageHtml(state, coverage, mode, position, situation) {
+    coverage = coverage || {}; var total = integer(mode === 'career' ? coverage.totalCareerHands : coverage.totalSessionHands); var tracked = integer(coverage.positionTrackedHands); var matched = integer(coverage.matchedPositionHands); var situationTracked = integer(coverage.situationTrackedHands); var situationMatched = integer(coverage.matchedSituationHands);
+    if (situation !== 'overall') return '<p class="pnhud-dashboard-coverage"><strong>' + esc(situationLabel(situation)) + '</strong> · ' + situationMatched + ' exact ' + (situationMatched === 1 ? 'hand' : 'hands') + '<span>' + total + ' total ' + (mode === 'career' ? 'career' : 'session') + ' hands · ' + situationTracked + ' exact heads-up postflop</span></p>';
     if (position) return '<p class="pnhud-dashboard-coverage"><strong>' + esc(position) + '</strong> · ' + matched + ' tracked ' + (matched === 1 ? 'hand' : 'hands') + '<span>' + total + ' total ' + (mode === 'career' ? 'career' : 'session') + ' hands · ' + tracked + ' position-tracked</span></p>';
     return '<p class="pnhud-dashboard-coverage"><strong>All positions</strong> · ' + total + ' total ' + (total === 1 ? 'hand' : 'hands') + '<span>Position-tracked: ' + tracked + ' hands</span></p>';
   }
+  function selectTrendWindow(trends, requested) {
+    var available = trends && Array.isArray(trends.availableWindows) ? trends.availableWindows.map(Number).filter(function (size) { return [25, 50, 100, 250].indexOf(size) >= 0; }) : [];
+    var hasRequested = requested !== null && requested !== undefined && requested !== ''; requested = Number(requested);
+    if (hasRequested && available.indexOf(requested) >= 0) return requested;
+    if (hasRequested && Number.isFinite(requested) && available.length) return available.slice().sort(function (left, right) { return Math.abs(left - requested) - Math.abs(right - requested) || right - left; })[0];
+    return available.indexOf(100) >= 0 ? 100 : available.indexOf(50) >= 0 ? 50 : available.indexOf(25) >= 0 ? 25 : null;
+  }
+  function signedDelta(value, suffix) { var rounded = Math.round(value * 10) / 10; return (rounded > 0 ? '+' : '') + rounded.toFixed(1) + suffix; }
+  function trendDelta(id, recent, baseline) {
+    if (!recent || !baseline || !recent.derived || !baseline.derived) return null;
+    if (id === 'af') return Number.isFinite(recent.derived.af) && Number.isFinite(baseline.derived.af) ? signedDelta(recent.derived.af - baseline.derived.af, '') : null;
+    var value = recent.derived[id]; var base = baseline.derived[id];
+    return value !== null && value !== undefined && base !== null && base !== undefined ? signedDelta(value - base, ' pp') : null;
+  }
+  function careerRevisionsMatch(dashboardResult, trends) {
+    var dashboardRevision = Number(dashboardResult && dashboardResult.query && dashboardResult.query.playerRevision);
+    var trendRevision = Number(trends && trends.query && trends.query.playerRevision);
+    return Number.isSafeInteger(dashboardRevision) && Number.isSafeInteger(trendRevision) && dashboardRevision === trendRevision;
+  }
+  function trendsHtml(state, mode) {
+    if (mode !== 'career') return '';
+    if (state.loading) return '<section class="pnhud-dashboard-section pnhud-dashboard-trends"><h3>Recent trends</h3><p class="pnhud-dashboard-empty">Loading overall Career trends...</p></section>';
+    if (state.trendError) return '<section class="pnhud-dashboard-section pnhud-dashboard-trends"><h3>Recent trends</h3><p class="pnhud-dashboard-empty">' + esc(state.trendError) + '</p></section>';
+    var trends = state.trends; var selected = selectTrendWindow(trends, state.trendWindow);
+    if (!trends || !selected || !trends.windows || !trends.windows[String(selected)]) {
+      var dated = integer(trends && trends.datedHands); var undated = integer(trends && trends.undatedHands);
+      return '<section class="pnhud-dashboard-section pnhud-dashboard-trends"><h3>Recent trends</h3><p class="pnhud-dashboard-empty">Not enough dated Career history for recent trends.</p>' + (undated ? '<p class="pnhud-dashboard-help">' + undated + ' Career ' + (undated === 1 ? 'hand has' : 'hands have') + ' unavailable chronology.</p>' : '') + '<p class="pnhud-dashboard-help">' + dated + ' dated Career ' + (dated === 1 ? 'hand' : 'hands') + '. Recent trends use overall Career hands and are not recalculated by Dashboard filters.</p></section>';
+    }
+    var buttons = trends.availableWindows.map(function (size) { return '<button type="button" data-dashboard-trend-window="' + size + '" aria-pressed="' + (size === selected) + '" class="' + (size === selected ? 'active' : '') + '">Last ' + size + '</button>'; }).join('');
+    var recent = trends.windows[String(selected)].stats; var baseline = trends.baseline; var recentCards = cardsByIds(fromCareer(recent), TREND_IDS); var baselineById = {};
+    cardsByIds(fromCareer(baseline), TREND_IDS).forEach(function (item) { baselineById[item.id] = item; });
+    var rows = recentCards.map(function (item) { var comparison = baselineById[item.id]; var delta = trendDelta(item.id, recent, baseline); return '<article class="pnhud-dashboard-trend-stat"><span>' + esc(item.label) + '</span><strong>' + esc(item.value) + '</strong><small>' + esc(item.sample) + '</small><em>Career ' + esc(comparison ? comparison.value : '---') + ' · ' + esc(delta || 'No supported delta') + '</em></article>'; }).join('');
+    var undatedHelp = trends.undatedHands ? ' ' + integer(trends.undatedHands) + ' Career ' + (integer(trends.undatedHands) === 1 ? 'hand has' : 'hands have') + ' unavailable chronology.' : '';
+    return '<section class="pnhud-dashboard-section pnhud-dashboard-trends"><div class="pnhud-dashboard-section-heading"><div><h3>Recent trends</h3><small>Last ' + selected + ' of ' + integer(trends.totalCareerHands) + ' Career hands</small></div><div class="pnhud-dashboard-trend-windows" role="group" aria-label="Recent Career hand window">' + buttons + '</div></div><div class="pnhud-dashboard-trend-grid">' + rows + '</div><p class="pnhud-dashboard-help">Recent trends use overall Career hands and are not recalculated by Dashboard filters.' + undatedHelp + '</p></section>';
+  }
+  // Presentation-only, page-lifetime floating geometry. The root keeps its original
+  // CSS until a pointer actually moves; no stats, storage or table owners are called.
+  function createGeometryController(panel, viewport, memory) {
+    var doc = panel.ownerDocument; var gesture = null;
+    if (memory.positionCustomized !== true) memory.positionCustomized = false;
+    function clamp(value) {
+      var margin = Math.min(8, viewport.innerWidth / 4, viewport.innerHeight / 4);
+      var availableWidth = Math.max(1, viewport.innerWidth - margin * 2);
+      var availableHeight = Math.max(1, viewport.innerHeight - margin * 2);
+      var width = Math.min(availableWidth, Math.max(Math.min(320, availableWidth), value.width));
+      var height = Math.min(availableHeight, Math.max(Math.min(240, availableHeight), value.height));
+      return { left: Math.max(margin, Math.min(viewport.innerWidth - margin - width, value.left)),
+        top: Math.max(margin, Math.min(viewport.innerHeight - margin - height, value.top)), width: width, height: height };
+    }
+    function paint() {
+      if (!memory.geometry) {
+        if (!memory.positionCustomized) { panel.style.left = ''; panel.style.top = ''; panel.style.right = ''; panel.style.transform = ''; }
+        return;
+      }
+      var rect = memory.geometry = clamp(memory.geometry);
+      panel.style.width = rect.width + 'px'; panel.style.height = rect.height + 'px';
+      if (memory.positionCustomized) {
+        panel.style.left = rect.left + 'px'; panel.style.top = rect.top + 'px';
+        panel.style.right = 'auto'; panel.style.transform = 'none';
+      } else {
+        // Empty inline values restore the canonical responsive CSS right/center
+        // placement without discarding a separately adjusted current size.
+        panel.style.left = ''; panel.style.top = ''; panel.style.right = ''; panel.style.transform = '';
+      }
+    }
+    function finish(event) {
+      if (!gesture || event && event.pointerId !== undefined && event.pointerId !== gesture.id) return;
+      var id = gesture.id; gesture = null;
+      doc.removeEventListener('pointermove', move, true);
+      doc.removeEventListener('pointerup', finish, true);
+      doc.removeEventListener('pointercancel', finish, true);
+      viewport.removeEventListener('blur', finish);
+      panel.classList.remove('pnhud-dashboard-manipulating');
+      if (panel.hasPointerCapture && panel.hasPointerCapture(id)) panel.releasePointerCapture(id);
+    }
+    function move(event) {
+      if (!gesture || event.pointerId !== gesture.id) return;
+      if (event.buttons === 0 || panel.hidden || !panel.isConnected) return finish();
+      var dx = event.clientX - gesture.x; var dy = event.clientY - gesture.y;
+      if (!dx && !dy && !gesture.moved) return;
+      gesture.moved = true;
+      var start = gesture.rect;
+      var next = { left: start.left, top: start.top, width: start.width, height: start.height };
+      if (gesture.resize) {
+        next.width = Math.min(start.width + dx, viewport.innerWidth - 8 - start.left);
+        next.height = Math.min(start.height + dy, viewport.innerHeight - 8 - start.top);
+      } else { next.left += dx; next.top += dy; }
+      memory.geometry = next; memory.positionCustomized = true; paint(); event.preventDefault(); event.stopPropagation();
+    }
+    function begin(event) {
+      if (gesture || panel.hidden || event.button !== 0 || event.isPrimary === false) return;
+      var target = event.target; if (!target || !target.closest) return;
+      var resize = Boolean(target.closest('.pnhud-dashboard-resize'));
+      if (!resize && (!target.closest('.pnhud-dashboard-drag-handle') || target.closest('button, input, select, textarea, a, summary, [contenteditable], [role="button"]'))) return;
+      var rect = panel.getBoundingClientRect();
+      gesture = { id: event.pointerId, x: event.clientX, y: event.clientY, resize: resize, rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height } };
+      doc.addEventListener('pointermove', move, true);
+      doc.addEventListener('pointerup', finish, true);
+      doc.addEventListener('pointercancel', finish, true);
+      viewport.addEventListener('blur', finish);
+      if (panel.setPointerCapture) { try { panel.setPointerCapture(event.pointerId); } catch (_) {} }
+      panel.classList.add('pnhud-dashboard-manipulating');
+      event.preventDefault(); event.stopPropagation();
+    }
+    function recover() { finish(); paint(); }
+    function resizeKey(event) {
+      if (!event.target.closest || !event.target.closest('.pnhud-dashboard-resize') || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+      var rect = panel.getBoundingClientRect(); var step = event.shiftKey ? 40 : 10;
+      memory.geometry = { left: rect.left, top: rect.top, width: rect.width + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0), height: rect.height + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0) };
+      memory.positionCustomized = true;
+      paint(); event.preventDefault(); event.stopPropagation();
+    }
+    panel.addEventListener('pointerdown', begin);
+    panel.addEventListener('lostpointercapture', finish);
+    panel.addEventListener('keydown', resizeKey);
+    viewport.addEventListener('resize', recover);
+    return { sync: paint, cancel: finish, resetPosition: function () { finish(); memory.positionCustomized = false; paint(); }, dispose: function () {
+      finish(); panel.removeEventListener('pointerdown', begin); panel.removeEventListener('lostpointercapture', finish);
+      panel.removeEventListener('keydown', resizeKey); viewport.removeEventListener('resize', recover);
+    } };
+  }
   function requestMatches(state, snapshot) {
-    return Boolean(state && snapshot && state.open && String(state.playerId) === String(snapshot.playerId) && state.mode === snapshot.mode && (state.position || null) === (snapshot.position || null) && (state.opponentMode || 'overall') === (snapshot.opponentMode || 'overall') && state.requestToken === snapshot.requestToken);
+    return Boolean(state && snapshot && state.open && String(state.playerId) === String(snapshot.playerId) && state.mode === snapshot.mode && (state.position || null) === (snapshot.position || null) && (state.situation || 'overall') === (snapshot.situation || 'overall') && (state.opponentMode || 'overall') === (snapshot.opponentMode || 'overall') && state.requestToken === snapshot.requestToken);
   }
   function render(state) {
-    state = state || {}; var mode = state.mode === 'career' ? 'career' : 'session'; var position = POSITION_OPTIONS.indexOf(state.position) >= 0 ? state.position : null; var modeLabel = mode === 'career' ? 'Career' : 'Current session';
+    state = state || {}; var mode = state.mode === 'career' ? 'career' : 'session'; var situation = SITUATION_OPTIONS.some(function (option) { return option.value === state.situation; }) ? state.situation : 'overall'; var position = situation === 'overall' && POSITION_OPTIONS.indexOf(state.position) >= 0 ? state.position : null; var modeLabel = mode === 'career' ? 'Career' : 'Current session';
     var source = state.coreStats || (mode === 'career' ? state.careerStats : state.sessionStats); var cards = cardsFor(source, mode); var hands = cards.length ? cards[0].numerator : 0; var coverage = source && source.coverage || {};
-    var name = state.displayName || 'Tracked player'; var noteValue = Object.prototype.hasOwnProperty.call(state, 'noteDraft') ? state.noteDraft : state.note; var headerProfile = state.profile && (state.profile.displayedArchetype || state.profile.rawArchetype); var context = modeLabel + (position ? ' · ' + position : '') + ' · ' + hands + ' ' + (hands === 1 ? 'hand' : 'hands');
+    var name = state.displayName || 'Tracked player'; var noteValue = Object.prototype.hasOwnProperty.call(state, 'noteDraft') ? state.noteDraft : state.note; var headerProfile = state.profile && (state.profile.displayedArchetype || state.profile.rawArchetype); var context = modeLabel + (situation !== 'overall' ? ' · ' + situationLabel(situation) : position ? ' · ' + position : '') + ' · ' + hands + ' ' + (hands === 1 ? 'hand' : 'hands');
     if (mode === 'career' && state.careerTrackingStartedAt) context += ' · Tracked since ' + new Date(state.careerTrackingStartedAt).toLocaleDateString();
-    var coreCards = cardsByIds(cards, CORE_IDS); var relationCards = relationalCards(state, mode, cards); var noPositionSample = Boolean(position && !state.loading && integer(coverage.matchedPositionHands) === 0);
-    var coreBody = state.loading ? '<p class="pnhud-dashboard-empty" role="status">Loading career statistics and filters...</p>' : state.error ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.error) + '</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No position-tracked hands for ' + esc(position) + ' yet.</p>' : !cards.length ? '<p class="pnhud-dashboard-empty">No ' + (mode === 'career' ? 'career' : 'session') + ' hands tracked yet.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-core-grid">' + cardsHtml(coreCards) + '</div>';
-    var relationContext = position ? position + ' · ' : ''; relationContext += state.opponentMode === 'self' ? 'Vs You' : state.opponentMode === 'others' ? 'Vs Everyone Else' : 'Overall';
-    var relationBody = state.loading ? '<p class="pnhud-dashboard-empty">Loading relational samples...</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this position.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-relational-grid">' + cardsHtml(relationCards) + '</div>';
+    var coreCards = cardsByIds(cards, CORE_IDS); var relationCards = relationalCards(state, mode, cards); var noPositionSample = Boolean(position && !state.loading && integer(coverage.matchedPositionHands) === 0); var noSituationSample = Boolean(situation !== 'overall' && !state.loading && integer(coverage.matchedSituationHands) === 0);
+    var coreBody = state.loading ? '<p class="pnhud-dashboard-empty" role="status">Loading career statistics and filters...</p>' : state.error ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.error) + '</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No position-tracked hands for ' + esc(position) + ' yet.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No exact heads-up postflop hands for ' + esc(situationLabel(situation).toLowerCase()) + ' yet.</p>' : !cards.length ? '<p class="pnhud-dashboard-empty">No ' + (mode === 'career' ? 'career' : 'session') + ' hands tracked yet.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-core-grid">' + cardsHtml(coreCards) + '</div>';
+    var relationContext = situation !== 'overall' ? situationLabel(situation) + ' · ' : position ? position + ' · ' : ''; relationContext += state.opponentMode === 'self' ? 'Vs You' : state.opponentMode === 'others' ? 'Vs Everyone Else' : 'Overall';
+    var relationBody = state.loading ? '<p class="pnhud-dashboard-empty">Loading relational samples...</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this position.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this situation.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-relational-grid">' + cardsHtml(relationCards) + '</div>';
     var relationalCoverage = state.opponentMode && state.opponentMode !== 'overall' ? relationCards.reduce(function (sum, item) { return sum + integer(item.denominator); }, 0) : null;
-    return '<div class="pnhud-dashboard-window" role="document"><header><div><div class="pnhud-dashboard-title"><h2>' + esc(name) + '</h2>' + (headerProfile ? '<span class="pnhud-dashboard-header-profile">' + esc(headerProfile) + '</span>' : '') + '</div><p>' + esc(context) + '</p><small title="Canonical stable player ID">ID ' + esc(state.playerId) + '</small></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row"><div class="pnhud-dashboard-tabs" role="tablist" aria-label="Statistics window"><button type="button" role="tab" data-dashboard-mode="session" aria-selected="' + (mode === 'session') + '" class="' + (mode === 'session' ? 'active' : '') + '">Session</button><button type="button" role="tab" data-dashboard-mode="career" aria-selected="' + (mode === 'career') + '" class="' + (mode === 'career' ? 'active' : '') + '">Career</button></div>' + positionControl(position) + '</div><section class="pnhud-dashboard-section"><h3>Core stats</h3>' + coverageHtml(state, coverage, mode, position) + coreBody + '</section><section class="pnhud-dashboard-section pnhud-dashboard-relational"><div class="pnhud-dashboard-section-heading"><div><h3>Relational stats</h3><small>' + esc(relationContext) + '</small></div>' + opponentControl(state) + '</div>' + relationBody + (relationalCoverage !== null ? '<p class="pnhud-dashboard-help">' + relationalCoverage + ' supported relational ' + (relationalCoverage === 1 ? 'opportunity' : 'opportunities') + ' across 3Bet, F3B, and FCB. Missing counterpart history is excluded.</p>' : '<p class="pnhud-dashboard-help">Opponent context applies only to 3Bet, F3B, and FCB.</p>') + '</section>' + profileHtml(state.profile) + '<section class="pnhud-dashboard-section"><div class="pnhud-dashboard-notes-heading"><h3>Notes</h3><span class="pnhud-dashboard-note-status" role="status" aria-live="polite">' + esc(state.noteStatus || '') + '</span></div><textarea class="pnhud-dashboard-note" maxlength="5000" aria-label="Notes for ' + esc(name) + '" placeholder="Add a private note about this player...">' + esc(noteValue || '') + '</textarea><div class="pnhud-dashboard-note-actions"><button type="button" class="pnhud-dashboard-save-note">Save Note</button><button type="button" class="pnhud-dashboard-clear-note"' + (!noteValue ? ' disabled' : '') + '>Clear Note</button></div><p class="pnhud-dashboard-help">Notes are keyed only by stable player ID and are unaffected by dashboard filters.</p></section></div></div>';
+    return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><div class="pnhud-dashboard-title"><h2>' + esc(name) + '</h2>' + (headerProfile ? '<span class="pnhud-dashboard-header-profile">' + esc(headerProfile) + '</span>' : '') + '</div><p>' + esc(context) + '</p><small title="Canonical stable player ID">ID ' + esc(state.playerId) + '</small></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row"><div class="pnhud-dashboard-tabs" role="tablist" aria-label="Statistics window"><button type="button" role="tab" data-dashboard-mode="session" aria-selected="' + (mode === 'session') + '" class="' + (mode === 'session' ? 'active' : '') + '">Session</button><button type="button" role="tab" data-dashboard-mode="career" aria-selected="' + (mode === 'career') + '" class="' + (mode === 'career' ? 'active' : '') + '">Career</button></div>' + situationControl(situation) + positionControl(position, situation !== 'overall') + '</div><section class="pnhud-dashboard-section"><h3>Core stats</h3>' + coverageHtml(state, coverage, mode, position, situation) + coreBody + '</section>' + trendsHtml(state, mode) + '<section class="pnhud-dashboard-section pnhud-dashboard-relational"><div class="pnhud-dashboard-section-heading"><div><h3>Relational stats</h3><small>' + esc(relationContext) + '</small></div>' + opponentControl(state) + '</div>' + relationBody + (relationalCoverage !== null ? '<p class="pnhud-dashboard-help">' + relationalCoverage + ' supported relational ' + (relationalCoverage === 1 ? 'opportunity' : 'opportunities') + ' across 3Bet, F3B, and FCB. Missing counterpart history is excluded.</p>' : '<p class="pnhud-dashboard-help">Opponent context applies only to 3Bet, F3B, and FCB.</p>') + '</section>' + profileHtml(state.profile, mode) + '<section class="pnhud-dashboard-section"><div class="pnhud-dashboard-notes-heading"><h3>Notes</h3><span class="pnhud-dashboard-note-status" role="status" aria-live="polite">' + esc(state.noteStatus || '') + '</span></div><textarea class="pnhud-dashboard-note" maxlength="5000" aria-label="Notes for ' + esc(name) + '" placeholder="Add a private note about this player...">' + esc(noteValue || '') + '</textarea><div class="pnhud-dashboard-note-actions"><button type="button" class="pnhud-dashboard-save-note">Save Note</button><button type="button" class="pnhud-dashboard-clear-note"' + (!noteValue ? ' disabled' : '') + '>Clear Note</button></div><p class="pnhud-dashboard-help">Notes are keyed only by stable player ID and are unaffected by dashboard filters.</p></section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
   }
-  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, fromSession: fromSession, fromCareer: fromCareer, requestMatches: requestMatches, render: render, percentageText: percentageText, afText: afText });
+  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, SITUATION_OPTIONS: SITUATION_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, TREND_IDS: TREND_IDS, CAREER_CONTEXT_POLICY: CAREER_CONTEXT_POLICY, createGeometryController: createGeometryController, careerProfile: careerProfile, fromSession: fromSession, fromCareer: fromCareer, selectTrendWindow: selectTrendWindow, trendDelta: trendDelta, careerRevisionsMatch: careerRevisionsMatch, requestMatches: requestMatches, render: render, percentageText: percentageText, afText: afText });
 });

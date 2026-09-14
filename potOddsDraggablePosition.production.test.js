@@ -98,26 +98,42 @@ assertRelative(reloaded, 35, 30, '5 setting ON preserves offset');
 
 reloaded.fixture.mountCommunityBoard(harnessApi.boardRectsForLayout('live-full'));
 frame(reloaded, 'gC', { gT: ['holdem', 1], board: ['Ah', 'Kd', '2c'] }, 'flop');
-assertRelative(reloaded, 35, 30, '6 preflop to flop');
+assertRelative(reloaded, 0, 0, '6 first measured flop resets to canonical');
+assert.deepStrictEqual([reloaded.storage.hudUiPreferences.potOddsOffsetX, reloaded.storage.hudUiPreferences.potOddsOffsetY], [0, 0], '6 exact canonical reset is persisted');
+drag(reloaded, 35, 30, 44);
+assertRelative(reloaded, 35, 30, '6 user move after flop');
 var turn = harnessApi.boardRectsForLayout('live-full').concat([harnessApi.rect(706, 260, 58, 80)]);
 reloaded.fixture.mountCommunityBoard(turn);
 frame(reloaded, 'gC', { gT: ['holdem', 2], board: ['Ah', 'Kd', '2c', '7s'] }, 'turn');
-assertRelative(reloaded, 35, 30, '7 turn');
+assertRelative(reloaded, 35, 30, '7 turn preserves post-flop move');
 var river = turn.concat([harnessApi.rect(768, 260, 58, 80)]);
 reloaded.fixture.mountCommunityBoard(river);
 frame(reloaded, 'gC', { gT: ['holdem', 3], board: ['Ah', 'Kd', '2c', '7s', 'Jh'] }, 'river');
-assertRelative(reloaded, 35, 30, '7 river');
+assertRelative(reloaded, 35, 30, '7 river preserves post-flop move');
 
 reloaded.fixture.replaceBoardSlotOwner();
 reloaded.runFor(260, 16);
 assertRelative(reloaded, 35, 30, '9 board DOM remount');
 frame(reloaded, 'gC', { gameResult: { winnerId: 'playerB', complete: true }, cPI: null, pITT: null }, 'terminal');
-reloaded.fixture.removeCommunityBoard();
 reloaded.runFor(240, 16);
 assertRelative(reloaded, 35, 30, '8 between hands');
 frame(reloaded, 'gC', activeState('DRAG-NEXT'), 'next-hand');
-assertRelative(reloaded, 35, 30, '8 next hand');
+assertRelative(reloaded, 35, 30, '8 next hand preflop preserves offset despite stale prior-flop DOM');
+reloaded.fixture.mountCommunityBoard(harnessApi.boardRectsForLayout('live-full'));
+frame(reloaded, 'gC', { gT: ['holdem', 1], board: ['Qs', 'Jd', '3c'] }, 'next-flop');
+assertRelative(reloaded, 0, 0, '8 next hand first measured flop resets again');
+drag(reloaded, 35, 30, 45);
+assertRelative(reloaded, 35, 30, '8 next-hand post-flop move');
 assert.strictEqual(reloaded.document.getElementById('pnhud-hero-pot-odds'), stableHost, 'same host survives lifecycle');
+
+var postflopReload = harnessApi.createHarness({
+  gameId: 'draggable-pot-odds-reload', layout: 'live-full', liveCardDom: true, persistentBoardSlot: true,
+  viewport: { width: 1280, height: 665 }, initialNow: 12000, initialStorage: reloaded.storage
+});
+assert.deepStrictEqual(postflopReload.evaluationErrors, []);
+postflopReload.fixture.mountCommunityBoard(harnessApi.boardRectsForLayout('live-full'));
+frame(postflopReload, 'registered', { currentPlayer: { id: 'playerA', name: 'playerA', stack: 420 }, gameState: activeState('DRAG-NEXT', { gT: ['holdem', 1], board: ['Qs', 'Jd', '3c'] }) }, 'same-hand-postflop-reload');
+assertRelative(postflopReload, 35, 30, '8 reload after same-hand flop reset and drag cannot reset twice');
 
 reloaded.fixture.setLayout('live-narrow');
 reloaded.setViewport(900, 665, true);

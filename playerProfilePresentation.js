@@ -287,6 +287,13 @@
     SCHEMA_VERSION: SCHEMA_VERSION,
     DEFAULT_POLICY: DEFAULT_POLICY,
     rawSnapshot: rawSnapshot,
+    // Historical snapshots share qualification gates, but have no temporal holds.
+    resolveSnapshotProfile: function (rawProfile) {
+      var raw = rawSnapshot(rawProfile); var state = baseState(raw);
+      var eligible = qualification(raw, DEFAULT_POLICY);
+      return eligible.qualified ? reveal(state, raw, 'qualified_historical_snapshot')
+        : hide(state, raw, 'hidden_snapshot', eligible.reason);
+    },
     resolveDisplayedProfile: resolveDisplayedProfile,
     replay: replay
   });

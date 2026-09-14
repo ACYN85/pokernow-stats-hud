@@ -1,7 +1,7 @@
 /* MV3 extension-origin owner for the career IndexedDB database. */
 'use strict';
 
-var PNHUD_BUILD_ID = 'v1.1.0-public-20260908';
+var PNHUD_BUILD_ID = 'v1.1.0-rc3-20260913-1702';
 
 importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js');
 
@@ -78,8 +78,10 @@ var allowedMethods = Object.freeze({
   careerStats: true,
   careerStatsFiltered: true,
   careerDashboardStats: true,
+  careerTrendStats: true,
   careerHudStats: true,
   careerPlayers: true,
+  careerPlayerSummaries: true,
   careerLedgerInfo: true,
   careerPlayerRecordInfo: true,
   recentCareerRecords: true,

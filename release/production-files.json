@@ -63,6 +63,7 @@
   "statTooltip.js",
   "stats.js",
   "tbTrace.js",
+  "trackedPlayers.js",
   "uiBootstrap.js",
   "walkDetection.js",
   "websocketHook.js"

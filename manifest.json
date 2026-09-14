@@ -83,6 +83,7 @@
         "playerProfileCalibration.js",
         "playerNotesStore.js",
         "playerDashboard.js",
+        "trackedPlayers.js",
         "overlayStats.js",
         "leaderboardStats.js",
         "leaderboardHudPosition.js",

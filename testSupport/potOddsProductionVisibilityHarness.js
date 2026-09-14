@@ -639,7 +639,7 @@ function createHarness(options) {
   var isolatedScripts = manifest.content_scripts.find(function (entry) { return entry.world !== 'MAIN' && entry.js.includes('content.js'); }).js;
   var evaluationErrors = [];
   isolatedScripts.forEach(function (file) {
-    try { vm.runInContext(fs.readFileSync(path.join(rootDir, file), 'utf8'), context, { filename: file }); }
+    try { var source = fs.readFileSync(path.join(rootDir, file), 'utf8'); if (file === 'content.js' && options.transformContentSource) source = options.transformContentSource(source); vm.runInContext(source, context, { filename: file }); }
     catch (error) { evaluationErrors.push({ file: file, message: error.message, stack: error.stack }); }
   });
 

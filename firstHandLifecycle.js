@@ -115,10 +115,10 @@
       return value !== null && value !== undefined && value !== '' && value !== '<D>' && verifiedPlayerIds.includes(String(value));
     }
     var completeInHandList = inHandPlayerIds.length >= 2 && inHandPlayerIds.every(function (playerId) { return verifiedPlayerIds.includes(playerId); });
-    var completeDealSignature = input.startupType === 'cold-start' &&
+    var initialAcquisition = input.lifecycleAcquisitionPending === true ||
+      input.startupType === 'cold-start' && input.noFinalizedHands === true && input.noPreviousHandCommitted === true;
+    var completeDealSignature = initialAcquisition &&
       input.noActiveHand === true &&
-      input.noFinalizedHands === true &&
-      input.noPreviousHandCommitted === true &&
       input.mappedPlayersVerified === true &&
       input.holeCardsDetected === true &&
       input.observedPreDealBaseline === true &&
@@ -131,14 +131,13 @@
     if (!completeDealSignature) return false;
     return {
       activated: true,
-      reason: 'verified cold-start deal signature',
+      lifecycleAcquisition: input.lifecycleAcquisitionPending === true,
+      reason: input.lifecycleAcquisitionPending === true ? 'verified deal signature after lifecycle rearm' : 'verified cold-start deal signature',
       confidenceBeforeOverride: Number(input.confidenceBeforeOverride || 0),
       requiredConfidence: requiredConfidence,
       observedSignals: [
-        'cold-start lifecycle',
+        input.lifecycleAcquisitionPending === true ? 'pending lifecycle boundary acquisition' : 'cold-start lifecycle',
         'no active hand',
-        'no finalized hands',
-        'no previous committed hand',
         'mapped players verified',
         'hole cards detected',
         'pre-deal baseline observed',

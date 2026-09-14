@@ -25,6 +25,7 @@ function harness() {
     seatOverlayLayer: { classList: { toggle: function (name, value) { classState[name] = Boolean(value); } }, setAttribute: function (name, value) { this[name] = value; } },
     visibleSeatHudSurfaces: function () { return []; },
     seatHudLogPanelState: { open: false, panel: null, mode: null, panelType: null, revision: 0 },
+    trackedPlayersState: { open: false },
     hudUiPreferences: { settingsOpen: false, seatHudStatSource: 'career' },
     seatHudBlockingPanelState: {},
     seatHudPositionDiagnostics: new Map([['stable-player', { manualOffsetX: 31, manualOffsetY: -17, requestedHudRect: { left: 410, top: 260 }, renderedHudRect: { left: 410, top: 260 } }]]),

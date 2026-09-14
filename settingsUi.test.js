@@ -92,7 +92,7 @@ assert.strictEqual(merged.hudOpacity, 0.4);
 assert.strictEqual(merged.accentTheme, 'amber');
 assert.strictEqual(settings.equal(merged, settings.merge(merged, {})), true);
 assert.strictEqual(settings.equal(merged, missing.value), false);
-assert.deepStrictEqual(settings.SECTIONS, ['general', 'overlay', 'hud', 'appearance', 'career-data', 'diagnostics', 'about']);
+assert.deepStrictEqual(settings.SECTIONS, ['general', 'overlay', 'hud', 'appearance', 'players', 'career-data', 'diagnostics', 'about']);
 assert.deepStrictEqual(Object.keys(settings.ACCENT_THEMES), ['teal', 'blue', 'purple', 'amber']);
 assert.deepStrictEqual(settings.OPPORTUNITY_STATS_LAYOUTS, ['combined', 'stacked']);
 assert.deepStrictEqual(settings.SEAT_HUD_STAT_SOURCES, ['session', 'career']);

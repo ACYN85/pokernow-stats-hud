@@ -2,7 +2,7 @@
 
 PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into a real-time, configurable player-statistics overlay with persistent Session and Career history.
 
-**Version 1.1.0**
+**Version 1.1.0** · Release Build `v1.1.0-rc3-20260913-1702`
 
 ## Demo
 
@@ -26,10 +26,13 @@ PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into
 
 - Real-time player statistics calculated from finalized hands, including VPIP, PFR, aggression factor, 3Bet/F3B, flop CBet/FCB, WTSD, and W$SD.
 - Separate Session history and persistent local Career history for cross-session tracking.
+- Session/Career Leaderboard sources plus a Settings → Players browser for every tracked Career player.
 - Hand-state, lifecycle, position, action-opportunity, and showdown inference with conservative handling of incomplete evidence.
-- Player dashboards with sample counts, position and opponent-context filters, notes, and profile evidence.
+- Movable and resizable player dashboards with Reset Position, notes, position/opponent filters, and exact heads-up-postflop IP/OOP analysis.
+- Career profiles built from supported exact 3+ handed history, with lightweight player summaries and Recent Trends windows for the latest 25/50/100/250 eligible hands.
 - In-hand Pot Odds showing call cost, eligible pot, and required equity.
-- Configurable Seat HUD, leaderboard, statistic ordering, display modes, and draggable persistent overlays.
+- Configurable Seat HUD visibility, statistic ordering, display modes, and draggable persistent overlays.
+- Hardened Reset Session identity, Pause/Resume, sparse-hand ownership, cache/race/quarantine, and per-hand Pot Odds placement lifecycles.
 
 ## How it works
 
@@ -65,7 +68,7 @@ Keep only one copy of the extension enabled at a time. Export a Career backup be
 
 ## Testing
 
-The public release passes **189 behavioral test files** plus a separate **release integrity suite**, covering hand inference, statistics, persistence, dashboards, overlays, Pot Odds, and release packaging.
+The public release passes **206 behavioral test files** plus a separate **release integrity suite**, covering hand inference, statistics, persistence, dashboards, overlays, Pot Odds, and release packaging.
 
 ```powershell
 node runTests.js full

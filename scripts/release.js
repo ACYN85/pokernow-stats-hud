@@ -49,7 +49,7 @@ function validate(dir = root, documentation = true) {
   assert.strictEqual(config.zip, 'pokernow-hud-' + config.tag + '.zip');
   assert(/^\d+\.\d+\.\d+$/.test(config.version));
   assert.strictEqual(config.tag, 'v' + config.version);
-  assert(new RegExp('^' + config.tag.replace(/\./g, '\\.') + '-public-\\d{8}$').test(config.buildId));
+  assert(/^v\d+\.\d+\.\d+-rc\d+-\d{8}-\d{4}$/.test(config.buildId), 'promoted package Build ID format');
   assert.strictEqual(baseline.buildId, config.buildId);
   assert.strictEqual(baseline.zip, config.zip);
   assert.deepStrictEqual(inventory, baseline.files.map(f => f.path));

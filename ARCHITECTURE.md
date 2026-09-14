@@ -183,6 +183,8 @@ Percentages use `vpipHands / vpipOpportunities` and `pfrHands / pfrOpportunities
 
 ## HUD and overlays
 
+V1.1 adds derived read paths without changing immutable hand authority. `careerIndexedStore.js` maintains lightweight player summaries and revision-keyed Trend/query caches; `trackedPlayers.js` presents those summaries inside Settings. `filteredStats.js` owns exact heads-up-postflop IP/OOP projection, while `playerDashboard.js` owns presentation-only geometry and filter state. Career profiles use the shared classifier over a rebuildable projection limited to accepted exact 3+ handed evidence. None of these views writes alternative statistics or mutates accepted Career records.
+
 `render` creates the details table and health panel from finalized events. `reconcileSeatOverlays` computes player stats and passes confirmed player/seat entries to `PokerSeatOverlay.createController().reconcile`. Drag listeners and persisted relative offsets remain in `content.js`; placement math remains pure in `seatOverlay.js`.
 
 The seat-overlay root remains a fixed direct `BODY` child so viewport placement and dragging are not trapped by native transforms or clipping. Stable identity, direct painted panel-body geometry, canonical/requested/rendered rectangles, offsets, and render-only clamps remain separate for 2/3/4/6/9-handed layouts. Current-node remounts re-resolve the panel. Live-panel finalization does not modify any layering, identity, or drag code.

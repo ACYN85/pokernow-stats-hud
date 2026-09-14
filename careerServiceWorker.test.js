@@ -22,6 +22,7 @@ var backupPolicy = require('./careerBackupPolicy.js');
     careerStatsFiltered: async function (playerId, filters) { return { playerId: playerId, filters: filters }; },
     careerDashboardStats: async function (playerId, options) { return { playerId: playerId, options: options, combined: true }; },
     careerPlayers: async function () { return [{ playerId: 'P1' }]; },
+    careerPlayerSummaries: async function () { return [{ playerId: 'P1', latestDisplayName: 'Alice', hands: 1, lastSeenAt: 10, revision: 1, summaryVersion: 1 }]; },
     recentCareerRecords: async function () { return [{ fingerprint: 'recent' }]; },
     exportCareer: async function () { exportCareerCalls += 1; return { records: [{ fingerprint: 'formal-record' }] }; },
     replaceCareerRecords: async function (records, metadata, options) { replacements.push({ records: records, metadata: metadata, options: options }); return { replaced: true }; }
@@ -96,6 +97,9 @@ var backupPolicy = require('./careerBackupPolicy.js');
   var stats = await request('careerStats', ['P1']);
   assert.strictEqual(stats.ok, true);
   assert.strictEqual(stats.value.playerId, 'P1');
+  var summaries = await request('careerPlayerSummaries');
+  assert.strictEqual(summaries.ok, true);
+  assert.deepStrictEqual(summaries.value, await service.careerPlayerSummaries(), 'worker allowlist exposes the lightweight boundary');
   var filteredStats = await request('careerStatsFiltered', ['P1', { position: 'BB' }]);
   assert.strictEqual(filteredStats.ok, true);
   assert.strictEqual(filteredStats.value.filters.position, 'BB');

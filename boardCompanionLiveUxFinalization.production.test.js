@@ -123,7 +123,7 @@ frame(harness, 'gC', activeState('LIVE-UX-2', 188), 'host-replacement');
 assert.strictEqual(harness.document.getElementById('pnhud-pot-odds-root'), stableRoot, 'delegated listener root identity survives host replacement');
 drag(harness, -30, 5, 503);
 var afterHostReplacement = invariantSnapshot(harness);
-assert.deepStrictEqual(afterHostReplacement.offset, { x: 0, y: 0 }, 'replacement host remains draggable');
+assert.deepStrictEqual(afterHostReplacement.offset, { x: -30, y: 5 }, 'new measured hand resets first, then replacement host remains draggable');
 
 click(harness, '#pnhud-settings-launcher');
 click(harness, '[data-settings-section="hud"]');
