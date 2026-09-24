@@ -33,4 +33,6 @@ The reducer has synthetic coverage for explicit pot/board identities and rich wi
 - Showdown: `showdownStatsReducer.js`, `semanticHandLedger.js`; [showdown design](SHOWDOWN_STATS_DESIGN.md).
 - Per-hand explanations: `statExplanation.js`; authoritative reducers remain the source of truth.
 
-The release freeze gate requires all 68 production hashes to match the signed-off V1.1 package baseline. V1.1 adds derived Career views and exact situation filtering without changing the established counter definitions.
+Statistical Evidence presents the exact support count for the displayed statistic and slice. Weak, Moderate and Strong labels describe sample support; low-support values show the count without a visible “Insufficient” suffix. Evidence does not alter counters, denominators, or the supported-opportunity rules above, and is not a prediction or proof of player tendency.
+
+The public V1.2 freeze gate requires all 70 production hashes to match the accepted package baseline. V1.2 adds Career transfer and Evidence presentation without changing the established counter definitions.

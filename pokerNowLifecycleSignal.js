@@ -55,6 +55,19 @@
       if (classification) evidence.push({ path: path, value: text.slice(0, 160), classification: classification });
     }
     visit(payload, '$', 0);
+    // These game-state flags already drive the Paused presentation. They must
+    // also establish the persisted progression latch. Only current room-state
+    // fields qualify; cached flags and player metadata cannot change ownership.
+    var gameState = /^gc$/i.test(String(eventName || '')) ? payload
+      : String(eventName || '') === 'registered' ? payload.gameState : null;
+    if (gameState && typeof gameState === 'object') {
+      ['paused', 'isPaused', 'gamePaused', 'game_paused'].forEach(function (key) {
+        var value = gameState[key];
+        if (value === true || value === 1 || typeof value === 'string' && /^(?:true|yes|1|paused)$/i.test(value)) {
+          evidence.push({ path: (gameState === payload ? '$.' : '$.gameState.') + key, value: value, classification: 'paused' });
+        }
+      });
+    }
     var classifications = Array.from(new Set(evidence.map(function (item) { return item.classification; })));
     if (classifications.length !== 1) return null;
     return {

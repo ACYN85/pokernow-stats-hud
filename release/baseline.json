@@ -1,7 +1,7 @@
 {
-  "buildId": "v1.1.0-rc3-20260913-1702",
-  "zip": "pokernow-hud-v1.1.0.zip",
-  "sha256": "F5C25F377EDA9C2F6FADEB7C5180862E601FDC890B174BB26AE0C5DA92C005E9",
+  "buildId": "v1.2.0-rc2-20260922-1612",
+  "zip": "pokernow-hud-v1.2.0.zip",
+  "sha256": "65BB245759FA063CD434B7ECD26DE627FFE2F0C72920F29A1CD0D963F6C1D798",
   "files": [
     {
       "path": "actionInference.js",
@@ -17,11 +17,11 @@
     },
     {
       "path": "careerBackup.js",
-      "sha256": "1d1c2959cc9722ffe2af7aac89df82c4dbfa36a2be877d36b8acd7069ae9a412"
+      "sha256": "0eaec772b3c839dae7ab3392ae4c7b08a6e8e4b83f156ead5427ed8ae4e864c4"
     },
     {
       "path": "careerBackupPolicy.js",
-      "sha256": "74478059c6e1188617c4d0f8a694fa84a533849c94faecbaa924dd6ef686fbba"
+      "sha256": "9070509de43832964d89ef60a4b848147d3a5ef4e91d7591cc4de42dbdced937"
     },
     {
       "path": "careerContributionStore.js",
@@ -29,15 +29,19 @@
     },
     {
       "path": "careerDataSettings.js",
-      "sha256": "a555daca1d104628e047a16aa2e59ff4fd86d46fe987cfda1c5857af1a28253e"
+      "sha256": "0dfb7505e77a933eb83a49deaa3a3ac5ffeef83bf1a7e8da4c7ceee58f59ea66"
     },
     {
       "path": "careerIndexedStore.js",
-      "sha256": "f4849c3a67a8f5b0f9af725c3e97ad016316c3b4ceb41618c40f1401d63250d5"
+      "sha256": "399433cc3bf9f4827fb9c6ecf2977d5a5322c86c5342bdfc6f156987ebf4c025"
+    },
+    {
+      "path": "careerPortableFile.js",
+      "sha256": "13786a06eb72401c79d459c036ef0ee713852948031ffe729f61188df01306f2"
     },
     {
       "path": "careerServiceWorker.js",
-      "sha256": "92dd9e5eae7e1e01442fc3cbd1914fddad1fa68db189294674f1fc1f8c8e6654"
+      "sha256": "8e47659f97720f24af96fd95d7313187b04b3c6d290e2dff122b9c0628dbf84d"
     },
     {
       "path": "careerStatsAggregator.js",
@@ -45,7 +49,7 @@
     },
     {
       "path": "content.js",
-      "sha256": "ce4b991248f489c1c6590ee828e43bcb15354ff9714aba60c9910d3a2e3ed62a"
+      "sha256": "c006f89ede7b4bfaf6bf2fcd1109940591984d113f9b4b59cef47ec691f1111d"
     },
     {
       "path": "filteredStats.js",
@@ -81,7 +85,7 @@
     },
     {
       "path": "hud.css",
-      "sha256": "9c7588f79db685cd225f148f004575ebfd36ce5322654a90e19f8acf5565ac5b"
+      "sha256": "da76a5374303a56c4e435fc9e9c13dbae68e8cb49d6230e351988ec89b90e5bd"
     },
     {
       "path": "hudDiagnostics.js",
@@ -113,7 +117,7 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "75e6bc7833f34e62e2dfaab00c7c16b0e8d41be538b7fdbf38e376a932e4384a"
+      "sha256": "fe8d8806943ee815dd0b63602f0b672028e37383efd43482225238e83b0d1446"
     },
     {
       "path": "mockData.js",
@@ -145,7 +149,7 @@
     },
     {
       "path": "playerDashboard.js",
-      "sha256": "350375e401a33f62762b7138174899ce7162b4ff28924a918f7e8e1c6bc0993f"
+      "sha256": "f221e34a34cc0181d37833af027987b34f68d4e0aaf8c02157bc370b261162c8"
     },
     {
       "path": "playerNotesStore.js",
@@ -177,7 +181,7 @@
     },
     {
       "path": "pokerNowLifecycleSignal.js",
-      "sha256": "f3db79c2f15f04526cfdb8f580cac89f78e093b37ea18b0fc835efe0803d5162"
+      "sha256": "5e5243b4dc350357f626bd45de9f6fafdd7082af7c92c8e5b42098e3c1448cc3"
     },
     {
       "path": "popup.css",
@@ -189,7 +193,7 @@
     },
     {
       "path": "popup.js",
-      "sha256": "046f978c3a2aece9c77fcf126c0292d728ab62476ca3cf483bd2a2e9d60aac4d"
+      "sha256": "610e5376a50b90e907c0e41263e237b317103149262c813d8782b9978dd1f552"
     },
     {
       "path": "positionResolver.js",
@@ -213,7 +217,7 @@
     },
     {
       "path": "runtimeScope.js",
-      "sha256": "dcc913baabe3ef964fcebfb10192434255195647e95d7aafa1ade212046911e9"
+      "sha256": "12dc2998c2e07a84ecd0c97ce145e2d9a8a9b2c4f01b9fbdcdf01e54faff8f8f"
     },
     {
       "path": "seatOverlay.js",
@@ -242,6 +246,10 @@
     {
       "path": "showdownStatsReducer.js",
       "sha256": "13934ac0acc3cb6cb8f506763d806e5395cb99900be07334e0ee387e45cf9e1a"
+    },
+    {
+      "path": "statEvidence.js",
+      "sha256": "42bb8048d0765713df7b18329edd0d3e8104391221fc08a16ce1ab0c98a583ce"
     },
     {
       "path": "statExplanation.js",

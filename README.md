@@ -2,7 +2,7 @@
 
 PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into a real-time, configurable player-statistics overlay with persistent Session and Career history.
 
-**Version 1.1.0** · Release Build `v1.1.0-rc3-20260913-1702`
+**Version 1.2.0** · Release Build `v1.2.0-rc2-20260922-1612`
 
 ## Demo
 
@@ -26,13 +26,16 @@ PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into
 
 - Real-time player statistics calculated from finalized hands, including VPIP, PFR, aggression factor, 3Bet/F3B, flop CBet/FCB, WTSD, and W$SD.
 - Separate Session history and persistent local Career history for cross-session tracking.
+- Career Data controls for exact current-Session removal, gzip-compressed portable export, Import (Merge), and Restore (Replace). Import and restore also accept legacy JSON backups.
+- A successful Career Restore resets Session; a failed restore leaves Session intact. Export and Import do not reset Session.
 - Session/Career Leaderboard sources plus a Settings → Players browser for every tracked Career player.
 - Hand-state, lifecycle, position, action-opportunity, and showdown inference with conservative handling of incomplete evidence.
 - Movable and resizable player dashboards with Reset Position, notes, position/opponent filters, and exact heads-up-postflop IP/OOP analysis.
+- Statistical Evidence labels and exact support counts for dashboard statistics; low-support values retain their count without an “Insufficient” suffix. These labels describe sample support, not predictive certainty.
 - Career profiles built from supported exact 3+ handed history, with lightweight player summaries and Recent Trends windows for the latest 25/50/100/250 eligible hands.
 - In-hand Pot Odds showing call cost, eligible pot, and required equity.
 - Configurable Seat HUD visibility, statistic ordering, display modes, and draggable persistent overlays.
-- Hardened Reset Session identity, Pause/Resume, sparse-hand ownership, cache/race/quarantine, and per-hand Pot Odds placement lifecycles.
+- Hardened Reset Session identity, Pause/Resume, first-fresh-hand-after-Restore ownership, Career/Leaderboard pending-state presentation, cache/race/quarantine, and per-hand Pot Odds placement lifecycles.
 
 ## How it works
 
@@ -60,7 +63,7 @@ Session and Career persistence remain separate, and no extension-controlled exte
 
 ### Install from a release ZIP
 
-If a GitHub Release includes `pokernow-hud-v1.1.0.zip`, extract the ZIP first and load the extracted directory through **Load unpacked**.
+If a GitHub Release includes `pokernow-hud-v1.2.0.zip`, extract the ZIP first and load the extracted directory through **Load unpacked**.
 
 Chrome does not load the ZIP directly.
 
@@ -68,7 +71,7 @@ Keep only one copy of the extension enabled at a time. Export a Career backup be
 
 ## Testing
 
-The public release passes **206 behavioral test files** plus a separate **release integrity suite**, covering hand inference, statistics, persistence, dashboards, overlays, Pot Odds, and release packaging.
+The public source includes behavioral tests and a separate release-integrity gate covering hand inference, statistics, Career portability, dashboards, overlays, Pot Odds, and package boundaries. The final ZIP is byte-identical to the accepted RC2 package; it is not a rebuilt variant.
 
 ```powershell
 node runTests.js full

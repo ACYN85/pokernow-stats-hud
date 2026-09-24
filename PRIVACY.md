@@ -1,6 +1,6 @@
-# Privacy and local data — public 1.1.0
+# Privacy and local data — public 1.2.0
 
-This note describes the audited 68-file release, not PokerNow's own privacy policy or the behavior of other extensions.
+This note describes the audited 70-file release, not PokerNow's own privacy policy or the behavior of other extensions.
 
 ## What is observed
 
@@ -13,10 +13,10 @@ Opt-in pause/deep diagnostics can additionally observe page fetch/XHR/sendBeacon
 - Session: finalized event history, identity mappings, deduplication data and bounded active-hand/lifecycle checkpoints in per-game `chrome.storage.local` namespaces.
 - Career: immutable contributions and metadata in extension-origin IndexedDB, plus rebuildable caches and local pending-write/migration state.
 - Preferences: source/display choices, sizes, drag positions and related settings in local extension storage.
-- Notes: separate stable-player-ID local storage; excluded from Career Backup.
+- Notes: separate stable-player-ID local storage; excluded from Career exports, imports and restores.
 - Profiles: derived Session classification/presentation state is runtime/shadow state, not a separate cloud profile database.
 
-Reloading a page does not necessarily erase Session history. Career persists across sessions until replaced or extension data is removed. Browser profile removal, uninstall, changing extension identity or clearing local data can lose access to data. Export Career Backup before destructive changes; that backup does not protect notes or Session state.
+Reloading a page does not necessarily erase Session history. Career persists across sessions until replaced, explicitly removed, or extension data is removed. Browser profile removal, uninstall, changing extension identity or clearing local data can lose access to data. Export Career Data before destructive changes; that backup does not protect notes or Session state.
 
 ## Transmission and exports
 
@@ -24,7 +24,7 @@ Reloading a page does not necessarily erase Session history. Career persists acr
 
 This does **not** mean the PokerNow page is offline or that all observed traffic originates from the extension: PokerNow's ordinary requests continue to its own services. MAIN/isolated bridging uses page messages, and bounded diagnostic bridges expose selected information in page DevTools; local page-world scripts may observe such messages. There is no claim of secrecy from the host page.
 
-Career backups, downloads, clipboard copies and diagnostics are user-initiated local exports, not encrypted vaults. Once you share them, their destination is outside this extension's control. Review content before sharing and avoid attaching raw browser HAR captures unnecessarily.
+Career `.json.gz` exports, downloads, clipboard copies and diagnostics are user-initiated local exports, not encrypted vaults. Import (Merge) and Restore (Replace) read a user-selected local file; neither uploads it to an extension server. Once you share an export, its destination is outside this extension's control. Review content before sharing and avoid attaching raw browser HAR captures unnecessarily.
 
 ## Permission audit
 

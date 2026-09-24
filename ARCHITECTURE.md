@@ -1,6 +1,6 @@
 # PokerNow Stats HUD architecture
 
-## Public 1.1.0 operating map
+## Public 1.2.0 operating map
 
 This is the current public-release architecture. Historical phase documents describe how these owners evolved.
 
@@ -25,13 +25,13 @@ This is a conceptual dependency map: the production finalization owner controls 
 | Session/cache | sessionRuntime.js, sessionStatsCache.js; content.js per-game persistence and revision invalidation |
 | Seat HUD/layering | seatOverlay.js + content.js geometry/DOM adapter; stable identity separate from painted bounds; canonical + manual offset, render-only accessibility clamp |
 | Profiles/explanations | playerProfileClassifier.js, playerProfilePresentation.js, playerProfileShadowStore.js; playerProfileExplanation.js reads decomposition/policy without changing scoring; visible profiles are Session-derived |
-| Dashboard/filters/notes | playerDashboard.js, filteredStats.js, positionResolver.js, playerNotesStore.js |
-| Career | careerContributionStore.js builds immutable bundles; careerServiceWorker.js owns extension-origin IndexedDB via careerIndexedStore.js; careerStatsAggregator.js chooses active contributions; careerBackup.js / careerBackupPolicy.js validate bounded replace-only backup |
+| Dashboard/filters/notes | playerDashboard.js, statEvidence.js, filteredStats.js, positionResolver.js, playerNotesStore.js |
+| Career | careerContributionStore.js builds immutable bundles; careerServiceWorker.js owns extension-origin IndexedDB via careerIndexedStore.js; careerStatsAggregator.js chooses active contributions; careerBackup.js / careerBackupPolicy.js validate bounded ledger transfer; careerPortableFile.js handles gzip/legacy JSON transport |
 | Board/Pot Odds | boardCompanionLayout.js owns stable table-local canonical board epochs; potOddsPosition.js owns offsets/clamps; potOdds.js owns arithmetic; read-only boardCompanionDiagnosticBridge.js |
 | Settings | settingsUi.js, careerDataSettings.js and content.js adapters; popup.js uses existing storage/message boundaries |
 | Diagnostics/performance | hudDiagnostics.js, hudHealth.js, runtimeBounds.js, tbTrace.js, pause/showdown captures and read-only inspectors; bounded, opt-in where applicable, never poker-semantic owners |
 
-Career append is downstream of accepted finalized contributions, not historical Session backfill. Fingerprints, linear supersession, quarantine, outbox replay and indexed query revisions preserve exactly-once logical aggregation. Whole-ledger restore affects Career stores only; Session, notes, profile state and settings remain separate.
+Career append is downstream of accepted finalized contributions, not historical Session backfill. Fingerprints, linear supersession, quarantine, outbox replay and indexed query revisions preserve exactly-once logical aggregation. Import merges Career without resetting Session. Successful whole-ledger Restore replaces Career and then resets Session; failed Restore preserves Session. Notes and settings remain separate.
 
 [Stat support](STAT_SUPPORT.md), [Career Data](CAREER_DATA.md), [Privacy](PRIVACY.md), [Testing](TESTING.md) and [Release Audit](RELEASE_AUDIT.md) describe the current V1 contract. The detailed implementation notes below retain phase terminology where historically useful.
 
@@ -84,7 +84,7 @@ Career Statistics Phase 1 is an additional consumer after semantic finalization 
 
 Career Statistics Phase 2 moves only the career record layer to extension-origin IndexedDB after measured Phase 1 get-all startup costs became unsuitable at long-term scale. `careerServiceWorker.js` owns the database and an allowlisted runtime-message boundary; the content script never opens host-origin IndexedDB. `careerIndexedStore.js` performs structural Phase 1 migration, fingerprint-keyed append transactions, indexed per-player cache/query recovery, deterministic export, and crash-safe outbox replay. The exact Phase 1 semantic records and career boundary remain unchanged. The aggregator resolves explicit linear supersession chains and quarantines ambiguity. See [CAREER_STATS_PHASE2.md](CAREER_STATS_PHASE2.md).
 
-Career Statistics Phase 3A adds `careerBackup.js`: a canonical versioned JSON format, SHA-256 integrity, strict whole-backup validation, and replace-only restoration. The service worker validates and rebuilds before mutation, requires digest-bound explicit confirmation, and atomically clears/repopulates only the four career stores with in-transaction verification. Merge restore remains deferred; the certified replace-only restore UI is available in Settings > Career Data. See [CAREER_STATS_PHASE3A.md](CAREER_STATS_PHASE3A.md).
+Career Statistics Phase 3A historically introduced `careerBackup.js`: canonical Backup v1 JSON, SHA-256 integrity, strict validation, and replace-only restoration. V1.2 adds a separate Import (Merge) path and gzip transport while retaining the advanced Restore (Replace) path. The service worker validates and rebuilds before mutation and binds confirmation to candidate/current digests. See [CAREER_DATA.md](CAREER_DATA.md) for current behavior; [CAREER_STATS_PHASE3A.md](CAREER_STATS_PHASE3A.md) remains historical design context.
 
 Player Dashboard Phase 4A adds `playerDashboard.js` as a pure presentation/stat adapter and `playerNotesStore.js` as a separate mutable stable-ID metadata store. `content.js` wires name activation to the existing authoritative Session computation and asynchronous career service boundary. Career record schema 2 carries minimal reducer-proven stable IDs for 3Bet, F3B, multiway CBet context, and FCB; schema 1 remains valid without relational coverage. See [PLAYER_DASHBOARD_PHASE4A.md](PLAYER_DASHBOARD_PHASE4A.md).
 

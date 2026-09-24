@@ -382,6 +382,6 @@ var ui = ['overlayStats.js', 'leaderboardStats.js', 'seatOverlay.js', 'settingsU
 assert.match(ui, /\bWTSD\b/);
 assert.match(ui, /W\$SD/);
 assert.doesNotMatch(source, /PokerOverlayStats|PokerSeatOverlay|PokerLeaderboardStats/, 'the reducer remains isolated from visible presentation');
-assert.ok(content.includes("v1.1.0-rc3-20260913-1702"), 'the promoted V1.1 Build ID is synchronized');
+assert.ok(content.includes("v1.2.0-rc2-20260922-1612"), 'the promoted V1.2 Build ID is synchronized');
 
 console.log('Isolated showdown reducer S1-S20, authoritative-ledger audit, deduplication, bounds, and production neutrality tests passed.');

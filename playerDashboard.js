@@ -1,10 +1,12 @@
 /* Pure presentation and stat-shape adapter for the stable-ID Player Dashboard. */
 (function (root, factory) {
   'use strict';
-  var api = factory();
+  var evidence = root.PokerStatEvidence;
+  if (typeof module !== 'undefined' && module.exports) evidence = require('./statEvidence.js');
+  var api = factory(evidence);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PokerPlayerDashboard = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Evidence) {
   'use strict';
   var PROFILE_ORDER = Object.freeze(['Nit', 'TAG', 'LAG', 'Tight Passive', 'Loose Passive', 'Calling Station', 'Maniac']);
   // Forty exact observations retain the existing Career table-context maturity
@@ -24,45 +26,64 @@
   function percent(numerator, denominator) { return denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : null; }
   function percentageText(value) { return value === null || value === undefined ? '---' : (Math.round(Number(value) * 10) / 10) + '%'; }
   function afText(aggressive, calls) { if (!calls) return aggressive > 0 ? '\u221e' : '0.0'; return (Math.round((aggressive / calls) * 100) / 100).toFixed(2).replace(/0$/, ''); }
-  function card(id, label, value, numerator, denominator, sampleLabel) { return { id: id, label: label, value: value, numerator: numerator, denominator: denominator, sample: sampleLabel || (numerator + ' / ' + denominator) }; }
-  function fromSession(stats) {
+  function owns(value, field) { return Boolean(value) && Object.prototype.hasOwnProperty.call(value, field); }
+  function exactCounter(value) { return Number.isSafeInteger(value) && value >= 0; }
+  function fieldsAvailable(value, fields) { return fields.every(function (field) { return owns(value, field) && exactCounter(value[field]); }); }
+  function evidenceInput(id, numerator, denominator, options) {
+    options = options || {};
+    return {
+      statKey: id, numerator: numerator, denominator: denominator,
+      opportunities: options.opportunities === undefined ? denominator : options.opportunities,
+      hands: options.hands === undefined ? numerator : options.hands,
+      aggressiveActions: options.aggressiveActions === undefined ? numerator : options.aggressiveActions,
+      calls: options.calls === undefined ? denominator : options.calls,
+      available: options.available !== false, source: options.source || null, context: options.context || null
+    };
+  }
+  function card(id, label, value, numerator, denominator, sampleLabel, options) {
+    return { id: id, label: label, value: value, numerator: numerator, denominator: denominator,
+      sample: sampleLabel || (numerator + ' / ' + denominator), evidence: Evidence.evaluateStatEvidence(evidenceInput(id, numerator, denominator, options)) };
+  }
+  function fromSession(stats, context) {
     stats = stats || {}; var af = stats.afDetails || {};
+    var common = { source: 'session', context: context || null };
     return [
-      card('hands', 'Hands', String(integer(stats.handsPlayed)), integer(stats.handsPlayed), null, 'Finalized hands'),
-      card('vpip', 'VPIP', percentageText(percent(integer(stats.vpipHands), integer(stats.vpipOpportunities))), integer(stats.vpipHands), integer(stats.vpipOpportunities)),
-      card('pfr', 'PFR', percentageText(percent(integer(stats.pfrHands), integer(stats.pfrOpportunities))), integer(stats.pfrHands), integer(stats.pfrOpportunities)),
-      card('af', 'AF', afText(integer(af.bets) + integer(af.raises), integer(af.calls)), integer(af.bets) + integer(af.raises), integer(af.calls), (integer(af.bets) + integer(af.raises)) + ' aggressive / ' + integer(af.calls) + ' calls'),
-      card('threeBet', '3Bet', percentageText(percent(integer(stats.threeBetMade), integer(stats.threeBetOpportunities))), integer(stats.threeBetMade), integer(stats.threeBetOpportunities)),
-      card('foldToThreeBet', 'F3B', percentageText(percent(integer(stats.foldToThreeBet), integer(stats.foldToThreeBetOpportunities))), integer(stats.foldToThreeBet), integer(stats.foldToThreeBetOpportunities)),
-      card('flopCBet', 'CBet', percentageText(percent(integer(stats.flopCBetMade), integer(stats.flopCBetOpportunities))), integer(stats.flopCBetMade), integer(stats.flopCBetOpportunities)),
-      card('foldToFlopCBet', 'FCB', percentageText(percent(integer(stats.foldToFlopCBet), integer(stats.foldToFlopCBetOpportunities))), integer(stats.foldToFlopCBet), integer(stats.foldToFlopCBetOpportunities)),
-      card('wtsd', 'WTSD', percentageText(percent(integer(stats.wentToShowdown), integer(stats.sawFlopForWTSD))), integer(stats.wentToShowdown), integer(stats.sawFlopForWTSD)),
-      card('wsd', 'W$SD', percentageText(percent(integer(stats.wonMoneyAtShowdown), integer(stats.showdownsForWSD))), integer(stats.wonMoneyAtShowdown), integer(stats.showdownsForWSD))
+      card('hands', 'Hands', String(integer(stats.handsPlayed)), integer(stats.handsPlayed), null, 'Finalized hands', Object.assign({}, common, { available: fieldsAvailable(stats, ['handsPlayed']) })),
+      card('vpip', 'VPIP', percentageText(percent(integer(stats.vpipHands), integer(stats.vpipOpportunities))), integer(stats.vpipHands), integer(stats.vpipOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['vpipHands', 'vpipOpportunities']) })),
+      card('pfr', 'PFR', percentageText(percent(integer(stats.pfrHands), integer(stats.pfrOpportunities))), integer(stats.pfrHands), integer(stats.pfrOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['pfrHands', 'pfrOpportunities']) })),
+      card('af', 'AF', afText(integer(af.bets) + integer(af.raises), integer(af.calls)), integer(af.bets) + integer(af.raises), integer(af.calls), (integer(af.bets) + integer(af.raises)) + ' aggressive / ' + integer(af.calls) + ' calls', Object.assign({}, common, { available: fieldsAvailable(af, ['bets', 'raises', 'calls']), aggressiveActions: integer(af.bets) + integer(af.raises), calls: integer(af.calls) })),
+      card('threeBet', '3Bet', percentageText(percent(integer(stats.threeBetMade), integer(stats.threeBetOpportunities))), integer(stats.threeBetMade), integer(stats.threeBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['threeBetMade', 'threeBetOpportunities']) })),
+      card('foldToThreeBet', 'F3B', percentageText(percent(integer(stats.foldToThreeBet), integer(stats.foldToThreeBetOpportunities))), integer(stats.foldToThreeBet), integer(stats.foldToThreeBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['foldToThreeBet', 'foldToThreeBetOpportunities']) })),
+      card('flopCBet', 'CBet', percentageText(percent(integer(stats.flopCBetMade), integer(stats.flopCBetOpportunities))), integer(stats.flopCBetMade), integer(stats.flopCBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['flopCBetMade', 'flopCBetOpportunities']) })),
+      card('foldToFlopCBet', 'FCB', percentageText(percent(integer(stats.foldToFlopCBet), integer(stats.foldToFlopCBetOpportunities))), integer(stats.foldToFlopCBet), integer(stats.foldToFlopCBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['foldToFlopCBet', 'foldToFlopCBetOpportunities']) })),
+      card('wtsd', 'WTSD', percentageText(percent(integer(stats.wentToShowdown), integer(stats.sawFlopForWTSD))), integer(stats.wentToShowdown), integer(stats.sawFlopForWTSD), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['wentToShowdown', 'sawFlopForWTSD']) })),
+      card('wsd', 'W$SD', percentageText(percent(integer(stats.wonMoneyAtShowdown), integer(stats.showdownsForWSD))), integer(stats.wonMoneyAtShowdown), integer(stats.showdownsForWSD), null, Object.assign({}, common, { available: fieldsAvailable(stats, ['wonMoneyAtShowdown', 'showdownsForWSD']) }))
     ];
   }
-  function fromCareer(stats) {
+  function fromCounterResult(stats, source, context) {
     if (!stats || !stats.counters) return [];
-    var c = stats.counters;
+    var c = stats.counters; var common = { source: source, context: context || null };
     return [
-      card('hands', 'Hands', String(integer(c.hands)), integer(c.hands), null, 'Finalized hands'),
-      card('vpip', 'VPIP', percentageText(percent(integer(c.vpipMade), integer(c.vpipOpportunities))), integer(c.vpipMade), integer(c.vpipOpportunities)),
-      card('pfr', 'PFR', percentageText(percent(integer(c.pfrMade), integer(c.pfrOpportunities))), integer(c.pfrMade), integer(c.pfrOpportunities)),
-      card('af', 'AF', afText(integer(c.postflopAggressiveActions), integer(c.postflopCalls)), integer(c.postflopAggressiveActions), integer(c.postflopCalls), integer(c.postflopAggressiveActions) + ' aggressive / ' + integer(c.postflopCalls) + ' calls'),
-      card('threeBet', '3Bet', percentageText(percent(integer(c.threeBetMade), integer(c.threeBetOpportunities))), integer(c.threeBetMade), integer(c.threeBetOpportunities)),
-      card('foldToThreeBet', 'F3B', percentageText(percent(integer(c.foldToThreeBet), integer(c.foldToThreeBetOpportunities))), integer(c.foldToThreeBet), integer(c.foldToThreeBetOpportunities)),
-      card('flopCBet', 'CBet', percentageText(percent(integer(c.flopCBetMade), integer(c.flopCBetOpportunities))), integer(c.flopCBetMade), integer(c.flopCBetOpportunities)),
-      card('foldToFlopCBet', 'FCB', percentageText(percent(integer(c.foldToFlopCBet), integer(c.foldToFlopCBetOpportunities))), integer(c.foldToFlopCBet), integer(c.foldToFlopCBetOpportunities)),
-      card('wtsd', 'WTSD', percentageText(percent(integer(c.wtsdMade), integer(c.wtsdOpportunities))), integer(c.wtsdMade), integer(c.wtsdOpportunities)),
-      card('wsd', 'W$SD', percentageText(percent(integer(c.wsdMade), integer(c.wsdOpportunities))), integer(c.wsdMade), integer(c.wsdOpportunities))
+      card('hands', 'Hands', String(integer(c.hands)), integer(c.hands), null, 'Finalized hands', Object.assign({}, common, { available: fieldsAvailable(c, ['hands']) })),
+      card('vpip', 'VPIP', percentageText(percent(integer(c.vpipMade), integer(c.vpipOpportunities))), integer(c.vpipMade), integer(c.vpipOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['vpipMade', 'vpipOpportunities']) })),
+      card('pfr', 'PFR', percentageText(percent(integer(c.pfrMade), integer(c.pfrOpportunities))), integer(c.pfrMade), integer(c.pfrOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['pfrMade', 'pfrOpportunities']) })),
+      card('af', 'AF', afText(integer(c.postflopAggressiveActions), integer(c.postflopCalls)), integer(c.postflopAggressiveActions), integer(c.postflopCalls), integer(c.postflopAggressiveActions) + ' aggressive / ' + integer(c.postflopCalls) + ' calls', Object.assign({}, common, { available: fieldsAvailable(c, ['postflopAggressiveActions', 'postflopCalls']), aggressiveActions: integer(c.postflopAggressiveActions), calls: integer(c.postflopCalls) })),
+      card('threeBet', '3Bet', percentageText(percent(integer(c.threeBetMade), integer(c.threeBetOpportunities))), integer(c.threeBetMade), integer(c.threeBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['threeBetMade', 'threeBetOpportunities']) })),
+      card('foldToThreeBet', 'F3B', percentageText(percent(integer(c.foldToThreeBet), integer(c.foldToThreeBetOpportunities))), integer(c.foldToThreeBet), integer(c.foldToThreeBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['foldToThreeBet', 'foldToThreeBetOpportunities']) })),
+      card('flopCBet', 'CBet', percentageText(percent(integer(c.flopCBetMade), integer(c.flopCBetOpportunities))), integer(c.flopCBetMade), integer(c.flopCBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['flopCBetMade', 'flopCBetOpportunities']) })),
+      card('foldToFlopCBet', 'FCB', percentageText(percent(integer(c.foldToFlopCBet), integer(c.foldToFlopCBetOpportunities))), integer(c.foldToFlopCBet), integer(c.foldToFlopCBetOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['foldToFlopCBet', 'foldToFlopCBetOpportunities']) })),
+      card('wtsd', 'WTSD', percentageText(percent(integer(c.wtsdMade), integer(c.wtsdOpportunities))), integer(c.wtsdMade), integer(c.wtsdOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['wtsdMade', 'wtsdOpportunities']) })),
+      card('wsd', 'W$SD', percentageText(percent(integer(c.wsdMade), integer(c.wsdOpportunities))), integer(c.wsdMade), integer(c.wsdOpportunities), null, Object.assign({}, common, { available: fieldsAvailable(c, ['wsdMade', 'wsdOpportunities']) }))
     ];
   }
-  function cardsFor(value, mode) { return mode === 'career' || value && value.counters ? fromCareer(value) : fromSession(value); }
+  function fromCareer(stats, context) { return fromCounterResult(stats, 'career', context); }
+  function cardsFor(value, mode, context) { return mode === 'career' || value && value.counters ? fromCounterResult(value, mode === 'career' ? 'career' : 'session', context) : fromSession(value, context); }
   function cardsByIds(cards, ids) { return ids.map(function (id) { return cards.find(function (item) { return item.id === id; }); }).filter(Boolean); }
-  function cardsHtml(cards) { return cards.map(function (item) { return '<article class="pnhud-dashboard-stat pnhud-dashboard-stat-' + esc(item.id) + '"><span>' + esc(item.label) + '</span><strong>' + esc(item.value) + '</strong><small>' + esc(item.sample) + '</small></article>'; }).join(''); }
+  function cardsHtml(cards) { return cards.map(function (item) { var evidence = item.evidence; var title = evidence.explanation + ' Observed result: ' + item.sample + '.'; var strength = evidence.status === 'insufficient' ? '' : '<em> · ' + esc(evidence.label) + '</em>'; return '<article class="pnhud-dashboard-stat pnhud-dashboard-stat-' + esc(item.id) + '"><span>' + esc(item.label) + '</span><strong>' + esc(item.value) + '</strong><small class="pnhud-dashboard-evidence pnhud-dashboard-evidence-' + esc(evidence.status) + '" title="' + esc(title) + '"><span>' + esc(evidence.compactSupportText) + '</span>' + strength + '</small></article>'; }).join(''); }
   function relationalCards(state, mode, overallCards) {
     if (!state.opponentMode || state.opponentMode === 'overall') return cardsByIds(overallCards, RELATIONAL_IDS);
-    var sources = state.relationalStats || {};
-    return RELATIONAL_IDS.map(function (id) { var cards = cardsFor(sources[id], mode); return cards.find(function (item) { return item.id === id; }) || card(id, id === 'threeBet' ? '3Bet' : id === 'foldToThreeBet' ? 'F3B' : 'FCB', '---', 0, 0); });
+    var sources = state.relationalStats || {}; var context = { position: state.position || null, situation: state.situation || 'overall', opponentMode: state.opponentMode || 'overall' };
+    return RELATIONAL_IDS.map(function (id) { var cards = cardsFor(sources[id], mode, context); return cards.find(function (item) { return item.id === id; }) || card(id, id === 'threeBet' ? '3Bet' : id === 'foldToThreeBet' ? 'F3B' : 'FCB', '---', 0, 0, 'Unavailable', { available: false, source: mode, context: context }); });
   }
   function fitText(value) { var number = Number(value); return Number.isFinite(number) ? (Math.round(number * 1000) / 10) + '%' : '\u2014'; }
   function profileEvidenceHtml(explanation) {
@@ -320,15 +341,15 @@
   }
   function render(state) {
     state = state || {}; var mode = state.mode === 'career' ? 'career' : 'session'; var situation = SITUATION_OPTIONS.some(function (option) { return option.value === state.situation; }) ? state.situation : 'overall'; var position = situation === 'overall' && POSITION_OPTIONS.indexOf(state.position) >= 0 ? state.position : null; var modeLabel = mode === 'career' ? 'Career' : 'Current session';
-    var source = state.coreStats || (mode === 'career' ? state.careerStats : state.sessionStats); var cards = cardsFor(source, mode); var hands = cards.length ? cards[0].numerator : 0; var coverage = source && source.coverage || {};
+    var scoped = Boolean(position || situation !== 'overall'); var source = scoped ? state.coreStats : state.coreStats || (mode === 'career' ? state.careerStats : state.sessionStats); var missingScopedSource = Boolean(scoped && !source && !state.loading && !state.error); var evidenceContext = { position: position, situation: situation, opponentMode: 'overall' }; var cards = cardsFor(source, mode, evidenceContext); var hands = cards.length ? cards[0].numerator : 0; var coverage = source && source.coverage || {};
     var name = state.displayName || 'Tracked player'; var noteValue = Object.prototype.hasOwnProperty.call(state, 'noteDraft') ? state.noteDraft : state.note; var headerProfile = state.profile && (state.profile.displayedArchetype || state.profile.rawArchetype); var context = modeLabel + (situation !== 'overall' ? ' · ' + situationLabel(situation) : position ? ' · ' + position : '') + ' · ' + hands + ' ' + (hands === 1 ? 'hand' : 'hands');
     if (mode === 'career' && state.careerTrackingStartedAt) context += ' · Tracked since ' + new Date(state.careerTrackingStartedAt).toLocaleDateString();
-    var coreCards = cardsByIds(cards, CORE_IDS); var relationCards = relationalCards(state, mode, cards); var noPositionSample = Boolean(position && !state.loading && integer(coverage.matchedPositionHands) === 0); var noSituationSample = Boolean(situation !== 'overall' && !state.loading && integer(coverage.matchedSituationHands) === 0);
-    var coreBody = state.loading ? '<p class="pnhud-dashboard-empty" role="status">Loading career statistics and filters...</p>' : state.error ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.error) + '</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No position-tracked hands for ' + esc(position) + ' yet.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No exact heads-up postflop hands for ' + esc(situationLabel(situation).toLowerCase()) + ' yet.</p>' : !cards.length ? '<p class="pnhud-dashboard-empty">No ' + (mode === 'career' ? 'career' : 'session') + ' hands tracked yet.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-core-grid">' + cardsHtml(coreCards) + '</div>';
+    var coreCards = cardsByIds(cards, CORE_IDS); var relationCards = relationalCards(state, mode, cards); var exactCoverageAvailable = Boolean(source && source.coverage); var noPositionSample = Boolean(position && !state.loading && exactCoverageAvailable && integer(coverage.matchedPositionHands) === 0); var noSituationSample = Boolean(situation !== 'overall' && !state.loading && exactCoverageAvailable && integer(coverage.matchedSituationHands) === 0);
+    var coreBody = state.loading ? '<p class="pnhud-dashboard-empty" role="status">Loading career statistics and filters...</p>' : state.error ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.error) + '</p>' : missingScopedSource ? '<p class="pnhud-dashboard-empty">Filtered statistics and evidence are unavailable for this context.</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No position-tracked hands for ' + esc(position) + ' yet.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No exact heads-up postflop hands for ' + esc(situationLabel(situation).toLowerCase()) + ' yet.</p>' : !cards.length ? '<p class="pnhud-dashboard-empty">No ' + (mode === 'career' ? 'career' : 'session') + ' hands tracked yet.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-core-grid">' + cardsHtml(coreCards) + '</div>';
     var relationContext = situation !== 'overall' ? situationLabel(situation) + ' · ' : position ? position + ' · ' : ''; relationContext += state.opponentMode === 'self' ? 'Vs You' : state.opponentMode === 'others' ? 'Vs Everyone Else' : 'Overall';
-    var relationBody = state.loading ? '<p class="pnhud-dashboard-empty">Loading relational samples...</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this position.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this situation.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-relational-grid">' + cardsHtml(relationCards) + '</div>';
+    var relationBody = state.loading ? '<p class="pnhud-dashboard-empty">Loading relational samples...</p>' : missingScopedSource ? '<p class="pnhud-dashboard-empty">Filtered relational evidence is unavailable for this context.</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this position.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this situation.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-relational-grid">' + cardsHtml(relationCards) + '</div>';
     var relationalCoverage = state.opponentMode && state.opponentMode !== 'overall' ? relationCards.reduce(function (sum, item) { return sum + integer(item.denominator); }, 0) : null;
     return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><div class="pnhud-dashboard-title"><h2>' + esc(name) + '</h2>' + (headerProfile ? '<span class="pnhud-dashboard-header-profile">' + esc(headerProfile) + '</span>' : '') + '</div><p>' + esc(context) + '</p><small title="Canonical stable player ID">ID ' + esc(state.playerId) + '</small></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row"><div class="pnhud-dashboard-tabs" role="tablist" aria-label="Statistics window"><button type="button" role="tab" data-dashboard-mode="session" aria-selected="' + (mode === 'session') + '" class="' + (mode === 'session' ? 'active' : '') + '">Session</button><button type="button" role="tab" data-dashboard-mode="career" aria-selected="' + (mode === 'career') + '" class="' + (mode === 'career' ? 'active' : '') + '">Career</button></div>' + situationControl(situation) + positionControl(position, situation !== 'overall') + '</div><section class="pnhud-dashboard-section"><h3>Core stats</h3>' + coverageHtml(state, coverage, mode, position, situation) + coreBody + '</section>' + trendsHtml(state, mode) + '<section class="pnhud-dashboard-section pnhud-dashboard-relational"><div class="pnhud-dashboard-section-heading"><div><h3>Relational stats</h3><small>' + esc(relationContext) + '</small></div>' + opponentControl(state) + '</div>' + relationBody + (relationalCoverage !== null ? '<p class="pnhud-dashboard-help">' + relationalCoverage + ' supported relational ' + (relationalCoverage === 1 ? 'opportunity' : 'opportunities') + ' across 3Bet, F3B, and FCB. Missing counterpart history is excluded.</p>' : '<p class="pnhud-dashboard-help">Opponent context applies only to 3Bet, F3B, and FCB.</p>') + '</section>' + profileHtml(state.profile, mode) + '<section class="pnhud-dashboard-section"><div class="pnhud-dashboard-notes-heading"><h3>Notes</h3><span class="pnhud-dashboard-note-status" role="status" aria-live="polite">' + esc(state.noteStatus || '') + '</span></div><textarea class="pnhud-dashboard-note" maxlength="5000" aria-label="Notes for ' + esc(name) + '" placeholder="Add a private note about this player...">' + esc(noteValue || '') + '</textarea><div class="pnhud-dashboard-note-actions"><button type="button" class="pnhud-dashboard-save-note">Save Note</button><button type="button" class="pnhud-dashboard-clear-note"' + (!noteValue ? ' disabled' : '') + '>Clear Note</button></div><p class="pnhud-dashboard-help">Notes are keyed only by stable player ID and are unaffected by dashboard filters.</p></section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
   }
-  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, SITUATION_OPTIONS: SITUATION_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, TREND_IDS: TREND_IDS, CAREER_CONTEXT_POLICY: CAREER_CONTEXT_POLICY, createGeometryController: createGeometryController, careerProfile: careerProfile, fromSession: fromSession, fromCareer: fromCareer, selectTrendWindow: selectTrendWindow, trendDelta: trendDelta, careerRevisionsMatch: careerRevisionsMatch, requestMatches: requestMatches, render: render, percentageText: percentageText, afText: afText });
+  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, SITUATION_OPTIONS: SITUATION_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, TREND_IDS: TREND_IDS, CAREER_CONTEXT_POLICY: CAREER_CONTEXT_POLICY, createGeometryController: createGeometryController, careerProfile: careerProfile, fromSession: fromSession, fromCareer: fromCareer, fromCounterResult: fromCounterResult, selectTrendWindow: selectTrendWindow, trendDelta: trendDelta, careerRevisionsMatch: careerRevisionsMatch, requestMatches: requestMatches, render: render, percentageText: percentageText, afText: afText });
 });

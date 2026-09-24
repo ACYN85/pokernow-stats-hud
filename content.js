@@ -3,7 +3,7 @@
   var console = globalThis.PokerHudDiagnostics && typeof globalThis.PokerHudDiagnostics.createConsole === 'function'
     ? globalThis.PokerHudDiagnostics.createConsole(globalThis.console)
     : globalThis.console;
-  var PNHUD_BUILD_ID = 'v1.1.0-rc3-20260913-1702';
+  var PNHUD_BUILD_ID = 'v1.2.0-rc2-20260922-1612';
   var PNHUD_EXTENSION_ID = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id || 'unavailable';
   var runtimeScopeFallbackActive = false;
 
@@ -201,6 +201,26 @@
   var contentScriptInstanceId = PNHUD_BUILD_ID + ':content:' + globalThis.__PNHUD_CONTENT_INSTANCE_SEQUENCE__ + ':' + contentInitializedAt;
   var runtimeStatusStoreInstanceId = contentScriptInstanceId + ':runtime-status';
   var hudRendererInstanceId = contentScriptInstanceId + ':renderer';
+  // The DOM epoch spans isolated-world replacements as well as same-world
+  // reinjection. Transfer synchronously retires the predecessor before startup.
+  var controllerOwnerAttribute = 'data-pnhud-controller-owner';
+  var controllerOwnerToken = contentScriptInstanceId + ':' + Math.random().toString(36).slice(2);
+  document.documentElement.setAttribute(controllerOwnerAttribute, controllerOwnerToken);
+  document.dispatchEvent(new Event('pnhud-controller-claimed'));
+  document.addEventListener('pnhud-controller-claimed', handleControllerClaimed);
+
+  function ownsRuntimeController() {
+    return !extensionCleanedUp && document.documentElement.getAttribute(controllerOwnerAttribute) === controllerOwnerToken;
+  }
+
+  function requireRuntimeController() {
+    if (!ownsRuntimeController()) throw new Error('superseded content controller');
+  }
+
+  function handleControllerClaimed() {
+    if (!ownsRuntimeController()) cleanupExtension('superseded content controller');
+  }
+
   globalThis.__PNHUD_ACTIVE_CONTENT_INSTANCES__[contentScriptInstanceId] = true;
   var firstHandLifecycle = PokerFirstHandLifecycle.create({
     buildId: PNHUD_BUILD_ID,
@@ -327,10 +347,11 @@
   var careerStoreState = null;
   var careerIndexedService = null;
   var careerIndexedAppendQueue = Promise.resolve();
+  var careerRestoreAppendGate = null;
   var careerTrackingReady = false;
   var careerPendingStorageUpdates = {};
   var careerDiagnostics = { accepted: 0, externalAccepted: 0, duplicates: 0, conflicts: 0, rejected: 0, recent: [] };
-  var careerDataUiState = { info: null, summaryError: null, loading: false, busy: false, message: '', messageKind: 'none', preview: null, backupCandidate: null, fetchedAt: 0 };
+  var careerDataUiState = { info: null, summaryError: null, loading: false, busy: false, message: '', messageKind: 'none', activeFlow: null, importPreview: null, importCandidate: null, importRequestToken: 0, preview: null, backupCandidate: null, restoreRequestToken: 0, removalPreview: null, removalRequest: null, removalFlowActive: false, removalRequestToken: 0, fetchedAt: 0 };
   var playerNotesState = PokerPlayerNotesStore.normalize(null);
   var playerDashboardState = { open: false, playerId: null, displayName: '', mode: 'session', position: null, overallPosition: null, situation: 'overall', opponentMode: 'overall', selfPlayerId: null, coreStats: null, relationalStats: {}, sessionStats: null, careerStats: null, careerTrackingStartedAt: null, trends: null, trendWindow: null, trendError: null, loading: false, error: null, profile: null, note: '', noteDraft: '', noteStatus: '', requestToken: 0, returnFocus: null };
   var playerDashboardElement = null;
@@ -539,6 +560,7 @@
     renderPending: false, lastRequestCoalesced: false, coalescedRequestCount: 0, lastMountedDecisionFingerprint: null
   };
   var seatOverlayController = null;
+  var seatOverlayRendererSuperseded = false;
   var seatLayoutObserver = null;
   var seatResizeObserver = null;
   var observedSeatElements = new Set();
@@ -565,6 +587,8 @@
   // Presentation aggregates only; Career persistence, revisions and resolution remain backend-owned.
   var leaderboardCareerStatsByPlayer = new Map();
   var leaderboardCareerSignature = '';
+  var leaderboardCareerSnapshotSignature = '';
+  var leaderboardCareerFailedSignature = '';
   var leaderboardCareerRequestToken = 0;
   var seatHudCareerLoadedSignature = '';
   var seatHudCareerPendingSignature = '';
@@ -882,8 +906,10 @@
       ['PokerCareerContributionStore', globalThis.PokerCareerContributionStore, 'careerContributionStore.js'],
       ['PokerCareerIndexedStore', globalThis.PokerCareerIndexedStore, 'careerIndexedStore.js'],
       ['PokerCareerBackupPolicy', globalThis.PokerCareerBackupPolicy, 'careerBackupPolicy.js'],
+      ['PokerCareerPortableFile', globalThis.PokerCareerPortableFile, 'careerPortableFile.js'],
       ['PokerCareerDataSettings', globalThis.PokerCareerDataSettings, 'careerDataSettings.js'],
       ['PokerPlayerNotesStore', globalThis.PokerPlayerNotesStore, 'playerNotesStore.js'],
+      ['PokerStatEvidence', globalThis.PokerStatEvidence, 'statEvidence.js'],
       ['PokerPlayerDashboard', globalThis.PokerPlayerDashboard, 'playerDashboard.js'],
       ['PokerTrackedPlayers', globalThis.PokerTrackedPlayers, 'trackedPlayers.js'],
       ['PokerHandStatExplanation', globalThis.PokerHandStatExplanation, 'statExplanation.js'],
@@ -1101,7 +1127,7 @@
       });
     }
     hudUiPreferences = normalized.value;
-    if (previousLeaderboardSource !== hudUiPreferences.leaderboardStatSource || previousLeaderboardEnabled !== hudUiPreferences.leaderboardEnabled) clearLeaderboardCareerStats();
+    if (previousLeaderboardSource !== hudUiPreferences.leaderboardStatSource || previousLeaderboardEnabled !== hudUiPreferences.leaderboardEnabled) invalidateLeaderboardCareerRequest();
     settingsUiDiagnostics.settingsPanelOpen = hudUiPreferences.settingsOpen;
     settingsUiDiagnostics.selectedSection = hudUiPreferences.selectedSettingsSection;
     if (source === 'storage-restore') settingsUiDiagnostics.preferenceRestoreUsedDefaults = normalized.defaultUsed;
@@ -1157,6 +1183,7 @@
     });
     chrome.storage.local.get(keysToRead, restoreSaved);
     function restoreSaved(saved) {
+      if (!ownsRuntimeController()) return;
       var indexedCareerBackendAvailable = Boolean(globalThis.PokerCareerIndexedStore && chrome.runtime && typeof chrome.runtime.sendMessage === 'function');
       careerStoreState = indexedCareerBackendAvailable ? null : PokerCareerContributionStore.createState(saved, { initializedAt: Date.now(), buildId: PNHUD_BUILD_ID });
       authoritativePersistenceQueue.observeRevision(saved[STORAGE_KEYS.liveRevision]);
@@ -1364,6 +1391,7 @@
         });
       }
       function finishStorageRestore(restored) {
+        if (!ownsRuntimeController()) return;
         callback(restored);
         if (indexedCareerBackendAvailable) {
           careerInitialization.then(function () {
@@ -1529,11 +1557,10 @@
       downloadCareerBackup: function () {
         if (!careerIndexedService) return Promise.reject(new Error('formal backup requires the extension service worker backend'));
         return careerIndexedService.exportCareerBackup().then(function (backup) {
-          var blob = new Blob([JSON.stringify(backup, null, 2) + '\n'], { type: 'application/json' });
-          var href = URL.createObjectURL(blob); var anchor = document.createElement('a');
-          anchor.href = href; anchor.download = 'pokernow-career-backup-v' + backup.backupFormatVersion + '-' + backup.integrity.payloadDigest.slice(0, 12) + '.json';
-          anchor.style.display = 'none'; document.documentElement.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(href);
-          return { downloaded: true, fileName: anchor.download, summary: { physicalRecordCount: backup.integrity.physicalRecordCount, activeRecordCount: backup.integrity.activeRecordCount, playerCount: backup.integrity.playerCount, careerTrackingStartedAt: backup.careerMetadata.careerTrackingStartedAt, payloadDigest: backup.integrity.payloadDigest } };
+          var fileName = 'pokernow-career-backup-v' + backup.backupFormatVersion + '-' + backup.integrity.payloadDigest.slice(0, 12) + '.json.gz';
+          return triggerCareerBackupDownload(backup, fileName).then(function (download) {
+            return { downloaded: true, fileName: download.fileName, compressedBytes: download.compressedBytes, decompressedBytes: download.decompressedBytes, summary: { physicalRecordCount: backup.integrity.physicalRecordCount, activeRecordCount: backup.integrity.activeRecordCount, playerCount: backup.integrity.playerCount, careerTrackingStartedAt: backup.careerMetadata.careerTrackingStartedAt, payloadDigest: backup.integrity.payloadDigest } };
+          });
         });
       }
     });
@@ -2234,6 +2261,7 @@
   }
 
   function renderPlayerDashboard(preferredFocus) {
+    if (!ownsRuntimeController()) return;
     var panel = ensurePlayerDashboard();
     panel.hidden = !playerDashboardState.open;
     panel.setAttribute('aria-hidden', playerDashboardState.open ? 'false' : 'true');
@@ -2413,6 +2441,7 @@
   }
 
   function renderTrackedPlayers(preferredFocus, selection) {
+    if (!ownsRuntimeController()) return;
     var panel = ensureTrackedPlayers();
     if (!panel) return;
     panel.hidden = !trackedPlayersState.open;
@@ -2464,7 +2493,8 @@
     return true;
   }
 
-  function invalidateTrackedPlayers() {
+  function invalidateTrackedPlayers(playerIds, reason, clearSettledPresentation) {
+    if (clearSettledPresentation) trackedPlayersState.summaries = [];
     if (!trackedPlayersState.open) return false;
     requestTrackedPlayerSummaries();
     return true;
@@ -2830,7 +2860,7 @@
   }
 
   function settingsNavigationHtml() {
-    var labels = { general: 'General', overlay: 'Overlay', hud: 'HUD', appearance: 'Appearance', players: 'Players', 'career-data': 'Career Data', diagnostics: 'Diagnostics', about: 'About' };
+    var labels = { general: 'General', overlay: 'Overlay', hud: 'HUD', appearance: 'Appearance', players: 'Players', 'career-data': 'Data', diagnostics: 'Diagnostics', about: 'About' };
     return PokerHudSettings.SECTIONS.map(function (section) {
       var active = hudUiPreferences.selectedSettingsSection === section;
       return '<button type="button" class="pnhud-settings-nav-button' + (active ? ' active' : '') + '" data-settings-section="' + section + '" aria-selected="' + (active ? 'true' : 'false') + '">' + labels[section] + '</button>';
@@ -2849,10 +2879,12 @@
   }
 
   function careerDataBodyHtml() {
+    careerDataUiState.sessionHandCount = handAccounting && handAccounting.finalizedHandIds ? handAccounting.finalizedHandIds.size : 0;
     return PokerCareerDataSettings.render(careerDataUiState.info, careerDataUiState);
   }
 
   function refreshCareerDataView(preferredFocus) {
+    if (!ownsRuntimeController()) return;
     if (!settingsPanel || !settingsPanel.isConnected || hudUiPreferences.selectedSettingsSection !== 'career-data') return;
     var host = settingsPanel.querySelector('.pnhud-career-data-host');
     if (!host) return;
@@ -2884,36 +2916,46 @@
     });
   }
 
-  function triggerCareerBackupDownload(backup) {
-    var fileName = PokerCareerDataSettings.exportFileName(new Date());
-    var blob = new Blob([JSON.stringify(backup, null, 2) + '\n'], { type: 'application/json' });
-    var href = URL.createObjectURL(blob);
-    var anchor = document.createElement('a');
-    anchor.href = href;
-    anchor.download = fileName;
-    anchor.style.display = 'none';
-    document.documentElement.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(href);
-    return fileName;
+  function careerPortableFileOptions() {
+    return { maximumFileBytes: PokerCareerBackupPolicy.MAX_COMPRESSED_FILE_BYTES, maximumJsonBytes: PokerCareerBackupPolicy.MAX_BACKUP_BYTES };
+  }
+
+  function triggerCareerBackupDownload(backup, requestedFileName) {
+    var fileName = requestedFileName || PokerCareerDataSettings.exportFileName(new Date());
+    return PokerCareerPortableFile.compressBackup(backup, careerPortableFileOptions()).then(function (portable) {
+      var blob = new Blob([portable.bytes], { type: portable.mediaType });
+      var href = URL.createObjectURL(blob);
+      var anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = fileName;
+      anchor.style.display = 'none';
+      document.documentElement.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(href);
+      return { fileName: fileName, compressedBytes: portable.compressedBytes, decompressedBytes: portable.decompressedBytes };
+    });
   }
 
   function exportCareerBackupFromSettings() {
+    careerDataUiState.result = null;
     if (!careerIndexedService || careerDataUiState.busy) return;
+    careerDataUiState.removalFlowActive = false;
+    careerDataUiState.activeFlow = 'transfer';
     careerDataUiState.busy = true;
-    careerDataUiState.message = 'Creating verified career backup...';
+    careerDataUiState.message = 'Creating verified portable Career data...';
     careerDataUiState.messageKind = 'none';
     refreshCareerDataView();
-    careerIndexedService.careerLedgerInfo().then(function (info) {
+    careerIndexedAppendQueue.then(function () { return careerIndexedService.careerLedgerInfo(); }).then(function (info) {
       var preflight = info && info.backupSizePolicy || PokerCareerBackupPolicy.exportPreflight(info);
       careerDataUiState.info = Object.assign({}, info || {}, { backupSizePolicy: preflight });
       careerDataUiState.fetchedAt = Date.now();
       if (!preflight.allowed) throw PokerCareerBackupPolicy.limitError('export', preflight);
       return careerIndexedService.exportCareerBackup();
     }).then(function (backup) {
-      var fileName = triggerCareerBackupDownload(backup);
-      careerDataUiState.message = 'Career backup exported as ' + fileName + '.';
+      return triggerCareerBackupDownload(backup);
+    }).then(function (download) {
+      careerDataUiState.message = 'Career data exported as ' + download.fileName + ' (gzip compressed). Session and notes are not included.';
       careerDataUiState.messageKind = 'success';
     }).catch(function (error) {
       careerDataUiState.message = PokerCareerDataSettings.errorMessage(error);
@@ -2925,17 +2967,110 @@
   }
 
   function readCareerBackupFile(file) {
-    if (file && typeof file.text === 'function') return file.text();
-    return new Promise(function (resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function () { resolve(String(reader.result || '')); };
-      reader.onerror = function () { reject(reader.error || new Error('Unable to read backup file')); };
-      reader.readAsText(file);
+    return PokerCareerPortableFile.readBackupFile(file, careerPortableFileOptions());
+  }
+
+  function requireSupportedPortableCandidate(operation, backup) {
+    var integrity = backup && backup.integrity;
+    if (!integrity || !Number.isInteger(integrity.physicalRecordCount) || integrity.physicalRecordCount < 0) return;
+    var preflight = PokerCareerBackupPolicy.exportPreflight({
+      physicalRecordCount: integrity.physicalRecordCount,
+      activeRecordCount: integrity.activeRecordCount
+    });
+    if (!preflight.allowed) throw PokerCareerBackupPolicy.limitError(operation, preflight);
+  }
+
+  function previewCareerImportFile(file) {
+    if (!file || !careerIndexedService || careerDataUiState.busy) return;
+    careerDataUiState.removalFlowActive = false;
+    careerDataUiState.activeFlow = 'transfer';
+    careerDataUiState.result = null;
+    var requestToken = ++careerDataUiState.importRequestToken;
+    var importPreflight = PokerCareerBackupPolicy.restorePreflight(file.size);
+    if (!importPreflight.allowed) {
+      careerDataUiState.importPreview = null;
+      careerDataUiState.importCandidate = null;
+      careerDataUiState.message = PokerCareerDataSettings.errorMessage(PokerCareerBackupPolicy.limitError('import', importPreflight));
+      careerDataUiState.messageKind = 'error';
+      refreshCareerDataView('.pnhud-career-import-select');
+      return;
+    }
+    careerDataUiState.busy = true;
+    careerDataUiState.importPreview = null;
+    careerDataUiState.importCandidate = null;
+    careerDataUiState.message = 'Validating and planning a safe Career merge without changing data...';
+    careerDataUiState.messageKind = 'none';
+    refreshCareerDataView();
+    readCareerBackupFile(file).then(function (portable) {
+      var candidate = portable.backup;
+      requireSupportedPortableCandidate('import', candidate);
+      return careerIndexedAppendQueue.then(function () { return careerIndexedService.prepareCareerImport(candidate); }).then(function (preview) {
+        if (requestToken !== careerDataUiState.importRequestToken || careerDataUiState.activeFlow !== 'transfer') return;
+        careerDataUiState.importCandidate = candidate;
+        preview.fileName = PokerCareerDataSettings.fileName(file.name);
+        preview.fileBytes = Number(file.size || 0);
+        preview.decompressedBytes = portable.decompressedBytes;
+        preview.portableFormat = portable.format;
+        careerDataUiState.importPreview = preview;
+        careerDataUiState.message = preview.canImport ? 'Career data validated. Review the merge details before importing.' : 'Career data validated, but its record graph conflicts with current Career history. Nothing can be imported safely.';
+        careerDataUiState.messageKind = preview.canImport ? 'success' : 'error';
+      });
+    }).catch(function (error) {
+      if (requestToken !== careerDataUiState.importRequestToken) return;
+      careerDataUiState.message = PokerCareerDataSettings.errorMessage(error);
+      careerDataUiState.messageKind = 'error';
+    }).finally(function () {
+      if (requestToken !== careerDataUiState.importRequestToken) return;
+      careerDataUiState.busy = false;
+      refreshCareerDataView(careerDataUiState.importPreview ? '.pnhud-career-confirm-import' : '.pnhud-career-import-select');
+    });
+  }
+
+  function cancelCareerImportPreview() {
+    careerDataUiState.result = null;
+    careerDataUiState.importRequestToken += 1;
+    careerDataUiState.activeFlow = 'transfer';
+    careerDataUiState.importPreview = null;
+    careerDataUiState.importCandidate = null;
+    careerDataUiState.message = 'Import cancelled. Career and Session data were not changed.';
+    careerDataUiState.messageKind = 'none';
+    refreshCareerDataView('.pnhud-career-import-select');
+  }
+
+  function confirmCareerImport() {
+    if (!ownsRuntimeController()) return;
+    var preview = careerDataUiState.importPreview; var candidate = careerDataUiState.importCandidate;
+    if (!careerIndexedService || !preview || !preview.canImport || !candidate || careerDataUiState.busy) return;
+    careerDataUiState.activeFlow = 'transfer'; careerDataUiState.busy = true; preview.importing = true;
+    careerDataUiState.message = 'Atomically merging Career history...'; careerDataUiState.messageKind = 'none'; refreshCareerDataView();
+    careerIndexedAppendQueue.then(function () { requireRuntimeController(); return careerIndexedService.mergeCareerBackup(candidate, {
+      mode: 'merge', confirmed: true,
+      expectedPayloadDigest: preview.candidatePayloadDigest,
+      expectedCurrentPayloadDigest: preview.currentPayloadDigest
+    }); }).then(function (result) {
+      requireRuntimeController();
+      careerDataUiState.result = { mode: "merge", fileName: preview.fileName, summary: result.summary };
+      careerDataUiState.info = result.ledgerInfo; careerDataUiState.fetchedAt = Date.now();
+      careerDataUiState.importPreview = null; careerDataUiState.importCandidate = null;
+      invalidateSeatHudCareerStats(null, 'Career data imported');
+      careerDataUiState.message = 'Import complete. Existing local Career history was preserved; Session was unaffected.';
+      careerDataUiState.messageKind = 'success';
+    }).catch(function (error) {
+      if (careerDataUiState.importPreview) careerDataUiState.importPreview.importing = false;
+      careerDataUiState.message = PokerCareerDataSettings.errorMessage(error); careerDataUiState.messageKind = 'error';
+    }).finally(function () {
+      careerDataUiState.busy = false;
+      refreshCareerDataView(careerDataUiState.result ? '.pnhud-career-result' : '.pnhud-career-confirm-import');
+      if (!careerDataUiState.importPreview) refreshCareerDataSummary(true);
     });
   }
 
   function previewCareerBackupFile(file) {
     if (!file || !careerIndexedService || careerDataUiState.busy) return;
+    careerDataUiState.removalFlowActive = false;
+    careerDataUiState.activeFlow = 'recovery';
+    careerDataUiState.result = null;
+    var requestToken = ++careerDataUiState.restoreRequestToken;
     var restorePreflight = PokerCareerBackupPolicy.restorePreflight(file.size);
     if (!restorePreflight.allowed) {
       careerDataUiState.preview = null;
@@ -2951,24 +3086,36 @@
     careerDataUiState.message = 'Validating backup without changing career data...';
     careerDataUiState.messageKind = 'none';
     refreshCareerDataView();
-    readCareerBackupFile(file).then(function (backupText) {
-      var backupCandidate = JSON.parse(backupText);
-      return careerIndexedService.prepareCareerRestore(backupCandidate).then(function (preview) {
+    readCareerBackupFile(file).then(function (portable) {
+      var backupCandidate = portable.backup;
+      requireSupportedPortableCandidate('restore', backupCandidate);
+      return careerIndexedAppendQueue.then(function () { return careerIndexedService.prepareCareerRestore(backupCandidate); }).then(function (preview) {
+        if (requestToken !== careerDataUiState.restoreRequestToken || careerDataUiState.activeFlow !== 'recovery') return;
         careerDataUiState.backupCandidate = backupCandidate;
+        preview.fileName = PokerCareerDataSettings.fileName(file.name);
+        preview.fileBytes = Number(file.size || 0);
+        preview.decompressedBytes = portable.decompressedBytes;
+        preview.portableFormat = portable.format;
         careerDataUiState.preview = preview;
         careerDataUiState.message = 'Backup validated. Review the replacement details before restoring.';
         careerDataUiState.messageKind = 'success';
       });
     }).catch(function (error) {
+      if (requestToken !== careerDataUiState.restoreRequestToken) return;
       careerDataUiState.message = PokerCareerDataSettings.errorMessage(error);
       careerDataUiState.messageKind = 'error';
     }).finally(function () {
+      if (requestToken !== careerDataUiState.restoreRequestToken) return;
       careerDataUiState.busy = false;
       refreshCareerDataView(careerDataUiState.preview ? '.pnhud-career-confirm-restore' : '.pnhud-career-restore-select');
     });
   }
 
   function cancelCareerRestorePreview() {
+    careerDataUiState.result = null;
+    careerDataUiState.restoreRequestToken += 1;
+    careerDataUiState.removalFlowActive = false;
+    careerDataUiState.activeFlow = 'recovery';
     careerDataUiState.preview = null;
     careerDataUiState.backupCandidate = null;
     careerDataUiState.message = 'Restore cancelled. Career history was not changed.';
@@ -2977,35 +3124,226 @@
   }
 
   function confirmCareerRestore() {
+    if (!ownsRuntimeController()) return;
+    var careerCommitted = false;
     var preview = careerDataUiState.preview;
     var candidate = careerDataUiState.backupCandidate;
     if (!careerIndexedService || !preview || !candidate || careerDataUiState.busy) return;
+    careerDataUiState.removalFlowActive = false;
+    careerDataUiState.activeFlow = 'recovery';
     careerDataUiState.busy = true;
     preview.restoring = true;
     careerDataUiState.message = 'Replacing career history with the validated backup...';
     careerDataUiState.messageKind = 'none';
+    // A hand finalized during the worker transaction belongs to the old
+    // Session epoch. Defer its Career append until Restore succeeds or fails.
+    careerRestoreAppendGate = { records: [] };
     refreshCareerDataView();
-    careerIndexedService.replaceCareerBackup(candidate, {
+    careerIndexedAppendQueue.then(function () { requireRuntimeController(); return careerIndexedService.replaceCareerBackup(candidate, {
       mode: 'replace',
       confirmed: true,
       expectedPayloadDigest: preview.candidate.payloadDigest,
       expectedCurrentPayloadDigest: preview.current.payloadDigest
-    }).then(function (result) {
+    }); }).then(function (result) {
+      requireRuntimeController();
+      careerCommitted = true;
       careerDataUiState.info = result.ledgerInfo;
-      invalidateLeaderboardCareerStats(null, 'Career backup restored');
+      invalidateSeatHudCareerStats(null, 'Career backup restored', true);
       careerDataUiState.fetchedAt = Date.now();
       careerDataUiState.preview = null;
       careerDataUiState.backupCandidate = null;
-      careerDataUiState.message = 'Career backup restored successfully.';
+      careerDataUiState.message = 'Career history restored. Resetting the current Session...';
+      return new Promise(function (resolve, reject) {
+        resetCurrentSession({ preserveAuthoritativePause: true, source: 'successful Career restore' }, function (error) {
+          if (error) reject(error); else resolve(result);
+        });
+        releaseCareerRestoreAppendGate(true);
+      });
+    }).then(function (result) {
+      requireRuntimeController();
+      careerDataUiState.result = { mode: "replace", fileName: preview.fileName, summary: result.summary };
+      careerDataUiState.message = 'Career backup restored successfully. Current Session reset to 0.';
       careerDataUiState.messageKind = 'success';
     }).catch(function (error) {
+      releaseCareerRestoreAppendGate(false);
       if (careerDataUiState.preview) careerDataUiState.preview.restoring = false;
-      careerDataUiState.message = PokerCareerDataSettings.errorMessage(error);
+      careerDataUiState.message = careerCommitted
+        ? 'Career backup was restored, but Session reset persistence failed. Use Reset Session again before relying on the retained Session after reload.'
+        : PokerCareerDataSettings.errorMessage(error);
       careerDataUiState.messageKind = 'error';
     }).finally(function () {
       careerDataUiState.busy = false;
-      refreshCareerDataView(careerDataUiState.preview ? '.pnhud-career-confirm-restore' : '.pnhud-career-restore-select');
+      refreshCareerDataView(careerDataUiState.result ? '.pnhud-career-result' : '.pnhud-career-confirm-restore');
       if (!careerDataUiState.preview) refreshCareerDataSummary(true);
+    });
+  }
+
+  function currentSessionRemovalRequest() {
+    return {
+      namespace: { provider: 'pokernow', host: location.hostname, gameId: pokerNowGameId },
+      sessionHandIds: handAccounting && handAccounting.finalizedHandIds ? Array.from(handAccounting.finalizedHandIds).map(String).sort() : []
+    };
+  }
+
+  function sameStringArray(left, right) {
+    return JSON.stringify((left || []).map(String).sort()) === JSON.stringify((right || []).map(String).sort());
+  }
+
+  function prepareCurrentSessionCareerRemoval() {
+    careerDataUiState.result = null;
+    if (!careerIndexedService || careerDataUiState.busy) return;
+    var request = currentSessionRemovalRequest();
+    if (!request.sessionHandIds.length) {
+      careerDataUiState.message = 'There are no finalized Session hands to remove.';
+      careerDataUiState.messageKind = 'none';
+      refreshCareerDataView('.pnhud-career-remove-session');
+      return;
+    }
+    var requestToken = ++careerDataUiState.removalRequestToken;
+    careerDataUiState.busy = true;
+    careerDataUiState.removalFlowActive = true;
+    careerDataUiState.activeFlow = 'removal';
+    careerDataUiState.importRequestToken += 1;
+    careerDataUiState.restoreRequestToken += 1;
+    careerDataUiState.importPreview = null;
+    careerDataUiState.importCandidate = null;
+    careerDataUiState.preview = null;
+    careerDataUiState.backupCandidate = null;
+    careerDataUiState.removalPreview = null;
+    careerDataUiState.removalRequest = request;
+    careerDataUiState.message = 'Matching exact current-room Session hand provenance to Career...';
+    careerDataUiState.messageKind = 'none';
+    refreshCareerDataView();
+    careerIndexedAppendQueue.then(function () {
+      return careerIndexedService.prepareCareerSessionRemoval(request);
+    }).then(function (preview) {
+      if (requestToken !== careerDataUiState.removalRequestToken) return;
+      if (hudUiPreferences.selectedSettingsSection !== 'career-data') {
+        careerDataUiState.removalRequestToken += 1;
+        careerDataUiState.removalFlowActive = false;
+        careerDataUiState.removalRequest = null;
+        careerDataUiState.busy = false;
+        return;
+      }
+      if (!sameStringArray(request.sessionHandIds, currentSessionRemovalRequest().sessionHandIds)) throw new Error('Current Session changed while Career removal was being prepared; preview it again');
+      careerDataUiState.removalPreview = preview;
+      careerDataUiState.message = 'Exact Session-to-Career matching completed. Review the destructive action before confirming.';
+      careerDataUiState.messageKind = 'success';
+    }).catch(function (error) {
+      if (requestToken !== careerDataUiState.removalRequestToken) return;
+      careerDataUiState.removalRequest = null;
+      careerDataUiState.message = PokerCareerDataSettings.errorMessage(error);
+      careerDataUiState.messageKind = 'error';
+    }).finally(function () {
+      if (requestToken !== careerDataUiState.removalRequestToken) return;
+      careerDataUiState.busy = false;
+      refreshCareerDataView(careerDataUiState.removalPreview ? '.pnhud-career-confirm-removal' : '.pnhud-career-remove-session');
+    });
+  }
+
+  function cancelCurrentSessionCareerRemoval() {
+    careerDataUiState.removalRequestToken += 1;
+    careerDataUiState.removalFlowActive = true;
+    careerDataUiState.activeFlow = 'removal';
+    careerDataUiState.removalPreview = null;
+    careerDataUiState.removalRequest = null;
+    careerDataUiState.message = 'Career removal cancelled. Career and Session data were not changed.';
+    careerDataUiState.messageKind = 'none';
+    refreshCareerDataView('.pnhud-career-remove-session');
+  }
+
+  function mergeCareerSessionRemovalResults(accumulated, result) {
+    var prior = accumulated || { preview: { logicalHandCount: 0, physicalRecordCount: 0, affectedPlayerIds: [] }, ledgerInfo: null };
+    var next = result && result.preview || {};
+    var affected = new Set((prior.preview.affectedPlayerIds || []).map(String));
+    (next.affectedPlayerIds || []).forEach(function (playerId) { affected.add(String(playerId)); });
+    return {
+      preview: {
+        logicalHandCount: Number(prior.preview.logicalHandCount || 0) + Number(next.logicalHandCount || 0),
+        physicalRecordCount: Number(prior.preview.physicalRecordCount || 0) + Number(next.physicalRecordCount || 0),
+        affectedPlayerIds: Array.from(affected).sort()
+      },
+      ledgerInfo: result && result.ledgerInfo || prior.ledgerInfo
+    };
+  }
+
+  function removeLateFinalizedSessionHands(accumulated, removedRequest) {
+    requireRuntimeController();
+    var latestRequest = currentSessionRemovalRequest();
+    if (sameStringArray(removedRequest.sessionHandIds, latestRequest.sessionHandIds)) return Promise.resolve(accumulated);
+    // A hand may finalize while IndexedDB is committing the prior snapshot. Drain
+    // its durable append, obtain a fresh digest-bound preview, and remove it too.
+    // Once the final equality check succeeds, resetCurrentSession is invoked in
+    // the same JavaScript turn so no later finalization can interleave.
+    return careerIndexedAppendQueue.then(function () {
+      requireRuntimeController();
+      latestRequest = currentSessionRemovalRequest();
+      return careerIndexedService.prepareCareerSessionRemoval(latestRequest);
+    }).then(function (latePreview) {
+      requireRuntimeController();
+      if (!sameStringArray(latestRequest.sessionHandIds, currentSessionRemovalRequest().sessionHandIds)) {
+        return removeLateFinalizedSessionHands(accumulated, removedRequest);
+      }
+      return careerIndexedService.removeCareerSession(latestRequest, {
+        mode: 'remove-current-session', confirmed: true,
+        expectedCurrentDigest: latePreview.currentDigest,
+        expectedConfirmationToken: latePreview.confirmationToken
+      }).then(function (lateResult) {
+        return removeLateFinalizedSessionHands(mergeCareerSessionRemovalResults(accumulated, lateResult), latestRequest);
+      });
+    });
+  }
+
+  function confirmCurrentSessionCareerRemoval() {
+    if (!ownsRuntimeController()) return;
+    var preview = careerDataUiState.removalPreview; var request = careerDataUiState.removalRequest;
+    var careerCommitted = false;
+    if (!careerIndexedService || !preview || !request || careerDataUiState.busy) return;
+    if (!sameStringArray(request.sessionHandIds, currentSessionRemovalRequest().sessionHandIds)) {
+      careerDataUiState.removalPreview = null; careerDataUiState.removalRequest = null;
+      careerDataUiState.message = 'Current Session changed after preview. Nothing was removed; preview the action again.';
+      careerDataUiState.messageKind = 'error'; refreshCareerDataView('.pnhud-career-remove-session'); return;
+    }
+    careerDataUiState.busy = true; preview.removing = true;
+    careerDataUiState.activeFlow = 'removal';
+    careerDataUiState.message = 'Atomically removing the matched Career hands...'; careerDataUiState.messageKind = 'none'; refreshCareerDataView();
+    careerIndexedAppendQueue.then(function () {
+      requireRuntimeController();
+      if (!sameStringArray(request.sessionHandIds, currentSessionRemovalRequest().sessionHandIds)) throw new Error('Current Session changed while Career removal was waiting for pending hands; preview it again');
+      return careerIndexedService.removeCareerSession(request, {
+        mode: 'remove-current-session', confirmed: true,
+        expectedCurrentDigest: preview.currentDigest,
+        expectedConfirmationToken: preview.confirmationToken
+      });
+    }).then(function (result) {
+      requireRuntimeController();
+      careerCommitted = true;
+      return removeLateFinalizedSessionHands(mergeCareerSessionRemovalResults(null, result), request);
+    }).then(function (result) {
+      requireRuntimeController();
+      var affected = result && result.preview && result.preview.affectedPlayerIds || [];
+      careerDataUiState.info = result.ledgerInfo; careerDataUiState.fetchedAt = Date.now();
+      careerDataUiState.removalPreview = null; careerDataUiState.removalRequest = null;
+      invalidateSeatHudCareerStats(affected, 'Current Session removed from Career');
+      return new Promise(function (resolve, reject) {
+        resetCurrentSession(function (error) { if (error) reject(error); else resolve(result); });
+      });
+    }).then(function (result) {
+      careerDataUiState.message = 'Removed ' + Number(result.preview.logicalHandCount || 0) + ' exact Career hands and reset Session.';
+      careerDataUiState.messageKind = 'success';
+    }).catch(function (error) {
+      if (careerDataUiState.removalPreview) careerDataUiState.removalPreview.removing = false;
+      if (!careerCommitted && /current-digest-bound|Current Session changed/i.test(String(error && error.message || error))) {
+        careerDataUiState.removalPreview = null; careerDataUiState.removalRequest = null;
+      }
+      careerDataUiState.removalFlowActive = true;
+      if (careerCommitted) careerDataUiState.message = 'Career hands were removed, but Session reset persistence failed. Use Reset Session again before relying on the retained Session after reload.';
+      else careerDataUiState.message = PokerCareerDataSettings.errorMessage(error);
+      careerDataUiState.messageKind = 'error';
+    }).finally(function () {
+      careerDataUiState.busy = false;
+      refreshCareerDataView(careerDataUiState.removalPreview ? '.pnhud-career-confirm-removal' : '.pnhud-career-remove-session');
+      if (!careerDataUiState.removalPreview) refreshCareerDataSummary(true);
     });
   }
 
@@ -3052,7 +3390,7 @@
     }
     if (section === 'players') return '<section class="pnhud-settings-section" data-settings-content="players"><div class="pnhud-players-host"></div></section>';
     if (section === 'career-data') {
-      return '<section class="pnhud-settings-section" data-settings-content="career-data"><h2>Career Data</h2><p>Review the durable career database, export a verified backup, or explicitly replace it from a validated backup.</p><div class="pnhud-career-data-host">' + careerDataBodyHtml() + '</div></section>';
+      return '<section class="pnhud-settings-section" data-settings-content="career-data"><h2>Data</h2><p>Manage this room\'s Session and the separate durable Career database.</p><div class="pnhud-career-data-host">' + careerDataBodyHtml() + '</div></section>';
     }
     if (section === 'diagnostics') {
       var armedMarker = pauseDiagnosticCaptureState.pendingMarker && pauseDiagnosticCaptureState.pendingMarker.marker;
@@ -3066,11 +3404,12 @@
         (armedMarker ? '<p class="pnhud-settings-help pnhud-pause-capture-armed">Active ' + escapeHtml(armedMarker === 'pause' ? 'Pause' : 'Resume') + ' capture window; no click is required.</p>' : '') +
         healthPanelHtml(hudUiPreferences.developerToolsVisible) + '<p class="pnhud-build-inline">Build ' + escapeHtml(PNHUD_BUILD_ID) + '</p></section>';
     }
-    var version = chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : '1.1.0';
+    var version = chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : '1.2.0';
     return '<section class="pnhud-settings-section" data-settings-content="about"><h2>About</h2><p><strong>PokerNow Stats HUD</strong></p><p>Live finalized poker statistics with configurable per-seat overlays.</p><dl class="pnhud-about-meta"><div><dt>Version</dt><dd>' + escapeHtml(version) + '</dd></div><div><dt>Build</dt><dd>' + escapeHtml(PNHUD_BUILD_ID) + '</dd></div></dl><button type="button" class="pnhud-reset-configuration">Reset interface configuration</button><p class="pnhud-settings-help">Resets display, appearance, positions, and overlay selection. Accumulated poker statistics are not erased.</p></section>';
   }
 
   function renderSettingsPanel() {
+    if (!ownsRuntimeController()) return;
     if (!settingsPanel || !settingsPanel.isConnected) return;
     settingsPanel.hidden = !hudUiPreferences.settingsOpen;
     settingsPanel.setAttribute('aria-hidden', hudUiPreferences.settingsOpen ? 'false' : 'true');
@@ -3306,8 +3645,18 @@
       var selectedSection = sectionButton.dataset.settingsSection;
       if (selectedSection !== 'diagnostics') PokerHandStatInspector.close(handStatInspectorState);
       if (selectedSection !== 'career-data') {
+        careerDataUiState.removalRequestToken += 1;
+        careerDataUiState.importRequestToken += 1;
+        careerDataUiState.restoreRequestToken += 1;
+        careerDataUiState.removalFlowActive = false;
+        if (!careerDataUiState.removalPreview) careerDataUiState.busy = false;
         careerDataUiState.preview = null;
         careerDataUiState.backupCandidate = null;
+        careerDataUiState.importPreview = null;
+        careerDataUiState.importCandidate = null;
+        careerDataUiState.removalPreview = null;
+        careerDataUiState.removalRequest = null;
+        careerDataUiState.activeFlow = null;
       }
       updateHudUiPreferences({ selectedSettingsSection: selectedSection }, 'settings-navigation', { render: false });
       renderSettingsPanel();
@@ -3317,12 +3666,23 @@
       return;
     }
     if (event.target.closest && event.target.closest('.pnhud-settings-close')) return setSettingsOpen(false, 'settings-close-button');
+    if (event.target.closest && event.target.closest('.pnhud-data-reset-session')) return resetCurrentSession();
+    if (event.target.closest && event.target.closest('.pnhud-career-remove-session')) return prepareCurrentSessionCareerRemoval();
+    if (event.target.closest && event.target.closest('.pnhud-career-confirm-removal')) return confirmCurrentSessionCareerRemoval();
+    if (event.target.closest && event.target.closest('.pnhud-career-cancel-removal')) return cancelCurrentSessionCareerRemoval();
     if (event.target.closest && event.target.closest('.pnhud-career-export')) return exportCareerBackupFromSettings();
+    if (event.target.closest && event.target.closest('.pnhud-career-import-select')) {
+      var careerImportFileInput = settingsPanel.querySelector('.pnhud-career-import-file-input');
+      if (careerImportFileInput) careerImportFileInput.click();
+      return;
+    }
     if (event.target.closest && event.target.closest('.pnhud-career-restore-select')) {
-      var careerFileInput = settingsPanel.querySelector('.pnhud-career-file-input');
+      var careerFileInput = settingsPanel.querySelector('.pnhud-career-restore-file-input');
       if (careerFileInput) careerFileInput.click();
       return;
     }
+    if (event.target.closest && event.target.closest('.pnhud-career-confirm-import')) return confirmCareerImport();
+    if (event.target.closest && event.target.closest('.pnhud-career-cancel-import')) return cancelCareerImportPreview();
     if (event.target.closest && event.target.closest('.pnhud-career-confirm-restore')) return confirmCareerRestore();
     if (event.target.closest && event.target.closest('.pnhud-career-cancel-restore')) return cancelCareerRestorePreview();
     if (event.target.closest && event.target.closest('.pnhud-open-hand-stat-inspector')) return openHandStatInspector();
@@ -3407,7 +3767,12 @@
   }
 
   function handleSettingsPanelChange(event) {
-    if (event.target.classList.contains('pnhud-career-file-input')) {
+    if (event.target.classList.contains('pnhud-career-import-file-input')) {
+      var careerImportFile = event.target.files && event.target.files[0];
+      event.target.value = '';
+      return previewCareerImportFile(careerImportFile);
+    }
+    if (event.target.classList.contains('pnhud-career-restore-file-input')) {
       var careerBackupFile = event.target.files && event.target.files[0];
       event.target.value = '';
       return previewCareerBackupFile(careerBackupFile);
@@ -3540,6 +3905,18 @@
           event.preventDefault();
           event.stopImmediatePropagation();
           cancelCareerRestorePreview();
+          return;
+        }
+        if (event.key === 'Escape' && careerDataUiState.importPreview && hudUiPreferences.settingsOpen) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          cancelCareerImportPreview();
+          return;
+        }
+        if (event.key === 'Escape' && careerDataUiState.removalPreview && hudUiPreferences.settingsOpen) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          cancelCurrentSessionCareerRemoval();
           return;
         }
         if (event.key === 'Escape' && playerDashboardState.open) {
@@ -5361,7 +5738,7 @@
   }
 
   function ensureSeatOverlaySystem() {
-    if (extensionCleanedUp || !runtimeScope.isPokerNowGamePage(window.location)) return;
+    if (extensionCleanedUp || seatOverlayRendererSuperseded || !runtimeScope.isPokerNowGamePage(window.location)) return false;
     if (!seatOverlayLayer || !seatOverlayLayer.isConnected) {
       var existingLayer = document.getElementById(overlayRootId);
       if (existingLayer && existingLayer.isConnected) {
@@ -5381,7 +5758,11 @@
     } else {
       console.log('[HUD UI ROOT] found existing', { rootId: overlayRootId, connected: seatOverlayLayer.isConnected });
     }
-    if (seatOverlayController) return;
+    if (seatOverlayController) {
+      if (!seatOverlayRendererOwnsLayer(seatOverlayLayer)) retireSupersededSeatOverlayRenderer('shared Seat HUD root claimed by a newer renderer');
+      return !seatOverlayRendererSuperseded;
+    }
+    retireUnownedSeatOverlayDom(seatOverlayLayer);
     seatOverlayController = PokerSeatOverlay.createController({
       create: function (entry) {
         var element = document.createElement('div');
@@ -5427,6 +5808,7 @@
         console.log('[HUD SEAT OVERLAY] skipped: unconfirmed mapping', { playerId: entry && entry.playerId || null, name: entry && entry.name || null, domSeatIdentifier: entry && entry.seatId || null, reason: reason });
       }
     });
+    return true;
   }
 
   function renderAnchorDebugBoxes(entries) {
@@ -5591,7 +5973,7 @@
   }
 
   function reconcileSeatOverlays(reason) {
-    if (extensionCleanedUp || !runtimeScope.isPokerNowGamePage(window.location)) return;
+    if (extensionCleanedUp || seatOverlayRendererSuperseded || !runtimeScope.isPokerNowGamePage(window.location)) return;
     if (activeOverlayDrag) {
       deferredSeatReconcileDuringOverlayDrag = reason || 'seat overlay reconcile';
       recordOverlayDragTrace('seat-reconcile-deferred', { playerId: activeOverlayDrag.playerId, pointerId: activeOverlayDrag.pointerId, reason: deferredSeatReconcileDuringOverlayDrag });
@@ -5599,7 +5981,7 @@
     }
     pipelineHealth.seatOverlayReconciles += 1;
     PokerPotOdds.preserveLiveStateOnVisualReconcile(potOddsLiveState, 'seat/table reconcile: ' + String(reason || 'unspecified'), Date.now());
-    ensureSeatOverlaySystem();
+    if (!ensureSeatOverlaySystem() || !seatOverlayController) return;
     var currentSeatIds = new Set(identityDiagnostics.domSeats.map(function (seat) { return seat.elementId; }));
     var entries = [];
     pipelineHealth.confirmedMappedPlayers = confirmedSeatMappings.size;
@@ -5697,7 +6079,7 @@
   }
 
   function scheduleSeatOverlayReconcile(reason) {
-    if (extensionCleanedUp) return;
+    if (extensionCleanedUp || seatOverlayRendererSuperseded) return;
     if (activeOverlayDrag) {
       deferredSeatReconcileDuringOverlayDrag = reason || 'seat overlay reconcile';
       recordOverlayDragTrace('seat-reconcile-deferred', { playerId: activeOverlayDrag.playerId, pointerId: activeOverlayDrag.pointerId, reason: deferredSeatReconcileDuringOverlayDrag });
@@ -5734,6 +6116,30 @@
     }, delay);
   }
 
+  function retireUnownedSeatOverlayDom(layer) {
+    if (!layer || typeof layer.querySelectorAll !== 'function') return 0;
+    var staleElements = Array.from(layer.querySelectorAll('.pnhud-seat-overlay, .pnhud-anchor-box, .pnhud-anchor-line, .pnhud-withheld-placeholder'));
+    staleElements.forEach(function (element) { if (element && typeof element.remove === 'function') element.remove(); });
+    layer.dataset.pnhudRendererInstance = hudRendererInstanceId;
+    if (staleElements.length) console.log('[HUD SEAT OVERLAY] retired unowned DOM from an earlier content-script instance', { count: staleElements.length, rendererInstanceId: hudRendererInstanceId });
+    return staleElements.length;
+  }
+
+  function seatOverlayRendererOwnsLayer(layer) {
+    return Boolean(!seatOverlayRendererSuperseded && layer && layer.dataset && layer.dataset.pnhudRendererInstance === hudRendererInstanceId);
+  }
+
+  function retireSupersededSeatOverlayRenderer(reason) {
+    if (seatOverlayRendererSuperseded) return false;
+    seatOverlayRendererSuperseded = true;
+    clearTimeout(seatReconcileTimer);
+    seatReconcileTimer = null;
+    if (seatOverlayController) seatOverlayController.clear(reason || 'Seat HUD renderer ownership transferred');
+    seatOverlayController = null;
+    console.warn('[HUD SEAT OVERLAY] renderer ownership transferred; predecessor fenced from the shared root', { rendererInstanceId: hudRendererInstanceId, currentRendererInstanceId: seatOverlayLayer && seatOverlayLayer.dataset && seatOverlayLayer.dataset.pnhudRendererInstance || null, reason: reason || null });
+    return true;
+  }
+
   function potOddsOwnedMutationElement(element) {
     if (!element) return false;
     if (element.id === potOddsRootId || element.id === heroPotOddsElementId) return true;
@@ -5743,7 +6149,7 @@
 
   function startSeatOverlayObservers() {
     if (extensionCleanedUp || !document.body || seatLayoutObserver) return;
-    ensureSeatOverlaySystem();
+    if (!ensureSeatOverlaySystem()) return;
     seatLayoutObserver = new MutationObserver(function (mutations) {
       pipelineHealth.bodyMutationObserverCallbacks += 1;
       var externalMutation = mutations.some(function (mutation) {
@@ -6110,6 +6516,12 @@
   }
 
   function ensureUiShells(saved, reason) {
+    if (!ownsRuntimeController()) return;
+    if (seatOverlayController && seatOverlayLayer && !seatOverlayRendererOwnsLayer(seatOverlayLayer)) {
+      retireSupersededSeatOverlayRenderer('HUD refresh observed a newer Seat HUD renderer');
+      return null;
+    }
+    if (seatOverlayRendererSuperseded) return null;
     synchronizeDerivedDisplayMode();
     var detailsOpen = leaderboardVisible();
     logUiDisplayModeLoaded(saved);
@@ -6130,8 +6542,7 @@
       console.log('[HUD UI BOOT 6] overlay layer created', { displayMode: displayMode, rootId: overlayRootId, connected: bootstrapped.overlayRoot.isConnected, createdNow: bootstrapped.created.overlay, childOverlayCount: bootstrapped.overlayRoot.querySelectorAll ? bootstrapped.overlayRoot.querySelectorAll('.pnhud-seat-overlay').length : 0 });
     }
     if (!seatOverlayLayer || !seatOverlayLayer.isConnected) seatOverlayLayer = bootstrapped.overlayRoot;
-    ensureSeatOverlaySystem();
-    seatOverlayLayer.style.display = seatOverlaysVisible() ? 'block' : 'none';
+    if (ensureSeatOverlaySystem()) seatOverlayLayer.style.display = seatOverlaysVisible() ? 'block' : 'none';
     if (!seatOverlaysVisible()) console.log('[HUD UI ROOT] hidden', { rootId: overlayRootId, displayMode: displayMode, reason: reason });
     ensureHudToggle();
     ensureSettingsUi();
@@ -6155,6 +6566,8 @@
   }
 
   function render(saved) {
+    if (!ownsRuntimeController()) return;
+    if (seatOverlayRendererSuperseded) return;
     if (!document.documentElement) {
       setTimeout(function () { render(saved); }, 0);
       return;
@@ -6165,8 +6578,7 @@
     closeStatTooltip('HUD rerender or scope change');
     var detailsOpen = leaderboardVisible();
     logUiDisplayModeLoaded(saved);
-    ensureSeatOverlaySystem();
-    seatOverlayLayer.style.display = seatOverlaysVisible() ? 'block' : 'none';
+    if (ensureSeatOverlaySystem()) seatOverlayLayer.style.display = seatOverlaysVisible() ? 'block' : 'none';
     ensureHudToggle();
     ensureSettingsUi();
     var details = ensureDetailsRoot();
@@ -6204,6 +6616,8 @@
     var tableRowsHtml = rows.length ? rows.map(function (stat) {
       var playerKey = registerTooltipPlayer(stat.playerId || null, stat.player, stat);
       var cells = leaderboardDefinitions.map(function (definition) {
+        if (stat.careerPending) return '<td class="pnhud-career-pending" aria-label="Career statistics loading">Loading\u2026</td>';
+        if (stat.careerUnavailable) return '<td class="pnhud-career-pending" aria-label="Career statistics unavailable">Unavailable</td>';
         var value = PokerLeaderboardStats.formatValue(definition, stat);
         return '<td>' + statTooltipTargetHtml(definition, value, playerKey, currentStatsScope) + '</td>';
       }).join('');
@@ -6214,7 +6628,7 @@
     var dataNote = data.realPage
       ? runtimePresentation.note
       : 'Mock stats only \u00b7 no page data is read';
-    host.innerHTML = '<div class="pnhud-header"><div class="pnhud-header-summary"><span class="pnhud-title">PokerNow Stats HUD</span><span class="pnhud-status-area"><span class="pnhud-demo">' + dataLabel + '</span></span></div><div class="pnhud-header-actions"><button class="pnhud-open-settings" title="Open HUD settings">Settings</button><button class="pnhud-reset" title="Clear this table session">Reset Session</button><button class="pnhud-close" title="Hide HUD" aria-label="Hide HUD">\u00d7</button></div></div>' +
+    host.innerHTML = '<div class="pnhud-header"><div class="pnhud-header-summary"><span class="pnhud-title">PokerNow Stats HUD</span><span class="pnhud-status-area"><span class="pnhud-demo">' + dataLabel + '</span></span></div><div class="pnhud-header-actions"><button class="pnhud-open-settings" title="Open HUD settings">Settings</button><button class="pnhud-close" title="Hide HUD" aria-label="Hide HUD">\u00d7</button></div></div>' +
       '<div class="pnhud-tabs" aria-label="Leaderboard statistic source">' + ['session', 'career'].map(function (source) {
         return '<button data-leaderboard-source="' + source + '" aria-pressed="' + (currentLeaderboardStatSource() === source) + '" class="' + (currentLeaderboardStatSource() === source ? 'active' : '') + '">' + (source === 'career' ? 'Career' : 'Session') + '</button>';
       }).join('') + '</div>' +
@@ -6226,7 +6640,6 @@
         updateLeaderboardSource(button.dataset.leaderboardSource);
       });
     });
-    host.querySelector('.pnhud-reset').addEventListener('click', resetCurrentSession);
     host.querySelector('.pnhud-open-settings').addEventListener('click', function () { setSettingsOpen(true, 'leaderboard-settings-shortcut'); });
     host.querySelector('.pnhud-close').addEventListener('click', function () {
       writeDisplayMode(displayModeForSurfaceChange('leaderboard', false));
@@ -6457,6 +6870,7 @@
   }
 
   function handleDiagnosticAndHostControlClick(event) {
+    if (!ownsRuntimeController()) return;
     capturePauseDiagnosticPointerEvent(event);
     var control = event.target && event.target.closest ? event.target.closest('button,[role="button"]') : null;
     var text = control ? String(control.textContent || control.getAttribute('aria-label') || '').trim() : '';
@@ -7906,6 +8320,7 @@
   }
 
   function persistHostControlState(callback) {
+    if (!ownsRuntimeController()) return;
     var update = {};
     update[STORAGE_KEYS.hostControl] = PokerHostControlTrace.persistentSnapshot(hostControlTraceState);
     chrome.storage.local.set(update, function () {
@@ -7925,6 +8340,7 @@
   }
 
   function writeAuthoritativeStorageSnapshot(update, revision, callback) {
+    if (!ownsRuntimeController()) { callback(new Error("superseded content controller")); return; }
     Object.keys(careerPendingStorageUpdates).forEach(function (key) { update[key] = careerPendingStorageUpdates[key]; });
     update[STORAGE_KEYS.liveRevision] = revision;
     chrome.storage.local.set(update, function () {
@@ -7970,7 +8386,15 @@
   function clearLeaderboardCareerStats() {
     leaderboardCareerRequestToken += 1;
     leaderboardCareerSignature = '';
+    leaderboardCareerSnapshotSignature = '';
+    leaderboardCareerFailedSignature = '';
     leaderboardCareerStatsByPlayer.clear();
+  }
+
+  function invalidateLeaderboardCareerRequest() {
+    leaderboardCareerRequestToken += 1;
+    leaderboardCareerSignature = '';
+    leaderboardCareerFailedSignature = '';
   }
 
   function leaderboardCareerIds(data) {
@@ -7989,12 +8413,19 @@
     var signature = leaderboardCareerKey(ids);
     // One signature covers pending and settled requests, including missing/error results.
     if (signature === leaderboardCareerSignature) return;
-    clearLeaderboardCareerStats();
+    invalidateLeaderboardCareerRequest();
+    if (leaderboardCareerSnapshotSignature !== signature) {
+      leaderboardCareerSnapshotSignature = '';
+      leaderboardCareerStatsByPlayer.clear();
+    }
     leaderboardCareerSignature = signature;
-    if (!ids.length) return;
+    if (!ids.length) {
+      leaderboardCareerFailedSignature = signature;
+      return;
+    }
     var token = leaderboardCareerRequestToken;
     function stillCurrent() {
-      return token === leaderboardCareerRequestToken && leaderboardVisible() && currentLeaderboardStatSource() === 'career' &&
+      return ownsRuntimeController() && token === leaderboardCareerRequestToken && leaderboardVisible() && currentLeaderboardStatSource() === 'career' &&
         signature === leaderboardCareerKey(leaderboardCareerIds(displayData({})));
     }
     // The existing HUD message interface accepts at most 64 IDs. Long table Sessions
@@ -8007,32 +8438,44 @@
       leaderboardCareerStatsByPlayer = new Map(ids.map(function (id) {
         return [id, Object.prototype.hasOwnProperty.call(players, id) ? players[id] : null];
       }));
+      leaderboardCareerSnapshotSignature = signature;
+      leaderboardCareerFailedSignature = '';
       refreshHud();
     }).catch(function (error) {
       if (!stillCurrent()) return;
-      console.warn('[HUD LEADERBOARD SOURCE] Career batch unavailable; missing-sample placeholders retained', error);
+      leaderboardCareerFailedSignature = signature;
+      refreshHud();
+      console.warn('[HUD LEADERBOARD SOURCE] Career batch unavailable; unavailable state retained', error);
     });
   }
 
-  function invalidateLeaderboardCareerStats(playerIds, reason) {
-    invalidateTrackedPlayers(playerIds, reason);
+  function invalidateLeaderboardCareerStats(playerIds, reason, clearSettledPresentation) {
+    invalidateTrackedPlayers(playerIds, reason, clearSettledPresentation);
     if (playerDashboardState.open && playerDashboardState.mode === 'career' && (!playerIds || playerIds.some(function (id) { return String(id) === playerDashboardState.playerId; }))) loadPlayerDashboardCareer();
     if (playerIds) {
       var relevantIds = new Set(leaderboardCareerIds(displayData({})));
       if (!playerIds.some(function (id) { return relevantIds.has(String(id)); })) return;
     }
-    clearLeaderboardCareerStats();
+    if (clearSettledPresentation) clearLeaderboardCareerStats();
+    else invalidateLeaderboardCareerRequest();
     if (leaderboardVisible() && currentLeaderboardStatSource() === 'career') refreshHud();
   }
 
   function leaderboardRows(data) {
+    // Invalidate identity even while Session is selected, so a roster that leaves
+    // and later returns cannot resurrect a snapshot from an earlier context.
+    if (leaderboardCareerSnapshotSignature && leaderboardCareerSnapshotSignature !== leaderboardCareerKey(leaderboardCareerIds(data))) clearLeaderboardCareerStats();
     if (currentLeaderboardStatSource() === 'career') {
       requestLeaderboardCareerBatch(data);
+      var signature = leaderboardCareerKey(leaderboardCareerIds(data));
+      var snapshotMatches = leaderboardCareerSnapshotSignature === signature;
       var entries = data.realPage ? data.playerEntries : data.players.map(function (name) { return { playerId: null, playerName: name }; });
       return entries.map(function (entry) {
-        var careerStats = entry.playerId === null || entry.playerId === undefined ? null : leaderboardCareerStatsByPlayer.get(String(entry.playerId));
+        var careerStats = !snapshotMatches || entry.playerId === null || entry.playerId === undefined ? null : leaderboardCareerStatsByPlayer.get(String(entry.playerId));
         return Object.assign(PokerSeatOverlay.careerStatsToOverlayStats(careerStats || null), {
-          playerId: entry.playerId, player: entry.playerName
+          playerId: entry.playerId, player: entry.playerName,
+          careerPending: !snapshotMatches && leaderboardCareerFailedSignature !== signature,
+          careerUnavailable: !snapshotMatches && leaderboardCareerFailedSignature === signature
         });
       });
     }
@@ -8096,9 +8539,10 @@
     });
   }
 
-  function invalidateSeatHudCareerStats(playerIds, reason) {
-    invalidateLeaderboardCareerStats(playerIds, reason);
-    (playerIds || []).map(String).forEach(function (playerId) { seatHudCareerStatsByPlayer.delete(playerId); });
+  function invalidateSeatHudCareerStats(playerIds, reason, clearSettledPresentation) {
+    invalidateLeaderboardCareerStats(playerIds, reason, clearSettledPresentation);
+    if (playerIds) playerIds.map(String).forEach(function (playerId) { seatHudCareerStatsByPlayer.delete(playerId); });
+    else seatHudCareerStatsByPlayer.clear();
     seatHudCareerLoadedSignature = '';
     seatHudCareerPendingSignature = '';
     seatHudCareerRequestToken += 1;
@@ -8195,6 +8639,7 @@
   }
 
   function persistHandAccounting(callback, reason) {
+    if (!ownsRuntimeController()) return;
     if (!handAccounting) {
       if (typeof callback === 'function') callback(new Error('hand accounting is unavailable'));
       return;
@@ -8461,7 +8906,44 @@
     return recorded;
   }
 
+  function enqueueIndexedCareerRecord(careerRecord, allowRetiredController) {
+    var outboxKey = PokerCareerIndexedStore.outboxKey(careerRecord);
+    var outboxUpdate = {}; outboxUpdate[outboxKey] = careerRecord;
+    var outboxPersistence = new Promise(function (resolve) {
+      chrome.storage.local.set(outboxUpdate, function () {
+        resolve(chrome.runtime && chrome.runtime.lastError ? new Error(chrome.runtime.lastError.message || String(chrome.runtime.lastError)) : null);
+      });
+    });
+    careerIndexedAppendQueue = careerIndexedAppendQueue.then(function () { return outboxPersistence; }).then(function (outboxError) {
+      if (outboxError) throw outboxError;
+      if (!allowRetiredController && !ownsRuntimeController()) throw new Error('superseded content controller before Career append');
+      return careerIndexedService.append(careerRecord);
+    }).then(function (indexedResult) {
+      if (!ownsRuntimeController()) return indexedResult;
+      if (indexedResult.accepted) careerDiagnostics.accepted += 1;
+      else if (indexedResult.duplicate) careerDiagnostics.duplicates += 1;
+      else if (indexedResult.conflict) careerDiagnostics.conflicts += 1;
+      else careerDiagnostics.rejected += 1;
+      if (indexedResult.accepted || indexedResult.duplicate) chrome.storage.local.remove(outboxKey);
+      if (indexedResult.accepted) invalidateSeatHudCareerStats(careerRecord.players.map(function (entry) { return entry.playerId; }), 'accepted Career hand append');
+      else if (indexedResult.duplicate) invalidateLeaderboardCareerStats(careerRecord.players.map(function (entry) { return entry.playerId; }), 'confirmed Career outbox replay');
+      return indexedResult;
+    }).catch(function (error) {
+      careerDiagnostics.rejected += 1;
+      console.error('[HUD CAREER STORAGE] append failed; durable outbox retained for reload recovery', error);
+    });
+    return { accepted: true, pendingIndexedCommit: true, handKey: careerRecord.handKey };
+  }
+
+  function releaseCareerRestoreAppendGate(discard, allowRetiredController) {
+    var gate = careerRestoreAppendGate;
+    careerRestoreAppendGate = null;
+    if (!gate || discard) return;
+    gate.records.forEach(function (record) { enqueueIndexedCareerRecord(record, Boolean(allowRetiredController)); });
+  }
+
   function consumeCertifiedCareerHand(record, preflopResult, flopResult, showdownResult) {
+    if (!ownsRuntimeController()) return { accepted: false, reason: "superseded content controller" };
     if (!careerTrackingReady || (!careerIndexedService && !careerStoreState)) return { accepted: false, reason: 'career tracking is not initialized' };
     try {
       var identity = record && record.handIdentity || {};
@@ -8476,32 +8958,11 @@
         showdownContribution: showdownResult && showdownResult.contribution
       });
       if (careerIndexedService) {
-        var outboxKey = PokerCareerIndexedStore.outboxKey(careerRecord);
-        var outboxUpdate = {}; outboxUpdate[outboxKey] = careerRecord;
-        chrome.storage.local.set(outboxUpdate, function () {
-          var outboxError = chrome.runtime && chrome.runtime.lastError ? new Error(chrome.runtime.lastError.message || String(chrome.runtime.lastError)) : null;
-          if (outboxError) {
-            careerDiagnostics.rejected += 1;
-            console.error('[HUD CAREER STORAGE] durable append outbox failed', outboxError);
-            return;
-          }
-          careerIndexedAppendQueue = careerIndexedAppendQueue.then(function () { return careerIndexedService.append(careerRecord); }).then(function (indexedResult) {
-            if (indexedResult.accepted) careerDiagnostics.accepted += 1;
-            else if (indexedResult.duplicate) careerDiagnostics.duplicates += 1;
-            else if (indexedResult.conflict) careerDiagnostics.conflicts += 1;
-            else careerDiagnostics.rejected += 1;
-            if (indexedResult.accepted || indexedResult.duplicate) chrome.storage.local.remove(outboxKey);
-            if (indexedResult.accepted) invalidateSeatHudCareerStats(careerRecord.players.map(function (entry) { return entry.playerId; }), 'accepted Career hand append');
-            // A waking worker can commit this hand from the durable outbox before
-            // processing append. Its duplicate acknowledgement still confirms new data.
-            else if (indexedResult.duplicate) invalidateLeaderboardCareerStats(careerRecord.players.map(function (entry) { return entry.playerId; }), 'confirmed Career outbox replay');
-            return indexedResult;
-          }).catch(function (error) {
-            careerDiagnostics.rejected += 1;
-            console.error('[HUD CAREER STORAGE] append failed; durable outbox retained for reload recovery', error);
-          });
-        });
-        return { accepted: true, pendingIndexedCommit: true, handKey: careerRecord.handKey };
+        if (careerRestoreAppendGate) {
+          careerRestoreAppendGate.records.push(careerRecord);
+          return { accepted: true, pendingRestoreOutcome: true, handKey: careerRecord.handKey };
+        }
+        return enqueueIndexedCareerRecord(careerRecord, false);
       }
       var appendResult = PokerCareerContributionStore.append(careerStoreState, careerRecord);
       if (appendResult.accepted) {
@@ -8788,6 +9249,7 @@
   }
 
   function beginStatsHand(handId, source, timestamp, activate) {
+    if (!ownsRuntimeController()) return null;
     if (!handId) return null;
     if (!handAccounting) handAccounting = PokerHandFinalization.createState({ finalizedEvents: liveEvents });
     var beforeEvents = PokerHudDiagnostics.enabled('deep') ? handAccounting.finalizedEvents.slice() : null;
@@ -8836,6 +9298,7 @@
   }
 
   function finalizeStatsHand(handId, reason, timestamp, sourceContext) {
+    if (!ownsRuntimeController()) return { committed: false, reason: "superseded content controller", addedEvents: [] };
     if (!handAccounting || !handId) {
       traceFirstHandLifecycle('finalizationDecisions', {
         handId: handId || null,
@@ -8902,14 +9365,21 @@
   }
 
   function rearmLifecycleBoundaryAcquisition() {
+    if (!ownsRuntimeController()) return;
     lifecycleBoundaryAcquisition.pending = true;
     lifecycleBoundaryAcquisition.excludedHandId = previousGcSnapshot && previousGcSnapshot.hI || null;
   }
 
-  function resetCurrentSession() {
+  function resetCurrentSession(options, completion) {
+    if (typeof options === 'function') { completion = options; options = {}; }
+    options = options || {};
+    if (!ownsRuntimeController()) return;
+    var resetCompletion = typeof completion === 'function' ? completion : null;
+    var resetSource = String(options.source || 'explicit Reset Session');
+    var preserveAuthoritativePause = options.preserveAuthoritativePause === true && currentEffectivePauseState() === 'paused';
     sessionResetInProgress = true;
     rearmLifecycleBoundaryAcquisition();
-    PokerPotOdds.resetLiveStateContinuity(potOddsLiveState, 'explicit Reset Session', 'user session reset', Date.now());
+    PokerPotOdds.resetLiveStateContinuity(potOddsLiveState, resetSource, 'user session reset', Date.now());
     PokerFirstHandLifecycle.startResetTrace(firstHandLifecycle, {
       event: 'Reset Session requested after startup initialization',
       previousSnapshotPresent: Boolean(previousGcSnapshot),
@@ -8923,8 +9393,14 @@
       blindTrackerState: { rawTbTransitions: tbTraceState.rawTransitions, normalizedTbTransitions: tbTraceState.normalizedTransitions, activePipelineHandId: liveActionTracker.handId }
     }, Date.now());
     console.log('[HUD FIRST HAND TRACE]', { startupType: 'reset-session', category: 'initialization', details: firstHandLifecycle.currentTrace.initialization[0].details });
+    // The boundary cooldown and nearby blind/settlement evidence belong to the
+    // discarded Session epoch. Keep the merged table snapshot and its excluded
+    // hand ID so reset cannot reacquire the already-observed hand.
+    handTransitionDiagnostics.lastAcceptedBoundaryAt = 0;
+    handTransitionDiagnostics.lastSettlementAt = 0;
+    handTransitionDiagnostics.recentBlindDeductions = [];
     liveEvents = [];
-    advanceFinalizedSessionRevision('explicit Session reset');
+    advanceFinalizedSessionRevision(resetSource);
     activeHandState = null;
     handAccounting = PokerHandFinalization.createState({ finalizedEvents: [] });
     semanticLedgerState = PokerSemanticHandLedger.createState({ maxRecords: 50, maxObservationsPerHand: 240, maxAttempts: 100 });
@@ -8982,7 +9458,7 @@
     fullLogDisplaySourceAvailable = false;
     interruptedHandRecoveryState = PokerInterruptedHandRecovery.createState(null);
     ownedHandReloadContinuityState = PokerOwnedHandReloadContinuity.createState(null);
-    hostControlTraceState = PokerHostControlTrace.createState(null);
+    if (!preserveAuthoritativePause) hostControlTraceState = PokerHostControlTrace.createState(null);
     settlementOrderingDiagnostics = [];
     manualOverlayPositions = {};
     refreshShadowProfiles('session-reset', liveEvents);
@@ -8992,10 +9468,15 @@
     update[STORAGE_KEYS.handSignatures] = [];
     update[STORAGE_KEYS.activeHand] = null;
     update[STORAGE_KEYS.finalizedHandIds] = [];
-    update[STORAGE_KEYS.hostControl] = null;
+    update[STORAGE_KEYS.hostControl] = preserveAuthoritativePause ? PokerHostControlTrace.persistentSnapshot(hostControlTraceState) : null;
     update[STORAGE_KEYS.manualOverlayPositions] = {};
     update[STORAGE_KEYS.sessionMeta] = { gameId: pokerNowGameId, sessionKey: gameSessionKey, url: location.href, resetAt: Date.now(), updatedAt: Date.now() };
-    queueAuthoritativeStorageSnapshot(update, function () {
+    queueAuthoritativeStorageSnapshot(update, function (storageError) {
+      if (!ownsRuntimeController()) {
+        sessionResetInProgress = false;
+        if (resetCompletion) resetCompletion(new Error('superseded content controller'));
+        return;
+      }
       PokerSessionRuntime.observePersistedRevision(sessionPersistencePlanner, finalizedSessionRevision);
       sessionResetInProgress = false;
       console.log('[HUD] session reset', { gameId: pokerNowGameId, storageNamespace: storageNamespace });
@@ -9009,12 +9490,19 @@
         mappingCount: socketPlayerNames.size,
         gateReady: firstHandLifecycle.ready
       });
+      reconcileSeatOverlays('authoritative Session reset committed');
       scheduleSeatDiscovery('authoritative current-table reconciliation after Session reset');
+      if (playerDashboardState.open && playerDashboardState.mode === 'session') {
+        refreshPlayerDashboardSession();
+        renderPlayerDashboard();
+      }
       refreshHud();
+      if (resetCompletion) resetCompletion(storageError || null);
     });
   }
 
   function refreshHud() {
+    if (!ownsRuntimeController()) return;
     pipelineHealth.hudRefreshRequests += 1;
     chrome.storage.local.get(Object.values(STORAGE_KEYS), function (saved) {
       try {
@@ -9193,6 +9681,7 @@
   }
 
   function persistRecognizedHostCommand(record) {
+    if (!ownsRuntimeController()) return;
     var command = record && record.recognizedCommand;
     if (!record || !record.localUserIsVerifiedHost || !record.appearsTableControl || !command) return false;
     var timestamp = Number(record.timestamp || Date.now());
@@ -9255,6 +9744,7 @@
       pausePersistenceDiagnostics.persistedRevision = nextCommandPersistenceRevision;
     }
     var completePersistence = function (error) {
+      if (!ownsRuntimeController()) return;
       hostControlTraceState.commandPersistenceCompletedAt = Date.now();
       if (command === 'pause') {
         pausePersistenceDiagnostics.persistenceCompletedAt = hostControlTraceState.commandPersistenceCompletedAt;
@@ -9333,6 +9823,7 @@
   }
 
   function reconcileAuthoritativeSocketLifecycleControl(frame, packet) {
+    if (!ownsRuntimeController()) return;
     var signal = PokerNowLifecycleSignal.authoritativeControl(packet.eventName, packet.payload, frame.direction);
     if (!signal) return null;
     var paused = signal.classification === 'paused';
@@ -9453,6 +9944,7 @@
   }
 
   function handlePageBridgeMessage(messageEvent) {
+    if (!ownsRuntimeController()) return;
     try {
       if (messageEvent.source !== window || messageEvent.origin !== location.origin) return;
       var frame = messageEvent.data;
@@ -10475,6 +10967,7 @@
   // Merged WebSocket gC state is authoritative for production hand tracking;
   // Full Log and DOM observations remain display/diagnostic-only.
   function processGcSnapshot(payload, contributionMetadata) {
+    if (!ownsRuntimeController()) return;
     if (!payload || typeof payload !== 'object') {
       setPipelineFailure('stage 4: gc payload is not an object', payload);
       throttledLog('gc-nonobject', '[HUD] socket event ignored: gc payload is not an object', 5000);
@@ -11559,6 +12052,11 @@
     if (!accepted && resumeBoundaryOverride && resumeBoundaryOverride.activated) {
       accepted = true;
       rejectionReason = null;
+    }
+    if (accepted && lifecycleBoundaryAcquisition.excludedHandId &&
+        String(current.hI) === String(lifecycleBoundaryAcquisition.excludedHandId)) {
+      accepted = false;
+      rejectionReason = 'reset excluded the previously observed hand ID';
     }
     if (accepted && evaluationTimestamp - handTransitionDiagnostics.lastAcceptedBoundaryAt < 3000 && !(resumeBoundaryOverride && resumeBoundaryOverride.activated)) { accepted = false; rejectionReason = 'boundary candidate occurred inside 3-second duplicate cooldown'; }
 
@@ -12679,6 +13177,7 @@
   }
 
   function persistPlayerMappings() {
+    if (!ownsRuntimeController()) return;
     var playerMapObject = {};
     socketPlayerNames.forEach(function (name, id) {
       var playerId = PokerPlayerProfileShadowStore.livePlayerIdentity(id);
@@ -12690,6 +13189,7 @@
   }
 
   function persistHandSignatures() {
+    if (!ownsRuntimeController()) return;
     var update = {};
     update[STORAGE_KEYS.handSignatures] = Array.from(socketHandSignatures);
     chrome.storage.local.set(update);
@@ -13424,6 +13924,7 @@
   }
 
   function handleRuntimeMessage(message, sender, sendResponse) {
+    if (!ownsRuntimeController()) return;
     if (!message || message.type !== 'PNHUD_RESET_OVERLAY_POSITIONS') return false;
     resetOverlayPositions('popup reset button');
     if (sendResponse) sendResponse({ ok: true, gameId: pokerNowGameId });
@@ -13432,6 +13933,9 @@
 
   function cleanupExtension(reason) {
     if (extensionCleanedUp) return;
+    // A superseded controller cannot complete its Restore confirmation, but
+    // must not strand hands finalized while that confirmation was pending.
+    releaseCareerRestoreAppendGate(false, true);
     if (activeOverlayDrag) finishOverlayDrag(null, false);
     if (activeLeaderboardHudDrag) finishLeaderboardHudDrag(null, true);
     if (activePotOddsDrag) finishPotOddsDrag(null, true);
@@ -13441,6 +13945,7 @@
     potOddsTableUiState.failClosed = true;
     potOddsTableUiState.heroSeated = false;
     extensionCleanedUp = true;
+    document.removeEventListener('pnhud-controller-claimed', handleControllerClaimed);
     if (globalThis.__PNHUD_ACTIVE_CONTENT_INSTANCES__) delete globalThis.__PNHUD_ACTIVE_CONTENT_INSTANCES__[contentScriptInstanceId];
     if (logObserver) logObserver.disconnect();
     if (globalThis.__PNHUD_PROFILE_API_INSTANCE_ID__ === contentScriptInstanceId) {
@@ -13580,6 +14085,7 @@
   }
 
   function releaseStartupFramesAfterStorage() {
+    if (!ownsRuntimeController()) return;
     var queuedFrames = PokerFirstHandLifecycle.markReady(firstHandLifecycle, {
       finalizedHandIds: handAccounting ? Array.from(handAccounting.finalizedHandIds) : [],
       activeHand: handAccounting ? cloneJson(PokerHandFinalization.activeHand(handAccounting)) : null,
@@ -13624,6 +14130,7 @@
     logInitializationError(error);
   }
   function handleStorageChanged(changes, area) {
+    if (!ownsRuntimeController()) return;
     if (area !== 'local') return;
     if (careerTrackingReady && careerStoreState) {
       Object.keys(changes).filter(function (key) { return key.indexOf(PokerCareerContributionStore.RECORD_PREFIX) === 0 && changes[key].newValue; }).forEach(function (key) {

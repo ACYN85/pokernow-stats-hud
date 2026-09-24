@@ -1,13 +1,13 @@
 /* MV3 extension-origin owner for the career IndexedDB database. */
 'use strict';
 
-var PNHUD_BUILD_ID = 'v1.1.0-rc3-20260913-1702';
+var PNHUD_BUILD_ID = 'v1.2.0-rc2-20260922-1612';
 
 importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js');
 
 var careerServicePromise = null;
 var careerMutationQueue = Promise.resolve();
-var careerRuntimeDiagnostics = { initializationDurationMs: null, lastAppendDurationMs: null, lastReplaceDurationMs: null };
+var careerRuntimeDiagnostics = { initializationDurationMs: null, lastAppendDurationMs: null, lastReplaceDurationMs: null, lastMergeDurationMs: null };
 
 function monotonicNow() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
 function queueCareerMutation(operation) {
@@ -27,6 +27,20 @@ async function readCareerBootstrapStorage() {
   var outboxKeys = keys.filter(function (key) { return key.indexOf(PokerCareerIndexedStore.OUTBOX_PREFIX) === 0; });
   if (!outboxKeys.length) return markerResult;
   return Object.assign(markerResult, await chrome.storage.local.get(outboxKeys));
+}
+
+async function replayCareerOutbox(service) {
+  if (typeof chrome.storage.local.getKeys !== 'function') return;
+  var keys = await chrome.storage.local.getKeys();
+  var outboxKeys = keys.filter(function (key) { return key.indexOf(PokerCareerIndexedStore.OUTBOX_PREFIX) === 0; });
+  if (!outboxKeys.length) return;
+  var saved = await chrome.storage.local.get(outboxKeys);
+  var pending = PokerCareerIndexedStore.outboxRecords(saved);
+  for (var index = 0; index < pending.length; index += 1) {
+    var result = await service.append(pending[index].record);
+    if (!result.accepted && !result.duplicate) throw new Error('Pending Career outbox record was rejected before data management: ' + result.reason);
+    await chrome.storage.local.remove(pending[index].key);
+  }
 }
 
 async function initializeCareerService() {
@@ -74,6 +88,71 @@ async function requireSupportedCareerExport(service) {
   return info;
 }
 
+function requireSupportedValidatedBackup(operation, validated) {
+  var summary = validated && validated.summary || {};
+  var preflight = PokerCareerBackupPolicy.exportPreflight({
+    physicalRecordCount: summary.physicalRecordCount,
+    activeRecordCount: summary.activeRecordCount
+  });
+  if (!preflight.allowed) throw PokerCareerBackupPolicy.limitError(operation, preflight);
+  return preflight;
+}
+
+function requireSupportedBackupClaim(operation, backup) {
+  var integrity = backup && backup.integrity;
+  if (!integrity || !Number.isInteger(integrity.physicalRecordCount) || integrity.physicalRecordCount < 0) return null;
+  var preflight = PokerCareerBackupPolicy.exportPreflight({
+    physicalRecordCount: integrity.physicalRecordCount,
+    activeRecordCount: integrity.activeRecordCount
+  });
+  if (!preflight.allowed) throw PokerCareerBackupPolicy.limitError(operation, preflight);
+  return preflight;
+}
+
+async function exactMergedBackupPreflight(currentBackup, mergePlan) {
+  var mergedBackup = await PokerCareerBackup.createBackup({
+    careerStorageSchemaVersion: currentBackup.careerStorageSchemaVersion,
+    recordSchemaVersion: currentBackup.recordSchemaVersion,
+    aggregateSchemaVersion: currentBackup.aggregateSchemaVersion,
+    metadata: mergePlan.careerMetadata,
+    records: mergePlan.records
+  }, crypto);
+  var exact = PokerCareerBackupPolicy.serializedPreflight(mergedBackup);
+  return Object.assign({}, exact, {
+    physicalRecordCount: mergePlan.summary.mergedPhysicalRecordCount,
+    activeRecordCount: mergedBackup.integrity.activeRecordCount
+  });
+}
+
+async function careerSnapshotForRemoval(service, request) {
+  var exported = await service.exportCareer();
+  var currentDigest = await PokerCareerBackup.digestCareerExport(exported, crypto);
+  var plan = PokerCareerIndexedStore.sessionRemovalPlan(exported.records, request);
+  var token = JSON.stringify({
+    currentDigest: currentDigest,
+    namespace: plan.namespace,
+    sessionHandIds: plan.sessionHandIds,
+    logicalHandKeys: plan.logicalHandKeys,
+    physicalFingerprints: plan.physicalFingerprints
+  });
+  return { exported: exported, currentDigest: currentDigest, plan: plan, token: token };
+}
+
+function removalPreview(snapshot) {
+  var plan = snapshot.plan;
+  return {
+    currentDigest: snapshot.currentDigest,
+    confirmationToken: snapshot.token,
+    sessionHandCount: plan.sessionHandCount,
+    matchedSessionHandCount: plan.matchedSessionHandIds.length,
+    unmatchedSessionHandCount: plan.unmatchedSessionHandIds.length,
+    logicalHandCount: plan.logicalHandCount,
+    physicalRecordCount: plan.physicalRecordCount,
+    affectedPlayerCount: plan.affectedPlayerIds.length,
+    affectedPlayerIds: plan.affectedPlayerIds
+  };
+}
+
 var allowedMethods = Object.freeze({
   careerStats: true,
   careerStatsFiltered: true,
@@ -119,10 +198,62 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     var service = await careerService();
     if (message.method === 'initialize' || message.method === 'careerLedgerInfo') return careerLedgerInfoWithBackupPolicy(service);
     if (message.method === 'append') return queueCareerMutation(async function () { var started = monotonicNow(); try { return await service.append(message.args && message.args[0]); } finally { careerRuntimeDiagnostics.lastAppendDurationMs = Math.round((monotonicNow() - started) * 100) / 100; } });
-    if (message.method === 'exportCareerBackup') return queueCareerMutation(async function () { await requireSupportedCareerExport(service); return PokerCareerBackup.createBackup(await service.exportCareer(), crypto); });
+    if (message.method === 'exportCareerBackup') return queueCareerMutation(async function () {
+      await replayCareerOutbox(service); await requireSupportedCareerExport(service);
+      var backup = await PokerCareerBackup.createBackup(await service.exportCareer(), crypto);
+      var serialized = PokerCareerBackupPolicy.serializedPreflight(backup);
+      if (!serialized.allowed) throw PokerCareerBackupPolicy.limitError('export', serialized);
+      return backup;
+    });
     if (message.method === 'validateCareerBackup') return (await PokerCareerBackup.validateBackup(message.args && message.args[0], crypto)).summary;
+    if (message.method === 'prepareCareerImport') return queueCareerMutation(async function () {
+      await replayCareerOutbox(service);
+      requireSupportedBackupClaim('import', message.args && message.args[0]);
+      var imported = await PokerCareerBackup.validateBackup(message.args && message.args[0], crypto);
+      await requireSupportedCareerExport(service);
+      var currentBackup = await PokerCareerBackup.createBackup(await service.exportCareer(), crypto);
+      var plan = PokerCareerBackup.mergeValidatedBackups({ records: currentBackup.records, careerMetadata: currentBackup.careerMetadata }, imported);
+      var mergedPreflight = PokerCareerBackupPolicy.exportPreflight({ physicalRecordCount: plan.summary.mergedPhysicalRecordCount, activeRecordCount: plan.activeRecords && plan.activeRecords.length || 0 });
+      if (plan.ok && !mergedPreflight.allowed) throw PokerCareerBackupPolicy.limitError('import', mergedPreflight);
+      if (plan.ok) {
+        mergedPreflight = await exactMergedBackupPreflight(currentBackup, plan);
+        if (!mergedPreflight.allowed) throw PokerCareerBackupPolicy.limitError('import', mergedPreflight);
+      }
+      return {
+        canImport: plan.ok,
+        reason: plan.ok ? null : plan.reason,
+        candidatePayloadDigest: imported.summary.payloadDigest,
+        candidate: imported.summary,
+        currentPayloadDigest: currentBackup.integrity.payloadDigest,
+        summary: plan.summary,
+        mergedSizePolicy: mergedPreflight
+      };
+    });
+    if (message.method === 'mergeCareerBackup') return queueCareerMutation(async function () {
+      await replayCareerOutbox(service);
+      requireSupportedBackupClaim('import', message.args && message.args[0]);
+      var importedPlan = await PokerCareerBackup.validateBackup(message.args && message.args[0], crypto);
+      var confirmation = message.args && message.args[1];
+      await requireSupportedCareerExport(service);
+      var liveBackup = await PokerCareerBackup.createBackup(await service.exportCareer(), crypto);
+      var mergePlan = PokerCareerBackup.mergeValidatedBackups({ records: liveBackup.records, careerMetadata: liveBackup.careerMetadata }, importedPlan);
+      var combinedPreflight = PokerCareerBackupPolicy.exportPreflight({ physicalRecordCount: mergePlan.summary.mergedPhysicalRecordCount, activeRecordCount: mergePlan.activeRecords && mergePlan.activeRecords.length || 0 });
+      if (!mergePlan.ok) throw new Error(mergePlan.reason);
+      if (!combinedPreflight.allowed) throw PokerCareerBackupPolicy.limitError('import', combinedPreflight);
+      combinedPreflight = await exactMergedBackupPreflight(liveBackup, mergePlan);
+      if (!combinedPreflight.allowed) throw PokerCareerBackupPolicy.limitError('import', combinedPreflight);
+      if (!confirmation || confirmation.mode !== 'merge' || confirmation.confirmed !== true || confirmation.expectedPayloadDigest !== importedPlan.summary.payloadDigest || confirmation.expectedCurrentPayloadDigest !== liveBackup.integrity.payloadDigest) throw new Error('Career import requires explicit candidate-and-current digest-bound confirmation');
+      var mergeStarted = monotonicNow();
+      try {
+        await service.mergeCareerRecords(mergePlan.records, mergePlan.careerMetadata, { backupFormatVersion: importedPlan.summary.backupFormatVersion, payloadDigest: importedPlan.summary.payloadDigest, restoredAt: Date.now() });
+        return { merged: true, summary: mergePlan.summary, ledgerInfo: await service.careerLedgerInfo() };
+      } finally { careerRuntimeDiagnostics.lastMergeDurationMs = Math.round((monotonicNow() - mergeStarted) * 100) / 100; }
+    });
     if (message.method === 'prepareCareerRestore') return queueCareerMutation(async function () {
+      await replayCareerOutbox(service);
+      requireSupportedBackupClaim('restore', message.args && message.args[0]);
       var candidatePlan = await PokerCareerBackup.validateBackup(message.args && message.args[0], crypto);
+      requireSupportedValidatedBackup('restore', candidatePlan);
       await requireSupportedCareerExport(service);
       var currentBackup = await PokerCareerBackup.createBackup(await service.exportCareer(), crypto);
       return { candidate: candidatePlan.summary, current: {
@@ -135,7 +266,10 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     });
     if (message.method === 'replaceCareerBackup') {
       return queueCareerMutation(async function () {
+        await replayCareerOutbox(service);
+        requireSupportedBackupClaim('restore', message.args && message.args[0]);
         var plan = await PokerCareerBackup.validateBackup(message.args && message.args[0], crypto);
+        requireSupportedValidatedBackup('restore', plan);
         var confirmation = message.args && message.args[1];
         await requireSupportedCareerExport(service);
         var currentBackup = await PokerCareerBackup.createBackup(await service.exportCareer(), crypto);
@@ -147,6 +281,20 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
         } finally { careerRuntimeDiagnostics.lastReplaceDurationMs = Math.round((monotonicNow() - started) * 100) / 100; }
       });
     }
+    if (message.method === 'prepareCareerSessionRemoval') return queueCareerMutation(async function () {
+      await replayCareerOutbox(service);
+      return removalPreview(await careerSnapshotForRemoval(service, message.args && message.args[0]));
+    });
+    if (message.method === 'removeCareerSession') return queueCareerMutation(async function () {
+      var request = message.args && message.args[0]; var confirmation = message.args && message.args[1];
+      await replayCareerOutbox(service);
+      var snapshot = await careerSnapshotForRemoval(service, request);
+      if (!confirmation || confirmation.mode !== 'remove-current-session' || confirmation.confirmed !== true || confirmation.expectedCurrentDigest !== snapshot.currentDigest || confirmation.expectedConfirmationToken !== snapshot.token) throw new Error('Career Session removal requires explicit current-digest-bound confirmation');
+      var result = snapshot.plan.logicalHandKeys.length
+        ? await service.removeCareerHandKeys(snapshot.plan.logicalHandKeys)
+        : { removed: false, logicalHandCount: 0, physicalRecordCount: 0, affectedPlayerIds: [] };
+      return { removed: result.removed, preview: removalPreview(snapshot), result: result, ledgerInfo: await service.careerLedgerInfo() };
+    });
     if (message.method === 'careerRuntimeTimings') return measuredCareerQueries(service, message.args && message.args[0]);
     if (message.method === 'exportCareer') { await requireSupportedCareerExport(service); return service.exportCareer(); }
     if (!allowedMethods[message.method] || typeof service[message.method] !== 'function') throw new Error('Unsupported career service method: ' + String(message.method));

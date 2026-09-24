@@ -69,6 +69,18 @@
     playerId = String(playerId);
     return (records || []).filter(function (record) { return (record.players || []).some(function (entry) { return String(entry.playerId) === playerId; }); }).length;
   }
+  function physicalRecordCountsByPlayer(records) {
+    var counts = {};
+    (records || []).forEach(function (record) {
+      var seen = new Set();
+      (record.players || []).forEach(function (entry) {
+        var id = String(entry.playerId);
+        if (seen.has(id)) return;
+        seen.add(id); counts[id] = Number(counts[id] || 0) + 1;
+      });
+    });
+    return counts;
+  }
   function cacheForPlayer(player, revision, physicalRecordCount) {
     return { playerId: player.playerId, aggregateSchemaVersion: Aggregator.AGGREGATE_SCHEMA_VERSION, revision: Number(revision || 0), physicalRecordCount: Math.max(0, Number(physicalRecordCount === undefined ? player.recordCount : physicalRecordCount)), player: clone(player) };
   }
@@ -178,12 +190,13 @@
   function replacementPlan(records, career, options) {
     options = options || {}; career = career || {};
     var restoredAt = Number(options.restoredAt || Date.now());
+    var mutationMode = options.mode === 'merge' ? 'merge' : 'replace';
     var ordered = (records || []).map(clone).sort(function (left, right) { return left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); });
     var resolved = Aggregator.rebuild(ordered);
     if (resolved.rejectedRecords.length || resolved.acceptedRecords.length !== ordered.length || resolved.quarantinedHandKeys.length) return { ok: false, reason: 'replacement records failed deterministic validation', resolved: resolved };
     var sequenceByFingerprint = {};
     ordered.forEach(function (record, index) { sequenceByFingerprint[record.fingerprint] = index + 1; });
-    var maxRevisionByPlayer = {};
+    var maxRevisionByPlayer = {}; var physicalCounts = physicalRecordCountsByPlayer(ordered);
     resolved.activeRecords.forEach(function (record) { record.players.forEach(function (entry) { var id = String(entry.playerId); maxRevisionByPlayer[id] = Math.max(maxRevisionByPlayer[id] || 0, sequenceByFingerprint[record.fingerprint]); }); });
     var metadata = {
       key: 'career', storageSchemaVersion: STORAGE_SCHEMA_VERSION, databaseVersion: DATABASE_VERSION,
@@ -198,7 +211,7 @@
       quarantinedHandCount: 0,
       nextSequence: ordered.length,
       migration: { fromStorageSchemaVersion: STORAGE_SCHEMA_VERSION, state: 'complete', attempts: 0, completedAt: restoredAt, copiedRecordCount: ordered.length },
-      restore: { mode: 'replace', backupFormatVersion: Number(options.backupFormatVersion || 1), payloadDigest: String(options.payloadDigest || ''), restoredAt: restoredAt },
+      restore: { mode: mutationMode, backupFormatVersion: Number(options.backupFormatVersion || 1), payloadDigest: String(options.payloadDigest || ''), restoredAt: restoredAt },
       playerSummaryVersion: PLAYER_SUMMARY_VERSION,
       backend: 'extension-service-worker-indexeddb'
     };
@@ -206,7 +219,7 @@
       ok: true, metadata: metadata, resolved: resolved,
       wrappers: ordered.map(function (record) { return recordWrapper(record, sequenceByFingerprint[record.fingerprint]); }),
       heads: Object.keys(resolved.aggregate.players).sort().map(function (playerId) { return summaryHead(playerId, maxRevisionByPlayer[playerId], resolved.aggregate.players[playerId]); }),
-      caches: Object.keys(resolved.aggregate.players).sort().map(function (playerId) { return cacheForPlayer(resolved.aggregate.players[playerId], maxRevisionByPlayer[playerId] || 0, physicalRecordCountForPlayer(ordered, playerId)); })
+      caches: Object.keys(resolved.aggregate.players).sort().map(function (playerId) { return cacheForPlayer(resolved.aggregate.players[playerId], maxRevisionByPlayer[playerId] || 0, physicalCounts[playerId] || 0); })
     };
   }
   function serializableExport(metadata, records) {
@@ -219,8 +232,124 @@
       records: records.map(clone).sort(function (left, right) { return left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); })
     };
   }
+  function mergePreservesExisting(currentRecords, nextRecords) {
+    var nextByFingerprint = new Map((nextRecords || []).map(function (record) { return [record.fingerprint, record]; }));
+    return (currentRecords || []).every(function (record) {
+      var next = nextByFingerprint.get(record.fingerprint);
+      return next && canonicalJson(next) === canonicalJson(record);
+    });
+  }
   function normalizedPlayerIds(values) {
     return Array.from(new Set((Array.isArray(values) ? values : []).map(function (value) { return String(value || '').trim(); }).filter(Boolean))).slice(0, 64);
+  }
+  function removalError(message, code) {
+    var error = new TypeError(message);
+    error.code = code || 'CAREER_SESSION_REMOVAL_INVALID';
+    return error;
+  }
+  function normalizedRemovalRequest(request) {
+    request = request || {};
+    var source = request.namespace || {};
+    var namespace = {
+      provider: String(source.provider || '').toLowerCase(),
+      host: String(source.host || '').toLowerCase(),
+      gameId: String(source.gameId || '')
+    };
+    if (namespace.provider !== 'pokernow' || !namespace.host || !namespace.gameId) throw removalError('Exact PokerNow room provenance is required for Career Session removal');
+    var supplied = Array.isArray(request.sessionHandIds) ? request.sessionHandIds : [];
+    if (supplied.length > 10000) throw removalError('Current Session hand provenance exceeds the supported removal bound');
+    var handIds = [];
+    var seen = new Set();
+    supplied.forEach(function (value) {
+      var id = value === null || value === undefined ? '' : String(value);
+      if (!id || id.length > 500 || id.trim() !== id || /[\u0000-\u001f\u007f]/.test(id)) throw removalError('Current Session contains malformed hand provenance');
+      if (!seen.has(id)) { seen.add(id); handIds.push(id); }
+    });
+    return { namespace: namespace, sessionHandIds: handIds.sort() };
+  }
+  function sameNamespace(left, right) {
+    return Boolean(left && String(left.provider || '').toLowerCase() === right.provider && String(left.host || '').toLowerCase() === right.host && String(left.gameId || '') === right.gameId);
+  }
+  function recordAliases(record) {
+    return Array.from(new Set([record && record.authoritativeHandId].concat(record && record.lifecycleHandIds || []).filter(function (value) { return value !== null && value !== undefined && String(value); }).map(String)));
+  }
+  function sessionRemovalPlan(records, request) {
+    var normalized = normalizedRemovalRequest(request);
+    var sourceRecords = (records || []).map(clone); var resolved = Aggregator.rebuild(sourceRecords);
+    if (resolved.acceptedRecords.length !== sourceRecords.length) throw removalError('Career history cannot be removed while its physical record set fails deterministic validation');
+    var matchesByAlias = new Map();
+    resolved.acceptedRecords.forEach(function (record) {
+      if (!sameNamespace(record.namespace, normalized.namespace)) return;
+      recordAliases(record).forEach(function (alias) {
+        if (!matchesByAlias.has(alias)) matchesByAlias.set(alias, new Set());
+        matchesByAlias.get(alias).add(String(record.handKey));
+      });
+    });
+    var matchedSessionHandIds = []; var unmatchedSessionHandIds = []; var logicalHandKeys = new Set();
+    normalized.sessionHandIds.forEach(function (handId) {
+      var candidates = Array.from(matchesByAlias.get(handId) || []).sort();
+      if (candidates.length > 1) throw removalError('Current Session hand provenance is ambiguous across multiple Career logical hands', 'CAREER_SESSION_REMOVAL_AMBIGUOUS');
+      if (!candidates.length) unmatchedSessionHandIds.push(handId);
+      else { matchedSessionHandIds.push(handId); logicalHandKeys.add(candidates[0]); }
+    });
+    var selectedKeys = Array.from(logicalHandKeys).sort(); var selected = new Set(selectedKeys);
+    var removedRecords = resolved.acceptedRecords.filter(function (record) { return selected.has(String(record.handKey)); });
+    var affectedPlayerIds = Array.from(new Set(removedRecords.reduce(function (ids, record) {
+      (record.players || []).forEach(function (entry) { ids.push(String(entry.playerId)); }); return ids;
+    }, []))).sort();
+    return {
+      namespace: normalized.namespace,
+      sessionHandIds: normalized.sessionHandIds,
+      sessionHandCount: normalized.sessionHandIds.length,
+      matchedSessionHandIds: matchedSessionHandIds,
+      unmatchedSessionHandIds: unmatchedSessionHandIds,
+      logicalHandKeys: selectedKeys,
+      logicalHandCount: selectedKeys.length,
+      physicalRecordCount: removedRecords.length,
+      physicalFingerprints: removedRecords.map(function (record) { return String(record.fingerprint); }).sort(),
+      affectedPlayerIds: affectedPlayerIds
+    };
+  }
+  function affectedProjectionPlan(wrappers, metadata, handKeys) {
+    var selectedKeys = new Set((handKeys || []).map(String));
+    var removed = wrappers.filter(function (wrapper) { return selectedKeys.has(String(wrapper.record.handKey)); });
+    var retained = wrappers.filter(function (wrapper) { return !selectedKeys.has(String(wrapper.record.handKey)); });
+    var resolved = Aggregator.rebuild(retained.map(function (wrapper) { return wrapper.record; }));
+    if (resolved.acceptedRecords.length !== retained.length) throw removalError('Career Session removal would leave a physical record set that fails deterministic validation');
+    var affectedIds = Array.from(new Set(removed.reduce(function (ids, wrapper) {
+      (wrapper.record.players || []).forEach(function (entry) { ids.push(String(entry.playerId)); }); return ids;
+    }, []))).sort();
+    var affected = new Set(affectedIds); var accepted = new Set(resolved.acceptedRecords.map(function (record) { return record.fingerprint; }));
+    var quarantined = new Set(resolved.quarantinedHandKeys); var revisions = new Map(); var contexts = new Map();
+    retained.forEach(function (wrapper) {
+      if (!accepted.has(wrapper.record.fingerprint)) return;
+      (wrapper.record.players || []).forEach(function (entry) {
+        var id = String(entry.playerId); if (!affected.has(id)) return;
+        revisions.set(id, Math.max(revisions.get(id) || 0, Number(wrapper.sequence || 0)));
+        if (quarantined.has(wrapper.record.handKey)) {
+          if (!contexts.has(id)) contexts.set(id, new Set());
+          contexts.get(id).add(wrapper.record.handKey);
+        }
+      });
+    });
+    var heads = []; var caches = [];
+    affectedIds.forEach(function (id) {
+      if (!revisions.has(id) && !resolved.aggregate.players[id]) return;
+      var player = resolved.aggregate.players[id] || null;
+      heads.push(summaryHead(id, revisions.get(id) || 0, player, Array.from(contexts.get(id) || []).sort()));
+      if (player) caches.push(cacheForPlayer(player, revisions.get(id) || 0, physicalRecordCountForPlayer(resolved.acceptedRecords, id)));
+    });
+    var chronological = resolved.acceptedRecords.slice().sort(function (left, right) { return Number(left.finalizedAt || 0) - Number(right.finalizedAt || 0) || left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); });
+    var nextMetadata = Object.assign({}, clone(metadata || {}), {
+      physicalRecordCount: resolved.acceptedRecords.length,
+      activeRecordCount: resolved.activeRecords.length,
+      quarantinedHandCount: resolved.quarantinedHandKeys.length,
+      firstAcceptedHandKey: chronological.length ? chronological[0].handKey : null,
+      firstAcceptedAt: chronological.length ? chronological[0].finalizedAt : null,
+      latestAcceptedAt: chronological.length ? chronological[chronological.length - 1].finalizedAt : null,
+      playerSummaryVersion: PLAYER_SUMMARY_VERSION
+    });
+    return { removed: removed, retained: retained, resolved: resolved, affectedPlayerIds: affectedIds, heads: heads, caches: caches, metadata: nextMetadata };
   }
 
   function createMemoryService(saved, options) {
@@ -310,6 +439,7 @@
     function replaceCareerRecords(nextRecords, career, restoreOptions) {
       var replacement = replacementPlan(nextRecords, career, restoreOptions);
       if (!replacement.ok) return Promise.reject(new Error(replacement.reason));
+      var mutationMode = restoreOptions && restoreOptions.mode === 'merge' ? 'merge' : 'replace';
       var operation = queue.then(function () {
         records.clear(); heads.clear(); caches.clear(); dashboardCache.clear(); trendCache.clear(); trendPending.clear(); trendGeneration += 1;
         replacement.wrappers.forEach(function (wrapper) { records.set(wrapper.record.fingerprint, wrapper); });
@@ -317,7 +447,40 @@
         replacement.caches.forEach(function (cache) { caches.set(cache.playerId, cache); });
         Object.keys(metadata).forEach(function (key) { delete metadata[key]; }); Object.assign(metadata, clone(replacement.metadata));
         summaryError = null;
-        return { replaced: true, metadata: clone(metadata), aggregate: clone(replacement.resolved.aggregate) };
+        return { replaced: mutationMode === 'replace', merged: mutationMode === 'merge', metadata: clone(metadata), aggregate: clone(replacement.resolved.aggregate) };
+      });
+      queue = operation.catch(function () {});
+      return operation;
+    }
+    function mergeCareerRecords(nextRecords, career, mergeOptions) {
+      var currentRecords = allRecords();
+      if (!mergePreservesExisting(currentRecords, nextRecords)) return Promise.reject(new Error('Career merge cannot remove or alter existing physical records'));
+      var replacement = replacementPlan(nextRecords, career, Object.assign({}, mergeOptions || {}, { mode: 'merge' }));
+      if (!replacement.ok) return Promise.reject(new Error(replacement.reason));
+      var operation = queue.then(function () {
+        replacement.wrappers.forEach(function (wrapper) { records.set(wrapper.record.fingerprint, wrapper); });
+        heads.clear(); caches.clear(); dashboardCache.clear(); trendCache.clear(); trendPending.clear(); trendGeneration += 1;
+        replacement.heads.forEach(function (head) { heads.set(head.playerId, head); });
+        replacement.caches.forEach(function (cache) { caches.set(cache.playerId, cache); });
+        Object.keys(metadata).forEach(function (key) { delete metadata[key]; }); Object.assign(metadata, clone(replacement.metadata));
+        summaryError = null;
+        return { replaced: false, merged: true, metadata: clone(metadata), aggregate: clone(replacement.resolved.aggregate) };
+      });
+      queue = operation.catch(function () {});
+      return operation;
+    }
+    function removeCareerHandKeys(handKeys) {
+      var operation = queue.then(function () {
+        if (!plan.ok) throw new Error(plan.reason);
+        var mutation = affectedProjectionPlan(Array.from(records.values()).map(clone), metadata, handKeys);
+        if (!mutation.removed.length) return { removed: false, logicalHandCount: 0, physicalRecordCount: 0, affectedPlayerIds: [], metadata: clone(metadata) };
+        mutation.removed.forEach(function (wrapper) { records.delete(wrapper.record.fingerprint); });
+        mutation.affectedPlayerIds.forEach(function (id) { heads.delete(id); caches.delete(id); });
+        mutation.heads.forEach(function (head) { heads.set(head.playerId, head); });
+        mutation.caches.forEach(function (cache) { caches.set(cache.playerId, cache); });
+        Object.keys(metadata).forEach(function (key) { delete metadata[key]; }); Object.assign(metadata, clone(mutation.metadata));
+        dashboardCache.clear(); trendCache.clear(); trendPending.clear(); trendGeneration += 1; summaryError = null;
+        return { removed: true, logicalHandCount: new Set(mutation.removed.map(function (wrapper) { return wrapper.record.handKey; })).size, physicalRecordCount: mutation.removed.length, affectedPlayerIds: mutation.affectedPlayerIds, metadata: clone(metadata) };
       });
       queue = operation.catch(function () {});
       return operation;
@@ -404,6 +567,8 @@
       rebuildCareerStats: function () { return rebuild().then(function (result) { return result.aggregate; }); },
       exportCareer: function () { return Promise.resolve(serializableExport(metadata, allRecords())); },
       replaceCareerRecords: replaceCareerRecords,
+      mergeCareerRecords: mergeCareerRecords,
+      removeCareerHandKeys: removeCareerHandKeys,
       close: function () {},
       testHooks: { records: records, heads: heads, caches: caches, dashboardCache: dashboardCache, trendCache: trendCache, trendPending: trendPending, dashboardDiagnostics: dashboardDiagnostics, metadata: metadata, migrationPlan: plan }
     };
@@ -744,6 +909,7 @@
     function replaceCareerRecords(nextRecords, career, restoreOptions) {
       var replacement = replacementPlan(nextRecords, career, restoreOptions);
       if (!replacement.ok) return Promise.reject(new Error(replacement.reason));
+      var mutationMode = restoreOptions && restoreOptions.mode === 'merge' ? 'merge' : 'replace';
       return new Promise(function (resolve, reject) {
         var tx = db.transaction([STORE_RECORDS, STORE_METADATA, STORE_AGGREGATES, STORE_PLAYER_HEADS], 'readwrite');
         var recordStore = tx.objectStore(STORE_RECORDS); var metadataStore = tx.objectStore(STORE_METADATA);
@@ -766,9 +932,86 @@
         verifyRecords.onsuccess = function () { restoredWrappers = verifyRecords.result || []; verify(); };
         verifyMetadata.onsuccess = function () { restoredMetadata = verifyMetadata.result || null; verify(); };
         verifyHeads.onsuccess = function () { restoredHeads = verifyHeads.result || []; verify(); };
-        tx.oncomplete = function () { if (!verified) { reject(new Error('career replacement verification did not complete')); return; } dashboardCache.clear(); trendCache.clear(); trendPending.clear(); trendGeneration += 1; summaryError = null; resolve({ replaced: true, metadata: clone(replacement.metadata), aggregate: clone(replacement.resolved.aggregate) }); };
-        tx.onerror = function () { reject(tx.error || new Error('career replacement transaction failed')); };
-        tx.onabort = function () { reject(tx.error || new Error('career replacement transaction aborted; previous career remains intact')); };
+        tx.oncomplete = function () { if (!verified) { reject(new Error('career mutation verification did not complete')); return; } dashboardCache.clear(); trendCache.clear(); trendPending.clear(); trendGeneration += 1; summaryError = null; resolve({ replaced: mutationMode === 'replace', merged: mutationMode === 'merge', metadata: clone(replacement.metadata), aggregate: clone(replacement.resolved.aggregate) }); };
+        tx.onerror = function () { reject(tx.error || new Error('career mutation transaction failed')); };
+        tx.onabort = function () { reject(tx.error || new Error('career mutation transaction aborted; previous career remains intact')); };
+      });
+    }
+    async function mergeCareerRecords(nextRecords, career, mergeOptions) {
+      var currentWrappers = await idbGetAll(db, STORE_RECORDS);
+      var currentRecords = currentWrappers.map(function (wrapper) { return wrapper.record; });
+      if (!mergePreservesExisting(currentRecords, nextRecords)) throw new Error('Career merge cannot remove or alter existing physical records');
+      var replacement = replacementPlan(nextRecords, career, Object.assign({}, mergeOptions || {}, { mode: 'merge' }));
+      if (!replacement.ok) throw new Error(replacement.reason);
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction([STORE_RECORDS, STORE_METADATA, STORE_AGGREGATES, STORE_PLAYER_HEADS], 'readwrite');
+        var recordStore = tx.objectStore(STORE_RECORDS); var metadataStore = tx.objectStore(STORE_METADATA);
+        var aggregateStore = tx.objectStore(STORE_AGGREGATES); var headStore = tx.objectStore(STORE_PLAYER_HEADS);
+        replacement.wrappers.forEach(function (wrapper) { recordStore.put(wrapper); });
+        aggregateStore.clear(); headStore.clear();
+        replacement.caches.forEach(function (cache) { aggregateStore.add(cache); });
+        replacement.heads.forEach(function (head) { headStore.add(head); });
+        metadataStore.put(replacement.metadata);
+        var verifyRecords = recordStore.getAll(); var verifyMetadata = metadataStore.get('career'); var verifyHeads = headStore.getAll();
+        var mergedWrappers = null; var mergedMetadata = null; var mergedHeads = null; var verified = false;
+        function verify() {
+          if (!mergedWrappers || !mergedMetadata || !mergedHeads || verified) return;
+          var mergedRecords = mergedWrappers.map(function (wrapper) { return wrapper.record; });
+          var merged = Aggregator.rebuild(mergedRecords);
+          var recordsMatch = canonicalJson(mergedRecords.slice().sort(function (left, right) { return left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); })) === canonicalJson(replacement.resolved.acceptedRecords);
+          var headsMatch = canonicalJson(mergedHeads.slice().sort(function (a, b) { return a.playerId.localeCompare(b.playerId); })) === canonicalJson(replacement.heads.slice().sort(function (a, b) { return a.playerId.localeCompare(b.playerId); }));
+          if (!recordsMatch || merged.rejectedRecords.length || merged.quarantinedHandKeys.length || canonicalJson(merged.aggregate) !== canonicalJson(replacement.resolved.aggregate) || canonicalJson(mergedMetadata) !== canonicalJson(replacement.metadata) || !summariesReady(mergedMetadata, mergedHeads) || !headsMatch) { tx.abort(); return; }
+          verified = true;
+        }
+        verifyRecords.onsuccess = function () { mergedWrappers = verifyRecords.result || []; verify(); };
+        verifyMetadata.onsuccess = function () { mergedMetadata = verifyMetadata.result || null; verify(); };
+        verifyHeads.onsuccess = function () { mergedHeads = verifyHeads.result || []; verify(); };
+        tx.oncomplete = function () {
+          if (!verified) { reject(new Error('Career merge verification did not complete')); return; }
+          dashboardCache.clear(); trendCache.clear(); trendPending.clear(); trendGeneration += 1; summaryError = null;
+          resolve({ replaced: false, merged: true, metadata: clone(replacement.metadata), aggregate: clone(replacement.resolved.aggregate) });
+        };
+        tx.onerror = function () { reject(tx.error || new Error('Career merge transaction failed')); };
+        tx.onabort = function () { reject(tx.error || new Error('Career merge transaction aborted; previous Career history remains intact')); };
+      });
+    }
+    async function removeCareerHandKeys(handKeys) {
+      var read = db.transaction([STORE_RECORDS, STORE_METADATA], 'readonly');
+      var snapshot = await Promise.all([requestPromise(read.objectStore(STORE_RECORDS).getAll()), requestPromise(read.objectStore(STORE_METADATA).get('career'))]);
+      await transactionPromise(read);
+      var mutation = affectedProjectionPlan(snapshot[0] || [], snapshot[1] || {}, handKeys);
+      if (!mutation.removed.length) return { removed: false, logicalHandCount: 0, physicalRecordCount: 0, affectedPlayerIds: [], metadata: clone(snapshot[1] || {}) };
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction([STORE_RECORDS, STORE_METADATA, STORE_AGGREGATES, STORE_PLAYER_HEADS], 'readwrite');
+        var recordStore = tx.objectStore(STORE_RECORDS); var metadataStore = tx.objectStore(STORE_METADATA);
+        var aggregateStore = tx.objectStore(STORE_AGGREGATES); var headStore = tx.objectStore(STORE_PLAYER_HEADS);
+        mutation.removed.forEach(function (wrapper) { recordStore.delete(wrapper.record.fingerprint); });
+        mutation.affectedPlayerIds.forEach(function (id) { aggregateStore.delete(id); headStore.delete(id); });
+        mutation.caches.forEach(function (cache) { aggregateStore.put(cache); });
+        mutation.heads.forEach(function (head) { headStore.put(head); });
+        metadataStore.put(mutation.metadata);
+        var expectedHeads = new Map(mutation.heads.map(function (head) { return [head.playerId, head]; }));
+        var countResult = null; var metadataResult = null; var headResults = new Map(); var verified = false;
+        var countRequest = recordStore.count(); var metadataRequest = metadataStore.get('career');
+        countRequest.onsuccess = function () { countResult = countRequest.result; verify(); };
+        metadataRequest.onsuccess = function () { metadataResult = metadataRequest.result; verify(); };
+        mutation.affectedPlayerIds.forEach(function (id) {
+          var request = headStore.get(id);
+          request.onsuccess = function () { headResults.set(id, request.result || null); verify(); };
+        });
+        function verify() {
+          if (countResult === null || !metadataResult || headResults.size !== mutation.affectedPlayerIds.length || verified) return;
+          var headsMatch = mutation.affectedPlayerIds.every(function (id) { return canonicalJson(headResults.get(id)) === canonicalJson(expectedHeads.get(id) || null); });
+          if (countResult !== mutation.retained.length || canonicalJson(metadataResult) !== canonicalJson(mutation.metadata) || !headsMatch) { tx.abort(); return; }
+          verified = true;
+        }
+        tx.oncomplete = function () {
+          if (!verified) { reject(new Error('Career Session removal verification did not complete')); return; }
+          dashboardCache.clear(); trendCache.clear(); trendPending.clear(); trendGeneration += 1; summaryError = null;
+          resolve({ removed: true, logicalHandCount: new Set(mutation.removed.map(function (wrapper) { return wrapper.record.handKey; })).size, physicalRecordCount: mutation.removed.length, affectedPlayerIds: mutation.affectedPlayerIds, metadata: clone(mutation.metadata) });
+        };
+        tx.onerror = function () { reject(tx.error || new Error('Career Session removal transaction failed')); };
+        tx.onabort = function () { reject(tx.error || new Error('Career Session removal transaction aborted; previous Career history remains intact')); };
       });
     }
     return {
@@ -795,6 +1038,8 @@
       rebuildCareerStats: async function () { return Aggregator.rebuild(await allRecords()).aggregate; },
       exportCareer: async function () { var tx = db.transaction([STORE_METADATA, STORE_RECORDS], 'readonly'); var values = await Promise.all([requestPromise(tx.objectStore(STORE_METADATA).get('career')), requestPromise(tx.objectStore(STORE_RECORDS).getAll())]); await transactionPromise(tx); return serializableExport(values[0], values[1].map(function (wrapper) { return wrapper.record; })); },
       replaceCareerRecords: replaceCareerRecords,
+      mergeCareerRecords: mergeCareerRecords,
+      removeCareerHandKeys: removeCareerHandKeys,
       close: function () { db.close(); }
     };
   }
@@ -831,6 +1076,10 @@
       validateCareerBackup: function (backup) { return request('validateCareerBackup', [backup]); },
       prepareCareerRestore: function (backup) { return request('prepareCareerRestore', [backup]); },
       replaceCareerBackup: function (backup, confirmation) { return request('replaceCareerBackup', [backup, confirmation]); },
+      prepareCareerImport: function (backup) { return request('prepareCareerImport', [backup]); },
+      mergeCareerBackup: function (backup, confirmation) { return request('mergeCareerBackup', [backup, confirmation]); },
+      prepareCareerSessionRemoval: function (removalRequest) { return request('prepareCareerSessionRemoval', [removalRequest]); },
+      removeCareerSession: function (removalRequest, confirmation) { return request('removeCareerSession', [removalRequest, confirmation]); },
       careerRuntimeTimings: function (playerId) { return request('careerRuntimeTimings', [playerId === undefined ? null : String(playerId)]); }
     };
   }
@@ -838,7 +1087,7 @@
   return Object.freeze({
     DATABASE_NAME: DATABASE_NAME, DATABASE_VERSION: DATABASE_VERSION, STORAGE_SCHEMA_VERSION: STORAGE_SCHEMA_VERSION, PLAYER_SUMMARY_VERSION: PLAYER_SUMMARY_VERSION,
     MIGRATION_MARKER_KEY: MIGRATION_MARKER_KEY, OUTBOX_PREFIX: OUTBOX_PREFIX, MESSAGE_TYPE: MESSAGE_TYPE, STORES: Object.freeze({ records: STORE_RECORDS, metadata: STORE_METADATA, aggregates: STORE_AGGREGATES, playerHeads: STORE_PLAYER_HEADS }),
-    phaseOneRecords: phaseOneRecords, outboxKey: outboxKey, outboxRecords: outboxRecords, recordWrapper: recordWrapper, migrationPlan: migrationPlan, replacementPlan: replacementPlan, serializableExport: serializableExport,
+    phaseOneRecords: phaseOneRecords, outboxKey: outboxKey, outboxRecords: outboxRecords, recordWrapper: recordWrapper, migrationPlan: migrationPlan, replacementPlan: replacementPlan, serializableExport: serializableExport, mergePreservesExisting: mergePreservesExisting, normalizedRemovalRequest: normalizedRemovalRequest, sessionRemovalPlan: sessionRemovalPlan, affectedProjectionPlan: affectedProjectionPlan,
     createMemoryService: createMemoryService, createIndexedService: createIndexedService, createMessageService: createMessageService, hasCompleteDatabase: hasCompleteDatabase
   });
 });

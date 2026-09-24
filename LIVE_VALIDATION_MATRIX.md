@@ -1,8 +1,8 @@
-# Public 1.1.0 live-validation matrix
+# Public 1.2.0 live-validation matrix
 
-Release: 1.1.0. This public copy contains deterministic automated evidence only; it does not include a signed-in session transcript, raw browser capture, or live screenshot.
+Release: 1.2.0. The accepted `v1.2.0-rc2` passed signed-in manual smoke before promotion, as confirmed by the maintainer. The final ZIP is byte-identical to that candidate. This public copy does not include a signed-in session transcript, raw browser capture, or live screenshot. A Session-to-Career switch may briefly show Loading before Career values; this is accepted V1.2 behavior, unlike a false authoritative H0 while unresolved.
 
-“MANUAL VALIDATION REQUIRED” means the behavior depends on a real signed-in browser/table and is not represented by public fixture data. “AUTOMATED CERTIFIED / LIVE NOT OBSERVED” means the deterministic support boundary is covered, but a specific live observation is not included in this release record.
+“MANUAL VALIDATION REQUIRED” below identifies a case without separately published live evidence, not a claim that overall RC2 signoff is pending. “AUTOMATED CERTIFIED / LIVE NOT OBSERVED” means the deterministic support boundary is covered, but a specific live observation is not included in this public record. The signed-in smoke prioritized first post-Restore hand counting, Career cold Loading/settled values, Pause/Resume, portable Career transfer, and HUD/Pot Odds sanity; rare variants retain the per-case limitations below.
 
 | Practical case | Automated evidence (representative test) | Live evidence / status |
 | --- | --- | --- |

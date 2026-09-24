@@ -1,3 +1,25 @@
+# 1.2.0
+
+PokerNow Stats HUD 1.2.0 adds portable Career Data management and clearer sample-support presentation while preserving the existing finalized-hand statistics model.
+
+## Added
+
+- **Export Career Data** creates a gzip-compressed `.json.gz` portable backup. Existing uncompressed Backup v1 JSON remains accepted for import and restore.
+- **Import Career Data (Merge)** adds nonduplicate Career records to the existing ledger; an exact duplicate import adds no new hands.
+- **Restore Career Backup (Replace)** provides an explicitly confirmed recovery path. A successful replacement resets Session after Career commits; a failed replacement leaves Session intact.
+- **Remove Current Session from Career & Reset** uses exact stored hand identity rather than date, name, or count estimates.
+- Dashboard Statistical Evidence shows exact support counts and sample-strength labels for supported slices, without a visible “Insufficient” suffix on low-support values.
+
+## Improved
+
+- Leaderboard Career loading distinguishes unresolved, unavailable, settled no-history, and settled values. A Session-to-Career switch may briefly show Loading before values arrive; it no longer presents a pending lookup as authoritative H0.
+- Restore, Pause/Resume, reload, and controller hand-ownership fences protect the first eligible fresh hand and prevent stale Career append outcomes from crossing a successful replacement.
+- Career transfer validation, duplicate/ambiguity handling, and bounded whole-ledger processing strengthen data integrity.
+
+## Data limits
+
+- Compressed input and decoded JSON have separate 64 MiB limits. Whole-ledger export/import/restore processing is conservatively bounded to 4,032 physical records; gzip does not make the format streaming or unlimited.
+
 # 1.1.0
 
 PokerNow Stats HUD 1.1.0 expands Career analysis and improves live-table reliability while preserving local-only data storage and conservative evidence requirements.

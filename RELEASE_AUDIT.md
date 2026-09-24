@@ -1,4 +1,4 @@
-# Public release audit
+# Public 1.2.0 release audit
 
 This public repository contains the extension source, deterministic tests, release tooling, documentation, and de-identified fixtures needed for local development. It intentionally contains no private-development Git history, browser account data, raw network captures, generated archives, work snapshots, or machine-specific paths.
 
@@ -8,8 +8,8 @@ This public repository contains the extension source, deterministic tests, relea
 - Behavioral suites retain lifecycle, reducer, persistence, identity, dashboard, profile, layout, diagnostic, performance, and packaging coverage.
 - Protocol fixtures are privacy-sanitized, de-identified, capture-derived behavioral fixtures. They retain minimum event shapes but use fixture aliases and synthetic cards. Source filenames, hashes, timestamps, URLs, headers, account/display names, and game/hand/session/player identifiers are not preserved.
 - These fixtures are not raw captures, session exports, or signed-in live certification.
-- The production package uses the 68-file allowlist in `release/production-files.json`; tests, docs, fixtures, and generated output are excluded from the extension archive.
-- The deterministic V1.1 archive SHA-256 is `F5C25F377EDA9C2F6FADEB7C5180862E601FDC890B174BB26AE0C5DA92C005E9`.
+- The production package uses the 70-file allowlist in `release/production-files.json`, including Career gzip transport and Statistical Evidence; tests, docs, fixtures, and generated output are excluded from the extension archive.
+- The final V1.2 ZIP is byte-identical to the accepted RC2 package: 2,174,273 bytes, SHA-256 `65BB245759FA063CD434B7ECD26DE627FFE2F0C72920F29A1CD0D963F6C1D798`.
 
 ## Privacy boundary
 
@@ -19,7 +19,7 @@ Full Log and transport diagnostics are bounded, opt-in diagnostic/display infras
 
 ## Verification boundary
 
-`testSuites.js` is the source of truth for behavioral suite membership. Normal fast/full tests intentionally exclude the immutable `releaseMetadata.test.js` gate; run that gate separately after freezing a release. Commands and current counts are in [TESTING.md](TESTING.md).
+`testSuites.js` is the source of truth for behavioral suite membership. Normal fast/full tests intentionally exclude the immutable `releaseMetadata.test.js` gate; run that gate separately after freezing a release. Commands and current counts are in [TESTING.md](TESTING.md). Accepted RC2 passed signed-in manual smoke before final promotion; this public audit contains no raw signed-in capture.
 
 Signed-in PokerNow validation remains a separate requirement. Repository fixtures must not be represented as live passes. See [LIVE_VALIDATION_MATRIX.md](LIVE_VALIDATION_MATRIX.md).
 

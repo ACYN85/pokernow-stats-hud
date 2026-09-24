@@ -126,6 +126,10 @@
       playerCount: Object.keys(resolution.aggregate.players).length
     } });
   }
+  async function digestCareerExport(exported, cryptoImplementation) {
+    if (!object(exported)) fail('career export is required');
+    return sha256(canonicalStringify(exported), cryptoImplementation);
+  }
   function validatePayload(payload) {
     if (payload.backupFormat !== FORMAT) fail('unsupported career backup format');
     if (payload.backupFormatVersion !== FORMAT_VERSION) fail('unsupported career backup format version');
@@ -182,16 +186,101 @@
         physicalRecordCount: payload.records.length,
         activeRecordCount: resolution.activeRecords.length,
         playerCount: Object.keys(resolution.aggregate.players).length,
+        firstAcceptedAt: payload.careerMetadata.firstAcceptedAt,
+        latestAcceptedAt: payload.careerMetadata.latestAcceptedAt,
+        players: Object.keys(resolution.aggregate.players).sort().map(function (id) {
+          var player = resolution.aggregate.players[id];
+          return { playerId: id, displayName: player.latestDisplayName, hands: player.counters.hands };
+        }),
         careerTrackingStartedAt: payload.careerMetadata.careerTrackingStartedAt,
         firstAcceptedHandKey: payload.careerMetadata.firstAcceptedHandKey
       }
     };
   }
 
+  function logicalHandKeys(records) {
+    return new Set((records || []).map(function (record) { return String(record.handKey); }));
+  }
+  function playerIds(records) {
+    var ids = new Set();
+    (records || []).forEach(function (record) { (record.players || []).forEach(function (player) { ids.add(String(player.playerId)); }); });
+    return Array.from(ids).sort();
+  }
+  function mergedCareerMetadata(current, imported, currentHasRecords, importedHasRecords) {
+    if (!currentHasRecords) return clone(imported);
+    if (!importedHasRecords) return clone(current);
+    var firstCandidates = [current, imported].slice().sort(function (left, right) {
+      return Number(left.firstAcceptedAt) - Number(right.firstAcceptedAt) || String(left.firstAcceptedHandKey).localeCompare(String(right.firstAcceptedHandKey));
+    });
+    var initializationCandidates = [current, imported].slice().sort(function (left, right) {
+      return Number(left.careerSchemaInitializedAt) - Number(right.careerSchemaInitializedAt) || String(left.initializedByBuildId).localeCompare(String(right.initializedByBuildId));
+    });
+    return {
+      careerTrackingStartedAt: Math.min(Number(current.careerTrackingStartedAt), Number(imported.careerTrackingStartedAt)),
+      careerSchemaInitializedAt: Math.min(Number(current.careerSchemaInitializedAt), Number(imported.careerSchemaInitializedAt)),
+      initializedByBuildId: String(initializationCandidates[0].initializedByBuildId || ''),
+      firstAcceptedHandKey: firstCandidates[0].firstAcceptedHandKey,
+      firstAcceptedAt: firstCandidates[0].firstAcceptedAt,
+      latestAcceptedAt: Math.max(Number(current.latestAcceptedAt), Number(imported.latestAcceptedAt))
+    };
+  }
+  function mergeValidatedBackups(current, imported) {
+    if (!object(current) || !Array.isArray(current.records) || !object(current.careerMetadata)) fail('current career snapshot is invalid');
+    if (!object(imported) || !Array.isArray(imported.records) || !object(imported.careerMetadata)) fail('imported career snapshot is invalid');
+    var localByFingerprint = new Map(current.records.map(function (record) { return [record.fingerprint, record]; }));
+    var union = current.records.map(clone); var duplicatePhysicalRecordCount = 0; var fingerprintConflicts = [];
+    imported.records.forEach(function (record) {
+      var local = localByFingerprint.get(record.fingerprint);
+      if (!local) { union.push(clone(record)); return; }
+      if (canonicalStringify(local) !== canonicalStringify(record)) fingerprintConflicts.push(record.fingerprint);
+      else duplicatePhysicalRecordCount += 1;
+    });
+    union.sort(function (left, right) { return left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); });
+    var resolved = fingerprintConflicts.length ? null : Aggregator.rebuild(union);
+    var rejected = resolved ? resolved.rejectedRecords.slice() : [];
+    var conflictKeys = new Set(fingerprintConflicts.map(function (fingerprint) { return 'fingerprint:' + fingerprint; }));
+    if (resolved) {
+      resolved.quarantinedHandKeys.forEach(function (handKey) { conflictKeys.add(String(handKey)); });
+      rejected.forEach(function (entry) { conflictKeys.add(String(entry.handKey || 'fingerprint:' + (entry.fingerprint || 'unknown'))); });
+    }
+    var currentKeys = logicalHandKeys(current.records); var importedKeys = logicalHandKeys(imported.records);
+    var alreadyPresent = Array.from(importedKeys).filter(function (handKey) { return currentKeys.has(handKey); }).length;
+    var changedHandKeys = logicalHandKeys(imported.records.filter(function (record) { return !localByFingerprint.has(record.fingerprint); }));
+    var affectedPlayerIds = playerIds(union.filter(function (record) { return changedHandKeys.has(record.handKey); }));
+    var summary = {
+      importedLogicalHandCount: importedKeys.size,
+      importedPhysicalRecordCount: imported.records.length,
+      alreadyPresentLogicalHandCount: alreadyPresent,
+      newLogicalHandCount: importedKeys.size - alreadyPresent,
+      exactDuplicatePhysicalRecordCount: duplicatePhysicalRecordCount,
+      newPhysicalRecordCount: imported.records.length - duplicatePhysicalRecordCount,
+      conflictedLogicalHandCount: conflictKeys.size,
+      affectedPlayerCount: affectedPlayerIds.length,
+      affectedPlayerIds: affectedPlayerIds,
+      mergedLogicalHandCount: new Set(union.map(function (record) { return String(record.handKey); })).size,
+      mergedPhysicalRecordCount: union.length,
+      sessionAffected: false
+    };
+    if (fingerprintConflicts.length || !resolved || rejected.length || resolved.acceptedRecords.length !== union.length || resolved.quarantinedHandKeys.length) {
+      return { ok: false, reason: 'Career import conflicts with the current authoritative record graph and cannot be merged safely', summary: summary, rejectedRecords: rejected, quarantinedHandKeys: resolved ? resolved.quarantinedHandKeys.slice() : [], fingerprintConflicts: fingerprintConflicts.slice() };
+    }
+    return {
+      ok: true,
+      records: union,
+      careerMetadata: mergedCareerMetadata(current.careerMetadata, imported.careerMetadata, current.records.length > 0, imported.records.length > 0),
+      aggregate: clone(resolved.aggregate),
+      activeRecords: resolved.activeRecords.map(clone),
+      summary: summary,
+      rejectedRecords: [], quarantinedHandKeys: [], fingerprintConflicts: []
+    };
+  }
+
   return Object.freeze({
     FORMAT: FORMAT, FORMAT_VERSION: FORMAT_VERSION, DIGEST_ALGORITHM: DIGEST_ALGORITHM,
     canonicalStringify: canonicalStringify,
+    digestCareerExport: digestCareerExport,
     createBackup: createBackup,
-    validateBackup: validateBackup
+    validateBackup: validateBackup,
+    mergeValidatedBackups: mergeValidatedBackups
   });
 });

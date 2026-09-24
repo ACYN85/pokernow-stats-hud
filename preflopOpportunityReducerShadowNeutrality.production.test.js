@@ -290,7 +290,7 @@ assert.strictEqual(count(contentSource, /chrome\.storage\.local\.getKeys\s*\(/g)
 
 assert.strictEqual(count(contentSource, /\.addEventListener\s*\(/g), 66, 'listener declarations remain bounded; the three V1.1 additions are the single-root Tracked Players click/input/change handlers');
 assert.strictEqual(count(contentSource, /window\.addEventListener\s*\(/g), 6, 'no extra window listener was introduced');
-assert.strictEqual(count(contentSource, /document\.addEventListener\s*\(/g), 24, 'pot odds add only bounded move/up/cancel drag listeners; no visibility listener returns');
+assert.strictEqual(count(contentSource, /document\.addEventListener\s*\(/g), 25, 'the single controller-claim listener is added while Pot Odds retains only bounded move/up/cancel drag listeners and no visibility listener returns');
 assert.strictEqual(count(contentSource, /new\s+MutationObserver\s*\(/g), 6, 'only the current hero seat/card observer remains from the pot-odds integration');
 assert.doesNotMatch(contentSource, /potOddsIntegrityObserver|heroPotOddsIntegrityIssue/, 'pot odds do not observe their own extension-owned root attributes or styles');
 assert.match(contentSource, /heroPotOddsAnchorMutationObserver\.observe\(observerElement, \{ childList: true, subtree: true \}\)/, 'pot-odds replacement observation is child-list-only and scoped to the current board or hero fallback anchor');

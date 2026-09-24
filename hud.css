@@ -53,8 +53,6 @@ html.pnhud-leaderboard-hud-dragging, html.pnhud-leaderboard-hud-dragging * { use
 #pokernow-stats-hud-root button { color: inherit; background: transparent; border: 0; cursor: pointer; font: inherit; }
 #pokernow-stats-hud-root .pnhud-close { color: #99f6e4; font-size: 21px; line-height: 17px; }
 #pokernow-stats-hud-root .pnhud-header-actions { display: flex; align-items: center; gap: var(--pnhud-gap, 7px); }
-#pokernow-stats-hud-root .pnhud-reset { padding: var(--pnhud-button-pad-y, 3px) var(--pnhud-button-pad-x, 6px); border: 1px solid #3f766d; border-radius: 4px; color: #a7c8c1; font-size: var(--pnhud-badge-size, 9px); font-weight: 700; }
-#pokernow-stats-hud-root .pnhud-reset:hover { border-color: #5eead4; color: #f0fdfa; }
 #pokernow-stats-hud-root .pnhud-tabs { display: flex; gap: var(--pnhud-gap, 7px); padding: var(--pnhud-tab-pad-y, 4px) var(--pnhud-header-pad-x, 13px); border-bottom: 1px solid #28534c; background: rgba(5, 30, 26, var(--pnhud-surface-opacity, .15)); }
 #pokernow-stats-hud-root .pnhud-tabs button { padding: var(--pnhud-tab-pad-y, 4px) var(--pnhud-tab-pad-x, 8px); border-radius: 4px; color: #a7c8c1; }
 #pokernow-stats-hud-root .pnhud-tabs button.active { color: #052e2b; background: var(--pnhud-accent, #5eead4); font-weight: 700; }
@@ -280,6 +278,9 @@ html.pnhud-leaderboard-hud-dragging, html.pnhud-leaderboard-hud-dragging * { use
 #pnhud-settings-panel .pnhud-career-data-actions button { padding: 6px 9px; border: 1px solid #3f766d; border-radius: 4px; color: #bdece4; background: #12352e; font-weight: 700; }
 #pnhud-settings-panel .pnhud-career-data-actions button:focus-visible { outline: 2px solid var(--pnhud-accent, #5eead4); outline-offset: 2px; }
 #pnhud-settings-panel .pnhud-career-data-actions .pnhud-destructive { border-color: #b45353; color: #fee2e2; background: #612727; }
+#pnhud-settings-panel .pnhud-career-data-group { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid rgba(40,83,76,.7); }
+#pnhud-settings-panel .pnhud-career-data-group h3 { margin: 0 0 4px; color: #d5f5ef; font-size: 13px; }
+#pnhud-settings-panel .pnhud-career-data-group p { margin: 0; color: #86bdb2; }
 #pnhud-settings-panel .pnhud-career-data-message { min-height: 1.4em; margin: 6px 0; color: #86bdb2; }
 #pnhud-settings-panel .pnhud-career-data-message-success { color: #6ee7b7; }
 #pnhud-settings-panel .pnhud-career-data-message-error { color: #fca5a5; }
@@ -354,6 +355,12 @@ html.pnhud-leaderboard-hud-dragging, html.pnhud-leaderboard-hud-dragging * { use
 #pnhud-player-dashboard .pnhud-dashboard-stat > span { color: #86bdb2; font-size: 9px; font-weight: 800; }
 #pnhud-player-dashboard .pnhud-dashboard-stat > strong { color: #ecfdf5; font-size: 16px; }
 #pnhud-player-dashboard .pnhud-dashboard-stat > small { min-height: 2.2em; color: #6f918a; font-size: 8px; line-height: 1.15; overflow-wrap: anywhere; }
+#pnhud-player-dashboard .pnhud-dashboard-evidence > em { font-style: normal; font-weight: 800; }
+#pnhud-player-dashboard .pnhud-dashboard-evidence-strong > em { color: #5eead4; }
+#pnhud-player-dashboard .pnhud-dashboard-evidence-moderate > em { color: #bdece4; }
+#pnhud-player-dashboard .pnhud-dashboard-evidence-weak > em { color: #fde68a; }
+#pnhud-player-dashboard .pnhud-dashboard-evidence-insufficient > em { color: #fca5a5; }
+#pnhud-player-dashboard .pnhud-dashboard-evidence-unavailable > em { color: #71938d; }
 #pnhud-player-dashboard .pnhud-dashboard-coverage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 10px; margin: -2px 0 9px; color: #bdece4; }
 #pnhud-player-dashboard .pnhud-dashboard-coverage span { color: #6f918a; font-size: 9px; }
 #pnhud-player-dashboard .pnhud-dashboard-section-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 5px 9px; margin-bottom: 6px; }

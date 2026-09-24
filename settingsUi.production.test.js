@@ -53,7 +53,8 @@ assert.ok(normalHudRenderer.includes('pnhud-title'));
 assert.ok(normalHudRenderer.includes("['session', 'career'].map"));
 assert.ok(normalHudRenderer.includes('data-leaderboard-source="'));
 assert.ok(normalHudRenderer.includes('updateLeaderboardSource(button.dataset.leaderboardSource)'));
-assert.ok(normalHudRenderer.includes('pnhud-reset'));
+assert.ok(!normalHudRenderer.includes('pnhud-reset'), 'Reset Session has one authoritative owner under Settings > Data');
+assert.ok(content.includes('pnhud-data-reset-session'));
 assert.ok(normalHudRenderer.includes('<table>'));
 
 assert.ok(content.includes("return copyDiagnostics()"));

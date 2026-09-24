@@ -31,8 +31,11 @@ var exactLocation = {
 };
 function fakeDocument() {
   var elements = new Map();
+  var attributes = new Map();
   var body = {
-    appendChild: function (element) { element.parentElement = body; element.isConnected = true; elements.set(element.id, element); return element; }
+    appendChild: function (element) { element.parentElement = body; element.isConnected = true; elements.set(element.id, element); return element; },
+    setAttribute: function (name, value) { attributes.set(String(name), String(value)); },
+    getAttribute: function (name) { return attributes.has(String(name)) ? attributes.get(String(name)) : null; }
   };
   return {
     body: body, documentElement: body,
@@ -62,7 +65,7 @@ var isolated = {
     }
   },
   setTimeout: function () { return 1; }, clearTimeout: function () {}, setInterval: function () { return 1; }, clearInterval: function () {},
-  MutationObserver: function () {}, ResizeObserver: function () {}, Blob: Blob, URL: URL
+  MutationObserver: function () {}, ResizeObserver: function () {}, Event: function (type) { this.type = type; }, Blob: Blob, URL: URL
 };
 isolated.window = isolated;
 isolated.globalThis = isolated;

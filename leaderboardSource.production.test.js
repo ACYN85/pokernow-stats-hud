@@ -1,13 +1,13 @@
 'use strict';
 
 var assert = require('assert');
-var fs = require('fs');
 var support = require('./testSupport/productionContentScriptHarness.js');
 var settings = require('./settingsUi.js');
 var stats = require('./stats.js');
 var columns = require('./leaderboardStats.js');
 var fixtures = require('./testSupport/careerBackupFixtures.js');
 var queryHarness = require('./testSupport/careerDashboardQueryHarness.js');
+var indexed = require('./careerIndexedStore.js');
 var frames = require('./testSupport/flopCBetProductionFrames.js');
 var allColumns = ['hands', 'vpip', 'pfr', 'af', 'threeBet', 'foldToThreeBet', 'flopCBet', 'foldToFlopCBet', 'wtsd', 'wsd'];
 
@@ -66,12 +66,10 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
       fixtures.record('HISTORY', '3', [fixtures.player('historical-only', 'Absent')])];
     await driver.reset(records, true);
     var requests = [];
-    var hold = true;
     var h = create({ runtimeSendMessage: function (message, callback) {
       if (message.method === 'careerHudStats') {
         var request = { ids: Array.from(message.args[0]), callback: callback };
         requests.push(request);
-        if (!hold) driver.call('careerHudStats', message.args).then(function (value) { callback({ ok: true, value: value }); });
       } else if (message.method === 'initialize') callback({ ok: true, value: {} });
       else if (message.method === 'append') driver.call('append', message.args).then(function (value) { callback({ ok: true, value: value }); });
       else callback({ ok: true, value: {} });
@@ -93,6 +91,7 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
 
     call(h, 'switchSource("career")');
     assert.ok(state(h).html.includes('data-leaderboard-source="career" aria-pressed="true"'), 'source presentation switches synchronously');
+    assert.ok(state(h).html.includes('Career statistics loading') && !state(h).html.includes('data-pnhud-displayed-value="0"'), 'cold Career batch renders a neutral pending state, not false H0');
     assert.strictEqual(h.storage.hudUiPreferences.leaderboardStatSource, 'career', 'Settings handler persists source');
     assert.deepStrictEqual(requests[0].ids, ['a', 'b', 'c', 'missing']);
     // Await the actual memory/native-IDB result, then deliver through the production message adapter.
@@ -113,6 +112,11 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
     assert.deepStrictEqual(careerRows[3].slice(1), ['0'].concat(new Array(9).fill('---')), 'no-history player uses established placeholders');
     assert.deepStrictEqual(careerRows[4].slice(1), careerRows[3].slice(1), 'name-only player does not infer Career identity');
     assert.ok(!state(h).html.includes('Absent') && !state(h).html.includes('Old Alex'));
+    var requestsBeforeReorder = requests.length;
+    var rowsBeforeReorder = rows(h);
+    call(h, 'seed(' + JSON.stringify(session.slice().reverse()) + ')');
+    assert.strictEqual(requests.length, requestsBeforeReorder, 'roster reorder retains the same stable-ID batch identity');
+    assert.deepStrictEqual(rows(h), rowsBeforeReorder, 'roster reorder preserves stable-ID snapshot ownership');
     call(h, 'refresh()'); call(h, 'remount()');
     assert.strictEqual(requests.length, 1, 'unchanged renders and remounts reuse the aggregate presentation');
     call(h, 'columns(["wsd", "hands", "vpip"])');
@@ -130,8 +134,10 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
     assert.strictEqual(state(h).profiles, initial.profiles);
     call(h, 'seatSource("session")');
 
-    hold = true;
+    var sourceSwitchRequestCount = requests.length;
     call(h, 'switchSource("career")'); var old = requests.at(-1);
+    assert.strictEqual(rows(h)[0][1], '2', 'returning to Career immediately displays the last settled stable-ID snapshot');
+    assert.strictEqual(requests.length, sourceSwitchRequestCount + 1, 'returning to Career adds only the existing batched refresh');
     call(h, 'switchSource("session")');
     old.callback({ ok: true, value: { players: { a: { counters: { hands: 999 } } } } }); await flush();
     assert.deepStrictEqual(rows(h), sessionRows, 'late Career response cannot overwrite newer Session selection');
@@ -143,14 +149,19 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
 
     var appended = fixtures.record('HISTORY', '4', [fixtures.player('a', 'Another rename')]);
     assert.strictEqual((await driver.call('append', [appended])).accepted, true);
+    var settledBeforeRefresh = rows(h);
     call(h, 'invalidate(["a"], "accepted Career hand append")'); var revisionRequest = requests.at(-1);
+    assert.deepStrictEqual(rows(h), settledBeforeRefresh, 'same-context Career refresh retains every last-settled stat while pending');
     revisionRequest.callback({ ok: true, value: await driver.call('careerHudStats', [revisionRequest.ids]) }); await flush();
     assert.strictEqual(rows(h)[0][1], '3', 'backend append revision refreshes visible Career values');
+    assert.notDeepStrictEqual(rows(h), settledBeforeRefresh, 'the complete refreshed row set replaces the retained snapshot together');
     var count = requests.length;
     call(h, 'invalidate(["historical-only"], "unrelated append")'); call(h, 'refresh()');
     assert.strictEqual(requests.length, count, 'unrelated Career players do not trigger retrieval');
     call(h, 'invalidate(["a"], "revision one")'); var staleRevision = requests.at(-1);
+    assert.strictEqual(rows(h)[0][1], '3', 'repeated invalidation does not clear the settled Career snapshot');
     call(h, 'invalidate(["a"], "revision two")'); var currentRevision = requests.at(-1);
+    assert.strictEqual(rows(h)[0][1], '3');
     currentRevision.callback({ ok: true, value: await driver.call('careerHudStats', [currentRevision.ids]) }); await flush();
     staleRevision.callback({ ok: true, value: { players: { a: { counters: { hands: 999 } } } } }); await flush();
     assert.strictEqual(rows(h)[0][1], '3', 'older revision cannot overwrite newer aggregate');
@@ -158,6 +169,7 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
     call(h, 'invalidate(["a"], "pending roster")'); var departed = requests.at(-1);
     var nextSession = [event('b', 'Alex'), event('new', 'Zed')];
     call(h, 'seed(' + JSON.stringify(nextSession) + ', {"Transient": true})'); var joined = requests.at(-1);
+    assert.ok(rows(h).every(function (row) { return row.length === 1; }) && state(h).html.includes('Career statistics loading'), 'changed roster identity clears the prior roster snapshot without publishing false zeros');
     joined.callback({ ok: true, value: await driver.call('careerHudStats', [joined.ids]) }); await flush();
     departed.callback({ ok: true, value: { players: { a: { counters: { hands: 999 } } } } }); await flush();
     assert.deepStrictEqual(rows(h).map(function (r) { return r[0]; }), ['Alex', 'Transient', 'Zed']);
@@ -166,16 +178,27 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
     assert.deepStrictEqual(rows(h).map(function (r) { return r[0]; }), ['Alex', 'Zed'], 'departed active-only participant disappears under existing rules');
     call(h, 'changeTable("other-table")'); var otherTable = requests.at(-1);
     assert.notStrictEqual(otherTable, joined, 'same IDs on changed table get a new request epoch');
+    assert.ok(rows(h).every(function (row) { return row.length === 1; }) && state(h).html.includes('Career statistics loading'), 'room change cannot retain the prior room snapshot or publish false zeros');
     call(h, 'visible(false)'); count = requests.length;
     otherTable.callback({ ok: true, value: { players: { b: { counters: { hands: 999 } } } } }); await flush();
     call(h, 'invalidate(["b"], "hidden append")'); call(h, 'refresh()'); call(h, 'refresh()');
     assert.strictEqual(requests.length, count, 'hidden source produces no queries or polling');
     call(h, 'visible(true)'); assert.strictEqual(requests.length, count + 1);
     requests.at(-1).callback({ ok: false, error: 'fixture failure' }); await flush();
-    assert.strictEqual(rows(h)[0][1], '0', 'failed lookup never falls back to Session');
+    assert.strictEqual(rows(h)[0][1], undefined, 'failed lookup never falls back to Session or false H0');
+    assert.ok(state(h).html.includes('Career statistics unavailable'));
     call(h, 'refresh()'); assert.strictEqual(requests.length, count + 1, 'failure cannot introduce a request loop');
-    var reloaded = create({ initialStorage: JSON.parse(JSON.stringify(h.storage)) });
+    var reloadedRequests = [];
+    var reloaded = create({ initialStorage: JSON.parse(JSON.stringify(h.storage)), runtimeSendMessage: function (message, callback) {
+      if (message.method === 'careerHudStats') reloadedRequests.push({ ids: Array.from(message.args[0]), callback: callback });
+      else callback({ ok: true, value: {} });
+    } });
     assert.strictEqual(state(reloaded).preferences.leaderboardStatSource, 'career', 'actual startup restores source');
+    call(reloaded, 'seed(' + JSON.stringify([event('a', 'Alex'), event('missing', 'New')]) + ')');
+    assert.ok(state(reloaded).html.includes('Career statistics loading') && rows(reloaded).every(function (row) { return row.length === 1; }), 'hard reload/new controller starts pending, not with false Career H0');
+    assert.deepStrictEqual(reloadedRequests[0].ids, ['a', 'missing']);
+    reloadedRequests[0].callback({ ok: true, value: await driver.call('careerHudStats', [reloadedRequests[0].ids]) }); await flush();
+    assert.deepStrictEqual(rows(reloaded).map(function (row) { return row.slice(0, 2); }), [['Alex', '3'], ['New', '0']], 'hard-reload batch atomically publishes Career history and genuine settled H0');
     assert.ok(!state(reloaded).html.includes('Session (legacy)'));
     assert.ok(!state(reloaded).html.includes('profile-chip'), 'no Leaderboard profile feature');
     var longSession = Array.from({ length: 65 }, function (_, index) { var id = 'P' + String(index).padStart(3, '0'); return event(id, id); });
@@ -192,6 +215,23 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
     var nullRequest = requests.at(-1);
     nullRequest.callback({ ok: true, value: await driver.call('careerHudStats', [nullRequest.ids]) }); await flush();
     assert.deepStrictEqual(rows(h).map(function (row) { return row.slice(0, 2); }), [['Literal ID', '1'], ['No ID', '0']], 'absent identity cannot alias a literal stable ID');
+    var mutationSnapshot = rows(h);
+    for (var mutationReason of ['Current Session removed from Career', 'Career data imported', 'Career backup restored']) {
+      var requestCountBeforeMutation = requests.length;
+      call(h, 'invalidate(null, ' + JSON.stringify(mutationReason) + ')');
+      var mutationRequest = requests.at(-1);
+      assert.strictEqual(requests.length, requestCountBeforeMutation + 1, mutationReason + ' adds exactly one batched refresh');
+      assert.deepStrictEqual(rows(h), mutationSnapshot, mutationReason + ' retains the same-context settled snapshot while pending');
+      mutationRequest.callback({ ok: true, value: await driver.call('careerHudStats', [mutationRequest.ids]) }); await flush();
+      mutationSnapshot = rows(h);
+    }
+    call(h, 'invalidate(null, "pre-restore pending refresh")'); var preRestorePending = requests.at(-1);
+    call(h, 'invalidate(null, "Career backup restored", true)'); var postRestoreRequest = requests.at(-1);
+    assert.ok(rows(h).every(function (row) { return row.length === 1; }) && state(h).html.includes('Career statistics loading'), 'SAFE REPLACE hard-clears to pending, not false H0');
+    preRestorePending.callback({ ok: true, value: { players: { null: { counters: { hands: 999 } } } } }); await flush();
+    assert.ok(rows(h).every(function (row) { return row.length === 1; }), 'late pre-restore Career response cannot repaint after hard invalidation');
+    postRestoreRequest.callback({ ok: true, value: await driver.call('careerHudStats', [postRestoreRequest.ids]) }); await flush();
+    assert.strictEqual(rows(h)[0][1], '1', 'post-restore request atomically publishes restored Career values');
     call(h, 'invalidate(["null"], "teardown pending")'); var teardown = requests.at(-1);
     var renderCount = h.logs.filter(function (line) { return line[0] === '[HUD UI BOOT 7] first render completed'; }).length;
     call(h, 'stop()');
@@ -216,4 +256,27 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
   assert.ok(rows(live).some(function (row) { return row[0] === 'P1' && row[1] === '1'; }), 'certified append repaints Career without another hand');
   assert.ok(live.logs.every(function (line) { return line[0] !== '[HUD PIPELINE FAILURE]' && line[0] !== '[HUD] websocket frame processing error'; }));
   console.log('Leaderboard certified hand append production integration passed.');
+
+  // Exercise the production async append callback, including a worker wake that
+  // replays the durable outbox before acknowledging the explicit append message.
+  for (var replayFirst of [false, true]) {
+    var service = indexed.createMemoryService({}, { initializedAt: 1 });
+    var appendOutcome;
+    var asyncLive = create({ initialStorage: JSON.parse(JSON.stringify(liveStorage)), debugEnabled: true, runtimeSendMessage: function (message, callback) {
+      if (message.method === 'initialize') return callback({ ok: true, value: {} });
+      if (message.method === 'append') {
+        var prepare = replayFirst ? service.append(message.args[0]) : Promise.resolve();
+        prepare.then(function () { return service.append(message.args[0]); }).then(function (result) { appendOutcome = result; callback({ ok: true, value: result }); });
+      } else if (message.method === 'careerHudStats') service.careerHudStats(message.args[0]).then(function (value) { callback({ ok: true, value: value }); });
+      else callback({ ok: true, value: {} });
+    } });
+    await flush();
+    call(asyncLive, 'switchSource("career")'); await flush();
+    assert.strictEqual(rows(asyncLive)[0][1], '0');
+    support.dispatchFrames(asyncLive, scenario.frames.slice(0, -1).concat([scenario.terminalFrame]), 'indexed-leaderboard-finalization');
+    await flush(); await flush();
+    assert.ok(appendOutcome && (replayFirst ? appendOutcome.duplicate : appendOutcome.accepted));
+    assert.ok(rows(asyncLive).some(function (row) { return row[0] === 'P1' && row[1] === '1'; }), 'successful indexed append/outbox replay refreshes visible Career');
+  }
+  console.log('Leaderboard indexed append and outbox replay acknowledgement integration passed.');
 })().catch(function (error) { console.error(error); process.exitCode = 1; });

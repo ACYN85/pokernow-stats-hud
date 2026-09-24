@@ -1,8 +1,8 @@
-# Known limitations — public 1.1.0
+# Known limitations — public 1.2.0
 
 The following are deliberate support boundaries, not claims that every rare case was manually observed:
 
-- Career starts with newly tracked finalized contributions. There is no lifetime PokerNow history retrieval, Full Log backfill, missed-hand importer, cloud sync or merge restore.
+- Career starts with newly tracked finalized contributions. There is no lifetime PokerNow history retrieval, Full Log backfill, missed-hand importer, or cloud sync. Import (Merge) accepts a valid portable Career backup; it does not fetch PokerNow history.
 - Tracking while disconnected or attaching mid-hand cannot reconstruct unobserved actions. Exact saved reload checkpoints preserve supported continuity; incomplete/recovered evidence remains conservative.
 - Unknown action ordering, full-raise legality/reopening, short-all-in eligibility or missing direct responses can withhold 3Bet/F3B/CBet/FCB opportunities. Flop CBet/FCB do not cover turn/river continuation betting.
 - Production has no universal pot/board identity or side-pot eligibility normalization. Incremental/multi-message settlement, multiple boards, rake/odd chips and unresolved return/award distinctions remain limited. Supported atomic contested awards can still yield binary W$SD; rich pot outcomes may remain unsupported.
@@ -13,7 +13,8 @@ The following are deliberate support boundaries, not claims that every rare case
 - Recent Trends uses eligible dated Career hands in fixed 25/50/100/250 windows. It has no Session mode, charts, arbitrary windows, or date ranges, and Dashboard filters do not alter it.
 - Seat statistics may use Career while profile labels remain Session-derived. The leaderboard has its own persisted Session/Career numeric source and keeps the current-table participant list rather than enumerating historical Career players. Historical players are available through Settings → Players.
 - Pot Odds is arithmetic on supported current state, not an outs/draw-probability, equity or advice engine. Unsupported/missing eligible-pot or call-cost evidence is shown as unavailable; it is not guessed.
-- Career whole-backup/restore has a 32 MiB policy and conservative export preflight. There is no guarantee of unlimited browser storage. Notes (500 new-player entries, 5,000 characters each) are not included in Career Backup.
+- Compressed Career input and decoded compact JSON each have a 64 MiB ceiling, and whole-ledger transfer is conservatively limited to 4,032 physical records. Gzip does not make processing streaming or unlimited. Browser storage is not guaranteed unlimited. Notes (500 new-player entries, 5,000 characters each) are not included in Career exports.
+- A cold Session-to-Career switch may briefly display Loading before Career values settle. Pending or failed reads do not claim authoritative H0; a genuine settled no-history result can display H0/---.
 - Desktop Chrome/PokerNow DOM and protocol assumptions apply. Other browsers, variants, versions and arbitrary viewport/zoom combinations are not universally certified. Painted-panel fallback and accessibility clamps remain intentional; default eight-pixel geometry is subject to rendering clamps.
 - Diagnostics/exports can contain sensitive local data. There is no automatic remote backup; uninstalling or clearing extension storage can lose data.
 
