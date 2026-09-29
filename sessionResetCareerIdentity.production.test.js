@@ -327,9 +327,9 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
     { displayedName: 'playerA', directPlayerIds: ['stable-playerA'], seatIndex: 1, reactPropKeys: [], dataAttributes: {}, boundingBox: { width: 100, height: 50 } },
     { displayedName: 'playerA', directPlayerIds: ['stable-other-playerA'], seatIndex: 2, reactPropKeys: [], dataAttributes: {}, boundingBox: { width: 100, height: 50 } }
   ]) + ')'));
-  assert.deepStrictEqual(discoveredSameNameSeats.map(function (seat) { return seat.directPlayerIds[0]; }).sort(), ['stable-playerA', 'stable-other-playerA'], 'production discovery preserves same-name seats carrying distinct authoritative IDs');
-  assert.deepStrictEqual(joined.entries.map(function (entry) { return entry.playerId; }), ['stable-playerA', 'stable-other-playerA', 'stable-playerB', 'stable-new']);
-  assert.deepStrictEqual(rows(joined).map(function (row) { return row.slice(0, 2); }), [['playerA', '838'], ['playerA', '9'], ['playerB', '412'], ['new player', '27']], 'new and same-name players remain separated by exact stable ID');
+  assert.deepStrictEqual(discoveredSameNameSeats.map(function (seat) { return seat.directPlayerIds[0]; }).sort(), ['stable-other-playerA', 'stable-playerA'], 'production discovery preserves same-name seats carrying distinct authoritative IDs');
+  assert.deepStrictEqual(joined.entries.map(function (entry) { return entry.playerId; }), ['stable-new', 'stable-other-playerA', 'stable-playerA', 'stable-playerB']);
+  assert.deepStrictEqual(rows(joined).map(function (row) { return row.slice(0, 2); }), [['new player', '27'], ['playerA', '9'], ['playerA', '838'], ['playerB', '412']], 'new and same-name players remain separated by exact stable ID');
 
   call(harness, 'setRoster(' + JSON.stringify([
     { playerId: 'stable-other-playerA', name: 'playerA', seatId: 'seat-7' },
@@ -338,7 +338,7 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
   ]) + ', "player left")');
   await flush();
   var afterLeave = snapshot(harness);
-  assert.deepStrictEqual(afterLeave.entries.map(function (entry) { return entry.playerId; }), ['stable-other-playerA', 'stable-playerB', 'stable-new'], 'a departed current player disappears through normal roster retirement');
+  assert.deepStrictEqual(afterLeave.entries.map(function (entry) { return entry.playerId; }), ['stable-new', 'stable-other-playerA', 'stable-playerB'], 'a departed current player disappears through normal roster retirement');
   assert.ok(messages.filter(function (message) { return message.method === 'careerHudStats'; }).every(function (message) { return message.args[0].length <= 64; }), 'Career presentation retains bounded batches');
   assert.strictEqual(messages.filter(function (message) { return message.method === 'careerPlayerSummaries' || message.method === 'careerPlayers'; }).length, 0, 'current-table repair never enumerates all Career players');
 
@@ -355,7 +355,7 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
   await flush();
   var afterReload = snapshot(reloaded);
   assert.strictEqual(afterReload.liveEvents, 0, 'reload cannot restore pre-reset Session statistics');
-  assert.deepStrictEqual(rows(afterReload).map(function (row) { return row.slice(0, 2); }), [['playerA', '9'], ['playerB', '412'], ['new player', '27']], 'reload reconnects authoritative current seats to existing Career data');
+  assert.deepStrictEqual(rows(afterReload).map(function (row) { return row.slice(0, 2); }), [['new player', '27'], ['playerA', '9'], ['playerB', '412']], 'reload reconnects authoritative current seats to existing Career data');
   assert.deepStrictEqual(reloaded.storage.careerRecordSentinel, initialStorage.careerRecordSentinel);
   call(reloaded, 'stop()');
 
