@@ -6,9 +6,9 @@ var frames = require('./testSupport/flopCBetProductionFrames.js');
 var settings = require('./settingsUi.js');
 
 var careerById = {
-  'stable-liam': { counters: { hands: 838, vpipMade: 300, vpipOpportunities: 838, pfrMade: 160, pfrOpportunities: 838, postflopAggressiveActions: 100, postflopCalls: 50 } },
-  'stable-mail': { counters: { hands: 412, vpipMade: 120, vpipOpportunities: 412, pfrMade: 70, pfrOpportunities: 412, postflopAggressiveActions: 30, postflopCalls: 20 } },
-  'stable-other-liam': { counters: { hands: 9, vpipMade: 1, vpipOpportunities: 9, pfrMade: 0, pfrOpportunities: 9, postflopAggressiveActions: 0, postflopCalls: 0 } },
+  'stable-playerA': { counters: { hands: 838, vpipMade: 300, vpipOpportunities: 838, pfrMade: 160, pfrOpportunities: 838, postflopAggressiveActions: 100, postflopCalls: 50 } },
+  'stable-playerB': { counters: { hands: 412, vpipMade: 120, vpipOpportunities: 412, pfrMade: 70, pfrOpportunities: 412, postflopAggressiveActions: 30, postflopCalls: 20 } },
+  'stable-other-playerA': { counters: { hands: 9, vpipMade: 1, vpipOpportunities: 9, pfrMade: 0, pfrOpportunities: 9, postflopAggressiveActions: 0, postflopCalls: 0 } },
   'stable-new': { counters: { hands: 27, vpipMade: 10, vpipOpportunities: 27, pfrMade: 4, pfrOpportunities: 27, postflopAggressiveActions: 4, postflopCalls: 2 } }
 };
 
@@ -67,18 +67,18 @@ function instrument(source) {
     distinctSeats: function (rows) { return distinctDomSeatCandidates(rows); },
     seedCareerUiState: function () {
       playerDashboardState.open = true;
-      playerDashboardState.playerId = 'stable-liam';
-      playerDashboardState.displayName = 'liam';
+      playerDashboardState.playerId = 'stable-playerA';
+      playerDashboardState.displayName = 'playerA';
       playerDashboardState.mode = 'career';
       playerDashboardState.careerStats = { counters: { hands: 838 } };
       playerDashboardState.trends = { windows: { 25: { counters: { hands: 25 } } } };
       playerDashboardState.profile = { displayedArchetype: 'TAG', hands: 838 };
       playerDashboardState.note = 'known opponent';
       playerDashboardState.noteDraft = 'known opponent';
-      playerNotesState = PokerPlayerNotesStore.normalize({ version: 1, notes: { 'stable-liam': 'known opponent' } });
-      trackedPlayersState.search = 'liam';
+      playerNotesState = PokerPlayerNotesStore.normalize({ version: 1, notes: { 'stable-playerA': 'known opponent' } });
+      trackedPlayersState.search = 'playerA';
       trackedPlayersState.sort = 'hands';
-      trackedPlayersState.summaries = [{ playerId: 'stable-liam', latestDisplayName: 'liam', hands: 838, revision: 7, summaryVersion: 1 }];
+      trackedPlayersState.summaries = [{ playerId: 'stable-playerA', latestDisplayName: 'playerA', hands: 838, revision: 7, summaryVersion: 1 }];
     },
     snapshot: function () {
       var data = displayData({});
@@ -144,14 +144,14 @@ function tableState(handId, paused) {
     hI: handId, handId: handId, status: paused ? 'paused' : 'inProgress', gamePaused: Boolean(paused),
     gT: [0, 0], oTC: { '1': [] }, pot: 0, tB: {}, cHB: 0, mR: 40, cPI: '<D>', pITT: '<D>', cRPI: [],
     sBPI: '<D>', bBPI: '<D>', dealerID: '<D>', dealerId: '<D>', iHPI: [], pGS: {}, pC: {},
-    players: { 'stable-liam': { name: 'liam', stack: 1000 }, 'stable-mail': { name: 'mail', stack: 1000 } },
-    seats: [[1, 'stable-liam'], [6, 'stable-mail']], gameResult: '<D>'
+    players: { 'stable-playerA': { name: 'playerA', stack: 1000 }, 'stable-playerB': { name: 'playerB', stack: 1000 } },
+    seats: [[1, 'stable-playerA'], [6, 'stable-playerB']], gameResult: '<D>'
   };
 }
 
 function sparseScenario(handId) {
-  var hand = JSON.parse(JSON.stringify(frames.ordinaryScenario('bet-fold', handId)).replace(/P1/g, 'stable-liam').replace(/P2/g, 'stable-mail'));
-  var first = 'stable-liam'; var second = 'stable-mail';
+  var hand = JSON.parse(JSON.stringify(frames.ordinaryScenario('bet-fold', handId)).replace(/P1/g, 'stable-playerA').replace(/P2/g, 'stable-playerB'));
+  var first = 'stable-playerA'; var second = 'stable-playerB';
   var baseline = clone(hand.snapshots.predeal); var deal = clone(hand.snapshots.initial);
   Object.assign(baseline, { gN: 1, gT: [1, 0], cHB: 20, dealerID: first, dealerId: first, status: 'inProgress', pGS: {}, tB: {} });
   baseline.pGS[first] = 'inGame'; baseline.pGS[second] = 'inGame'; baseline.tB[first] = '<D>'; baseline.tB[second] = '<D>';
@@ -195,12 +195,12 @@ function create(initialStorage, messages, careerFixture) {
       }
       if (message.method === 'prepareCareerSessionRemoval') {
         var sessionIds = message.args[0].sessionHandIds || [];
-        return callback({ ok: true, value: { sessionHandCount: sessionIds.length, matchedSessionHandCount: sessionIds.length, unmatchedSessionHandCount: 0, logicalHandCount: sessionIds.length, physicalRecordCount: sessionIds.length, affectedPlayerCount: 2, affectedPlayerIds: ['stable-liam', 'stable-mail'], currentDigest: 'fixture-current-digest', confirmationToken: 'fixture-confirmation-token' } });
+        return callback({ ok: true, value: { sessionHandCount: sessionIds.length, matchedSessionHandCount: sessionIds.length, unmatchedSessionHandCount: 0, logicalHandCount: sessionIds.length, physicalRecordCount: sessionIds.length, affectedPlayerCount: 2, affectedPlayerIds: ['stable-playerA', 'stable-playerB'], currentDigest: 'fixture-current-digest', confirmationToken: 'fixture-confirmation-token' } });
       }
       if (message.method === 'removeCareerSession') {
         removalCommitted = true;
         var removedIds = message.args[0].sessionHandIds || [];
-        return callback({ ok: true, value: { preview: { logicalHandCount: removedIds.length, physicalRecordCount: removedIds.length, affectedPlayerIds: ['stable-liam', 'stable-mail'] }, ledgerInfo: { ready: true, revision: 9 } } });
+        return callback({ ok: true, value: { preview: { logicalHandCount: removedIds.length, physicalRecordCount: removedIds.length, affectedPlayerIds: ['stable-playerA', 'stable-playerB'] }, ledgerInfo: { ready: true, revision: 9 } } });
       }
       callback({ ok: true, value: {} });
     }
@@ -213,34 +213,34 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
 (async function () {
   var messages = [];
   var preferences = settings.merge(settings.DEFAULTS, { leaderboardEnabled: true, seatOverlaysEnabled: true, leaderboardStatSource: 'career', seatHudStatSource: 'career' });
-  var initialStorage = { hudUiPreferences: preferences, careerRecordSentinel: { playerId: 'stable-liam', hands: 838 }, pokerNowHudPlayerNotesV1: { version: 1, notes: { 'stable-liam': 'known opponent' } } };
+  var initialStorage = { hudUiPreferences: preferences, careerRecordSentinel: { playerId: 'stable-playerA', hands: 838 }, pokerNowHudPlayerNotesV1: { version: 1, notes: { 'stable-playerA': 'known opponent' } } };
   var harness = create(initialStorage, messages);
   assert.deepStrictEqual(harness.evaluationErrors, []);
 
   call(harness, 'seedSession([], {"active-only":{"playerId":"stable-active","name":"active-only"}})');
   assert.deepStrictEqual(snapshot(harness).entries, [{ playerId: 'stable-active', playerName: 'active-only' }], 'active-hand enumeration retains an available exact stable ID');
 
-  call(harness, 'seedSession(' + JSON.stringify([event('stable-liam', 'liam'), event('stable-mail', 'mail')]) + ')');
+  call(harness, 'seedSession(' + JSON.stringify([event('stable-playerA', 'playerA'), event('stable-playerB', 'playerB')]) + ')');
   call(harness, 'setRoster(' + JSON.stringify([
-    { playerId: 'stable-liam', name: 'liam', seatId: 'seat-1' },
-    { playerId: 'stable-mail', name: 'mail', seatId: 'seat-2' }
+    { playerId: 'stable-playerA', name: 'playerA', seatId: 'seat-1' },
+    { playerId: 'stable-playerB', name: 'playerB', seatId: 'seat-2' }
   ]) + ', "initial authoritative table")');
   call(harness, 'switchLeaderboard("session")');
   call(harness, 'switchSeatHud("session")');
   var threeHandEvents = [];
   ['SESSION-1', 'SESSION-2', 'SESSION-3'].forEach(function (handId) {
-    threeHandEvents.push(event('stable-liam', 'liam', handId), event('stable-mail', 'mail', handId));
+    threeHandEvents.push(event('stable-playerA', 'playerA', handId), event('stable-playerB', 'playerB', handId));
   });
   call(harness, 'seedSession(' + JSON.stringify(threeHandEvents) + ')');
   call(harness, 'reconcileSeatHud("three authoritative finalized Session hands")');
   var threeHandSession = snapshot(harness);
-  assert.deepStrictEqual(rows(threeHandSession).map(function (row) { return row.slice(0, 2); }), [['liam', '3'], ['mail', '3']], 'Session Leaderboard reports exactly three finalized hands');
+  assert.deepStrictEqual(rows(threeHandSession).map(function (row) { return row.slice(0, 2); }), [['playerA', '3'], ['playerB', '3']], 'Session Leaderboard reports exactly three finalized hands');
   assert.deepStrictEqual(Object.values(threeHandSession.renderedSeatStats).map(function (stats) { return stats.handsPlayed; }), [3, 3], 'mounted Session Seat HUD records use the same three-hand authority');
   assert.ok(Object.values(threeHandSession.renderedSeatHtml).every(function (html) { return html.includes('H 3'); }), 'the rendered Seat HUD DOM publishes H3');
 
   call(harness, 'reset()');
   var resetZero = snapshot(harness);
-  assert.deepStrictEqual(rows(resetZero).map(function (row) { return row.slice(0, 2); }), [['liam', '0'], ['mail', '0']], 'Session reset publishes Leaderboard H0');
+  assert.deepStrictEqual(rows(resetZero).map(function (row) { return row.slice(0, 2); }), [['playerA', '0'], ['playerB', '0']], 'Session reset publishes Leaderboard H0');
   assert.deepStrictEqual(Object.values(resetZero.renderedSeatStats).map(function (stats) { return stats.handsPlayed; }), [0, 0], 'Session reset immediately republishes mounted Seat HUD H0');
   for (var handCount = 1; handCount <= 3; handCount += 1) {
     var nextEvents = threeHandEvents.filter(function (item) { return Number(item.handId.slice(-1)) <= handCount; });
@@ -252,24 +252,24 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
   }
   call(harness, 'reset()');
   assert.deepStrictEqual(Object.values(snapshot(harness).renderedSeatStats).map(function (stats) { return stats.handsPlayed; }), [0, 0], 'a second reset cannot retain the preceding H3 projection');
-  call(harness, 'seedSession(' + JSON.stringify([event('stable-liam', 'liam'), event('stable-mail', 'mail')]) + ')');
+  call(harness, 'seedSession(' + JSON.stringify([event('stable-playerA', 'playerA'), event('stable-playerB', 'playerB')]) + ')');
   call(harness, 'switchLeaderboard("career")');
   call(harness, 'switchSeatHud("career")');
   call(harness, 'seedCareerUiState()');
   await call(harness, 'loadSeatCareer()');
   await flush();
   var beforeReset = snapshot(harness);
-  assert.deepStrictEqual(rows(beforeReset).map(function (row) { return row.slice(0, 2); }), [['liam', '838'], ['mail', '412']], 'preexisting Career players render through the batched Career Leaderboard');
-  assert.strictEqual(beforeReset.seatStats['stable-liam'].handsPlayed, 838, 'Career Seat HUD uses the same exact stable identity');
+  assert.deepStrictEqual(rows(beforeReset).map(function (row) { return row.slice(0, 2); }), [['playerA', '838'], ['playerB', '412']], 'preexisting Career players render through the batched Career Leaderboard');
+  assert.strictEqual(beforeReset.seatStats['stable-playerA'].handsPlayed, 838, 'Career Seat HUD uses the same exact stable identity');
   var careerUiBeforeReset = { dashboard: beforeReset.dashboard, notes: beforeReset.notes, tracked: beforeReset.tracked };
   var appendCountBeforeReset = messages.filter(function (message) { return message.method === 'append'; }).length;
 
   call(harness, 'reset()');
   await flush();
   var afterReset = snapshot(harness);
-  assert.deepStrictEqual(afterReset.mappings, ['stable-liam', 'stable-mail'], 'Reset Session retains authoritative current-seat stable IDs');
-  assert.deepStrictEqual(afterReset.entries.map(function (entry) { return [entry.playerId, entry.playerName]; }), [['stable-liam', 'liam'], ['stable-mail', 'mail']], 'no finalized hand is required to retain the current-table roster');
-  assert.deepStrictEqual(rows(afterReset).map(function (row) { return row.slice(0, 2); }), [['liam', '838'], ['mail', '412']], 'Career Leaderboard remains connected immediately after reset');
+  assert.deepStrictEqual(afterReset.mappings, ['stable-playerA', 'stable-playerB'], 'Reset Session retains authoritative current-seat stable IDs');
+  assert.deepStrictEqual(afterReset.entries.map(function (entry) { return [entry.playerId, entry.playerName]; }), [['stable-playerA', 'playerA'], ['stable-playerB', 'playerB']], 'no finalized hand is required to retain the current-table roster');
+  assert.deepStrictEqual(rows(afterReset).map(function (row) { return row.slice(0, 2); }), [['playerA', '838'], ['playerB', '412']], 'Career Leaderboard remains connected immediately after reset');
   assert.strictEqual(afterReset.liveEvents, 0);
   assert.strictEqual(afterReset.activeHand, null);
   assert.strictEqual(afterReset.finalizedEvents, 0);
@@ -282,20 +282,20 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
 
   call(harness, 'switchLeaderboard("session")');
   var sessionAfterReset = snapshot(harness);
-  assert.deepStrictEqual(rows(sessionAfterReset).map(function (row) { return row.slice(0, 2); }), [['liam', '0'], ['mail', '0']], 'Session Leaderboard retains current seats but exposes fresh zero-hand state');
+  assert.deepStrictEqual(rows(sessionAfterReset).map(function (row) { return row.slice(0, 2); }), [['playerA', '0'], ['playerB', '0']], 'Session Leaderboard retains current seats but exposes fresh zero-hand state');
   call(harness, 'switchLeaderboard("career")'); await flush();
-  assert.deepStrictEqual(rows(snapshot(harness)).map(function (row) { return row.slice(0, 2); }), [['liam', '838'], ['mail', '412']]);
+  assert.deepStrictEqual(rows(snapshot(harness)).map(function (row) { return row.slice(0, 2); }), [['playerA', '838'], ['playerB', '412']]);
   call(harness, 'switchLeaderboard("session")');
   call(harness, 'switchLeaderboard("career")'); await flush();
-  assert.deepStrictEqual(rows(snapshot(harness)).map(function (row) { return row.slice(0, 2); }), [['liam', '838'], ['mail', '412']], 'Career to Session to Career switching cannot revive old Session numbers or lose Career numbers');
+  assert.deepStrictEqual(rows(snapshot(harness)).map(function (row) { return row.slice(0, 2); }), [['playerA', '838'], ['playerB', '412']], 'Career to Session to Career switching cannot revive old Session numbers or lose Career numbers');
 
   call(harness, 'switchSeatHud("session")');
   assert.deepStrictEqual(Object.values(snapshot(harness).seatStats).map(function (stats) { return stats.handsPlayed; }), [0, 0], 'Session Seat HUD is reset');
   call(harness, 'switchSeatHud("career")'); await call(harness, 'loadSeatCareer()'); await flush();
-  assert.strictEqual(snapshot(harness).seatStats['stable-liam'].handsPlayed, 838, 'Career Seat HUD reconnects without a finalized Session hand');
+  assert.strictEqual(snapshot(harness).seatStats['stable-playerA'].handsPlayed, 838, 'Career Seat HUD reconnects without a finalized Session hand');
 
-  call(harness, 'seedSession(' + JSON.stringify([event('stable-liam', 'liam', 'PAUSED-HISTORY')]) + ')');
-  dispatch(harness, 'incoming', 'registered', { currentPlayer: { id: 'stable-liam' }, ownerID: 'stable-liam', gameState: tableState('<D>', false) }, 'registered-before-reset-pause', 9000);
+  call(harness, 'seedSession(' + JSON.stringify([event('stable-playerA', 'playerA', 'PAUSED-HISTORY')]) + ')');
+  dispatch(harness, 'incoming', 'registered', { currentPlayer: { id: 'stable-playerA' }, ownerID: 'stable-playerA', gameState: tableState('<D>', false) }, 'registered-before-reset-pause', 9000);
   dispatch(harness, 'outgoing', 'action', { type: 'UP' }, 'verified-host-pause-before-reset', 9100);
   assert.strictEqual(snapshot(harness).effectivePause, 'paused', 'production verified-host UP establishes the authoritative Pause latch');
   call(harness, 'reset()');
@@ -307,38 +307,38 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
   assert.strictEqual(pausedReset.effectivePause, 'paused');
   assert.strictEqual(pausedReset.liveEvents, 0);
   assert.strictEqual(pausedReset.activeHand, null);
-  assert.deepStrictEqual(rows(pausedReset).map(function (row) { return row.slice(0, 2); }), [['liam', '838'], ['mail', '412']], 'paused and repeated reset preserve Career identity without creating a phantom hand');
+  assert.deepStrictEqual(rows(pausedReset).map(function (row) { return row.slice(0, 2); }), [['playerA', '838'], ['playerB', '412']], 'paused and repeated reset preserve Career identity without creating a phantom hand');
 
   call(harness, 'setRoster(' + JSON.stringify([
-    { playerId: 'stable-liam', name: 'liam', seatId: 'seat-6' },
-    { playerId: 'stable-mail', name: 'mail', seatId: 'seat-2' }
+    { playerId: 'stable-playerA', name: 'playerA', seatId: 'seat-6' },
+    { playerId: 'stable-playerB', name: 'playerB', seatId: 'seat-2' }
   ]) + ', "seat movement")');
-  assert.strictEqual(snapshot(harness).mappingSeats['stable-liam'], 'seat-6', 'seat movement follows the same stable identity');
+  assert.strictEqual(snapshot(harness).mappingSeats['stable-playerA'], 'seat-6', 'seat movement follows the same stable identity');
 
   call(harness, 'setRoster(' + JSON.stringify([
-    { playerId: 'stable-liam', name: 'liam', seatId: 'seat-6' },
-    { playerId: 'stable-other-liam', name: 'liam', seatId: 'seat-7' },
-    { playerId: 'stable-mail', name: 'mail', seatId: 'seat-2' },
+    { playerId: 'stable-playerA', name: 'playerA', seatId: 'seat-6' },
+    { playerId: 'stable-other-playerA', name: 'playerA', seatId: 'seat-7' },
+    { playerId: 'stable-playerB', name: 'playerB', seatId: 'seat-2' },
     { playerId: 'stable-new', name: 'new player', seatId: 'seat-3' }
   ]) + ', "same-name and join")');
   await flush();
   var joined = snapshot(harness);
   var discoveredSameNameSeats = clone(call(harness, 'distinctSeats(' + JSON.stringify([
-    { displayedName: 'liam', directPlayerIds: ['stable-liam'], seatIndex: 1, reactPropKeys: [], dataAttributes: {}, boundingBox: { width: 100, height: 50 } },
-    { displayedName: 'liam', directPlayerIds: ['stable-other-liam'], seatIndex: 2, reactPropKeys: [], dataAttributes: {}, boundingBox: { width: 100, height: 50 } }
+    { displayedName: 'playerA', directPlayerIds: ['stable-playerA'], seatIndex: 1, reactPropKeys: [], dataAttributes: {}, boundingBox: { width: 100, height: 50 } },
+    { displayedName: 'playerA', directPlayerIds: ['stable-other-playerA'], seatIndex: 2, reactPropKeys: [], dataAttributes: {}, boundingBox: { width: 100, height: 50 } }
   ]) + ')'));
-  assert.deepStrictEqual(discoveredSameNameSeats.map(function (seat) { return seat.directPlayerIds[0]; }).sort(), ['stable-liam', 'stable-other-liam'], 'production discovery preserves same-name seats carrying distinct authoritative IDs');
-  assert.deepStrictEqual(joined.entries.map(function (entry) { return entry.playerId; }), ['stable-liam', 'stable-other-liam', 'stable-mail', 'stable-new']);
-  assert.deepStrictEqual(rows(joined).map(function (row) { return row.slice(0, 2); }), [['liam', '838'], ['liam', '9'], ['mail', '412'], ['new player', '27']], 'new and same-name players remain separated by exact stable ID');
+  assert.deepStrictEqual(discoveredSameNameSeats.map(function (seat) { return seat.directPlayerIds[0]; }).sort(), ['stable-playerA', 'stable-other-playerA'], 'production discovery preserves same-name seats carrying distinct authoritative IDs');
+  assert.deepStrictEqual(joined.entries.map(function (entry) { return entry.playerId; }), ['stable-playerA', 'stable-other-playerA', 'stable-playerB', 'stable-new']);
+  assert.deepStrictEqual(rows(joined).map(function (row) { return row.slice(0, 2); }), [['playerA', '838'], ['playerA', '9'], ['playerB', '412'], ['new player', '27']], 'new and same-name players remain separated by exact stable ID');
 
   call(harness, 'setRoster(' + JSON.stringify([
-    { playerId: 'stable-other-liam', name: 'liam', seatId: 'seat-7' },
-    { playerId: 'stable-mail', name: 'mail', seatId: 'seat-2' },
+    { playerId: 'stable-other-playerA', name: 'playerA', seatId: 'seat-7' },
+    { playerId: 'stable-playerB', name: 'playerB', seatId: 'seat-2' },
     { playerId: 'stable-new', name: 'new player', seatId: 'seat-3' }
   ]) + ', "player left")');
   await flush();
   var afterLeave = snapshot(harness);
-  assert.deepStrictEqual(afterLeave.entries.map(function (entry) { return entry.playerId; }), ['stable-other-liam', 'stable-mail', 'stable-new'], 'a departed current player disappears through normal roster retirement');
+  assert.deepStrictEqual(afterLeave.entries.map(function (entry) { return entry.playerId; }), ['stable-other-playerA', 'stable-playerB', 'stable-new'], 'a departed current player disappears through normal roster retirement');
   assert.ok(messages.filter(function (message) { return message.method === 'careerHudStats'; }).every(function (message) { return message.args[0].length <= 64; }), 'Career presentation retains bounded batches');
   assert.strictEqual(messages.filter(function (message) { return message.method === 'careerPlayerSummaries' || message.method === 'careerPlayers'; }).length, 0, 'current-table repair never enumerates all Career players');
 
@@ -348,14 +348,14 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
   var reloaded = create(persistedAfterReset, reloadMessages);
   assert.deepStrictEqual(reloaded.evaluationErrors, []);
   call(reloaded, 'setRoster(' + JSON.stringify([
-    { playerId: 'stable-other-liam', name: 'liam', seatId: 'reload-seat-7' },
-    { playerId: 'stable-mail', name: 'mail', seatId: 'reload-seat-2' },
+    { playerId: 'stable-other-playerA', name: 'playerA', seatId: 'reload-seat-7' },
+    { playerId: 'stable-playerB', name: 'playerB', seatId: 'reload-seat-2' },
     { playerId: 'stable-new', name: 'new player', seatId: 'reload-seat-3' }
   ]) + ', "reload authoritative table")');
   await flush();
   var afterReload = snapshot(reloaded);
   assert.strictEqual(afterReload.liveEvents, 0, 'reload cannot restore pre-reset Session statistics');
-  assert.deepStrictEqual(rows(afterReload).map(function (row) { return row.slice(0, 2); }), [['liam', '9'], ['mail', '412'], ['new player', '27']], 'reload reconnects authoritative current seats to existing Career data');
+  assert.deepStrictEqual(rows(afterReload).map(function (row) { return row.slice(0, 2); }), [['playerA', '9'], ['playerB', '412'], ['new player', '27']], 'reload reconnects authoritative current seats to existing Career data');
   assert.deepStrictEqual(reloaded.storage.careerRecordSentinel, initialStorage.careerRecordSentinel);
   call(reloaded, 'stop()');
 
@@ -363,18 +363,18 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
   var removalPreferences = settings.merge(settings.DEFAULTS, { leaderboardEnabled: true, seatOverlaysEnabled: true, leaderboardStatSource: 'session', seatHudStatSource: 'session', selectedSettingsSection: 'career-data' });
   var removalCareer = {
     before: {
-      'stable-liam': { counters: { hands: 8, vpipMade: 4, vpipOpportunities: 8, pfrMade: 2, pfrOpportunities: 8 } },
-      'stable-mail': { counters: { hands: 7, vpipMade: 3, vpipOpportunities: 7, pfrMade: 2, pfrOpportunities: 7 } }
+      'stable-playerA': { counters: { hands: 8, vpipMade: 4, vpipOpportunities: 8, pfrMade: 2, pfrOpportunities: 8 } },
+      'stable-playerB': { counters: { hands: 7, vpipMade: 3, vpipOpportunities: 7, pfrMade: 2, pfrOpportunities: 7 } }
     },
     after: {
-      'stable-liam': { counters: { hands: 5, vpipMade: 2, vpipOpportunities: 5, pfrMade: 1, pfrOpportunities: 5 } },
-      'stable-mail': { counters: { hands: 4, vpipMade: 1, vpipOpportunities: 4, pfrMade: 1, pfrOpportunities: 4 } }
+      'stable-playerA': { counters: { hands: 5, vpipMade: 2, vpipOpportunities: 5, pfrMade: 1, pfrOpportunities: 5 } },
+      'stable-playerB': { counters: { hands: 4, vpipMade: 1, vpipOpportunities: 4, pfrMade: 1, pfrOpportunities: 4 } }
     }
   };
   var removalHarness = create({ hudUiPreferences: removalPreferences }, removalMessages, removalCareer);
   call(removalHarness, 'setRoster(' + JSON.stringify([
-    { playerId: 'stable-liam', name: 'liam', seatId: 'removal-seat-1' },
-    { playerId: 'stable-mail', name: 'mail', seatId: 'removal-seat-2' }
+    { playerId: 'stable-playerA', name: 'playerA', seatId: 'removal-seat-1' },
+    { playerId: 'stable-playerB', name: 'playerB', seatId: 'removal-seat-2' }
   ]) + ', "Career removal table")');
   call(removalHarness, 'seedSession(' + JSON.stringify(threeHandEvents) + ')');
   call(removalHarness, 'reconcileSeatHud("pre-removal Session H3")');
@@ -390,26 +390,26 @@ function snapshot(harness) { return clone(call(harness, 'snapshot()')); }
   await flush(); await flush();
   var removedSession = snapshot(removalHarness);
   assert.strictEqual(removedSession.liveEvents, 0);
-  assert.deepStrictEqual(rows(removedSession).map(function (row) { return row.slice(0, 2); }), [['liam', '0'], ['mail', '0']], 'confirmed Career removal resets the Session Leaderboard to H0');
+  assert.deepStrictEqual(rows(removedSession).map(function (row) { return row.slice(0, 2); }), [['playerA', '0'], ['playerB', '0']], 'confirmed Career removal resets the Session Leaderboard to H0');
   assert.deepStrictEqual(Object.values(removedSession.renderedSeatStats).map(function (stats) { return stats.handsPlayed; }), [0, 0], 'confirmed Career removal resets the mounted Session Seat HUD to H0');
   assert.strictEqual(removedSession.careerData.removalPreview, null, 'successful removal clears its preview');
   assert.match(removedSession.careerData.message, /Removed 3 exact Career hands and reset Session/);
   call(removalHarness, 'switchSeatHud("career")');
   await call(removalHarness, 'loadSeatCareer()'); await flush();
   var retainedCareer = snapshot(removalHarness);
-  assert.deepStrictEqual([retainedCareer.seatStats['stable-liam'].handsPlayed, retainedCareer.seatStats['stable-mail'].handsPlayed], [5, 4], 'Career Seat HUD publishes the retained aggregate after exact deletion');
+  assert.deepStrictEqual([retainedCareer.seatStats['stable-playerA'].handsPlayed, retainedCareer.seatStats['stable-playerB'].handsPlayed], [5, 4], 'Career Seat HUD publishes the retained aggregate after exact deletion');
   call(removalHarness, 'switchSeatHud("session")');
   assert.deepStrictEqual(Object.values(snapshot(removalHarness).seatStats).map(function (stats) { return stats.handsPlayed; }), [0, 0], 'Career to Session returns to reset Session H0');
   call(removalHarness, 'switchSeatHud("career")');
   await call(removalHarness, 'loadSeatCareer()'); await flush();
-  assert.deepStrictEqual([snapshot(removalHarness).seatStats['stable-liam'].handsPlayed, snapshot(removalHarness).seatStats['stable-mail'].handsPlayed], [5, 4], 'Session to Career returns to the retained post-deletion aggregate');
+  assert.deepStrictEqual([snapshot(removalHarness).seatStats['stable-playerA'].handsPlayed, snapshot(removalHarness).seatStats['stable-playerB'].handsPlayed], [5, 4], 'Session to Career returns to the retained post-deletion aggregate');
   assert.strictEqual(removalMessages.filter(function (message) { return message.method === 'removeCareerSession'; }).length, 1, 'confirmed deletion performs one Career mutation');
   assert.strictEqual(removalMessages.filter(function (message) { return message.method === 'careerPlayers' || message.method === 'careerPlayerSummaries' || message.method === 'careerStats'; }).length, 0, 'Session Seat HUD refresh adds no Career history or enumeration scan');
   call(removalHarness, 'stop()');
 
   var restorePauseMessages = [];
   var restorePauseHarness = create({ hudUiPreferences: removalPreferences }, restorePauseMessages);
-  dispatch(restorePauseHarness, 'incoming', 'registered', { currentPlayer: { id: 'stable-liam' }, ownerID: 'stable-liam', gameState: tableState('<D>', false) }, 'registered-before-restore-pause', 12000);
+  dispatch(restorePauseHarness, 'incoming', 'registered', { currentPlayer: { id: 'stable-playerA' }, ownerID: 'stable-playerA', gameState: tableState('<D>', false) }, 'registered-before-restore-pause', 12000);
   dispatch(restorePauseHarness, 'outgoing', 'action', { type: 'UP' }, 'verified-host-pause-before-restore', 12010);
   assert.strictEqual(snapshot(restorePauseHarness).effectivePause, 'paused');
   await call(restorePauseHarness, 'restoreReset()'); await flush();

@@ -116,14 +116,14 @@ assert.doesNotThrow(function () { JSON.stringify(successful); }, 'export is JSON
 
 isolated.PokerShowdownDiagnosticExporter.record('semantic-finalization', {
   lifecycleHandId: 'GOOD-1',
-  holeCards: ['SYNTHETIC_CARD_1', 'SYNTHETIC_CARD_2'],
+  holeCards: ['As', 'Kh'],
   chatContent: 'private chat marker',
-  rawWebSocket: { cards: ['SYNTHETIC_CARD_1', 'SYNTHETIC_CARD_2'] },
-  currentState: { privateCards: ['SYNTHETIC_CARD_1', 'SYNTHETIC_CARD_2'], accessToken: 'synthetic-secret-token' },
+  rawWebSocket: { cards: ['As', 'Kh'] },
+  currentState: { privateCards: ['As', 'Kh'], accessToken: 'secret-token-value' },
   safeCycle: (function () { var value = {}; value.self = value; return value; })()
 });
 var redactedText = JSON.stringify(exportFrom(page));
-assert.ok(!redactedText.includes('SYNTHETIC_CARD_1') && !redactedText.includes('SYNTHETIC_CARD_2') && !redactedText.includes('private chat marker') && !redactedText.includes('synthetic-secret-token'), 'hole cards, raw state, tokens, and chat never enter the export');
+assert.ok(!redactedText.includes('As') && !redactedText.includes('Kh') && !redactedText.includes('private chat marker') && !redactedText.includes('secret-token-value'), 'hole cards, raw state, tokens, and chat never enter the export');
 
 page.PokerNowHUDDebug.clearShowdownDiagnostics();
 assert.strictEqual(page.PokerNowHUDDebug.latestShowdownDiagnostic(), null, 'clear removes diagnostics');

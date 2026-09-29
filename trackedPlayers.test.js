@@ -10,9 +10,9 @@ function row(id, name, hands, lastSeenAt, revision) {
 function ids(rows) { return rows.map(function (item) { return item.playerId; }); }
 
 var summaries = [
-  row('stable-b', 'Zulu Target', 14, now - 86400000),
-  row('stable-a', 'Alpha', 391, now),
-  row('stable-c', 'alpha', 391, null),
+  row('stable-b', 'xxDragon69', 14, now - 86400000),
+  row('stable-a', 'playerB', 391, now),
+  row('stable-c', 'PlayerB', 391, null),
   row('stable-d', '', 0, 0)
 ];
 
@@ -23,7 +23,7 @@ assert.deepStrictEqual(ids(tracked.visibleRows([row('b', 'Z', 2, 1), row('a', 'A
 assert.deepStrictEqual(ids(tracked.visibleRows(summaries, '', tracked.SORT_NAME)), ['stable-a', 'stable-c', 'stable-d', 'stable-b']);
 assert.deepStrictEqual(ids(tracked.visibleRows([row('b', 'Same', 1, 1), row('a', 'same', 1, 1)], '', 'name')), ['a', 'b'], 'case-insensitive name ties end with stable ID');
 
-assert.deepStrictEqual(ids(tracked.visibleRows(summaries, 'ZUL', 'recent')), ['stable-b'], 'partial name search is case-insensitive');
+assert.deepStrictEqual(ids(tracked.visibleRows(summaries, 'DRA', 'recent')), ['stable-b'], 'partial name search is case-insensitive');
 assert.deepStrictEqual(ids(tracked.visibleRows(summaries, 'STABLE-A', 'recent')), ['stable-a'], 'full stable-ID search is case-insensitive');
 assert.deepStrictEqual(ids(tracked.visibleRows(summaries, 'ble-c', 'recent')), ['stable-c'], 'partial stable-ID search works');
 assert.deepStrictEqual(tracked.visibleRows(summaries, 'missing', 'recent'), []);
@@ -50,7 +50,7 @@ var empty = tracked.render({ summaries: [], loading: false, search: '', sort: 'r
 assert.ok(empty.includes('No tracked players yet'));
 var normal = tracked.render({ summaries: summaries, loading: false, search: '', sort: 'recent', now: now });
 assert.ok(normal.includes('<h2>Tracked Players</h2>'));
-assert.ok(normal.includes('Zulu Target') && normal.includes('391 hands') && normal.includes('Last seen Today'));
+assert.ok(normal.includes('xxDragon69') && normal.includes('391 hands') && normal.includes('Last seen Today'));
 assert.ok(normal.includes('Stable player ID: stable-a'));
 assert.ok(normal.includes('Most recent') && normal.includes('Most hands') && normal.includes('Name A\u2013Z'));
 var noResults = tracked.render({ summaries: summaries, loading: false, search: 'does-not-exist', sort: 'recent', now: now });

@@ -24,6 +24,7 @@ function instrument(source) {
     seatSource: function (source) { updateHudUiPreferences({ seatHudStatSource: source }, 'fixture'); refreshHud(); },
     visible: function (enabled) { writeVisibilityState(seatOverlaysVisible(), enabled, 'fixture'); },
     storedSource: function (source) { var prefs = PokerHudSettings.merge(hudUiPreferences, { leaderboardStatSource: source }); handleStorageChanged({ hudUiPreferences: { newValue: prefs } }, 'local'); },
+    careerContext: function (context) { careerIndexedService.backend = String(context); refreshHud(); },
     state: function () { return { preferences: hudUiPreferences, columns: effectiveLeaderboardStatIds(), entries: displayData({}).playerEntries, settings: settingsSectionHtml(), html: globalThis.__leaderboardHtml, position: leaderboardHudPosition, dashboard: { mode: playerDashboardState.mode, open: playerDashboardState.open }, profiles: hudUiPreferences.showPlayerProfiles }; },
     remount: function () { var root = document.getElementById(detailsRootId); if (root) root.remove(); refreshHud(); },
     changeTable: function (id) { pokerNowGameId = id; refreshHud(); },
@@ -134,13 +135,16 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
     assert.strictEqual(state(h).profiles, initial.profiles);
     call(h, 'seatSource("session")');
 
-    var sourceSwitchRequestCount = requests.length;
-    call(h, 'switchSource("career")'); var old = requests.at(-1);
-    assert.strictEqual(rows(h)[0][1], '2', 'returning to Career immediately displays the last settled stable-ID snapshot');
-    assert.strictEqual(requests.length, sourceSwitchRequestCount + 1, 'returning to Career adds only the existing batched refresh');
-    call(h, 'switchSource("session")');
-    old.callback({ ok: true, value: { players: { a: { counters: { hands: 999 } } } } }); await flush();
-    assert.deepStrictEqual(rows(h), sessionRows, 'late Career response cannot overwrite newer Session selection');
+    for (var warmSwitch = 0; warmSwitch < 3; warmSwitch += 1) {
+      var sourceSwitchRequestCount = requests.length;
+      call(h, 'switchSource("career")'); var old = requests.at(-1);
+      assert.strictEqual(rows(h)[0][1], '2', 'returning to Career immediately displays the last settled stable-ID snapshot');
+      assert.ok(!state(h).html.includes('Career statistics loading'), 'warm Career switch never paints Loading');
+      assert.strictEqual(requests.length, sourceSwitchRequestCount + 1, 'returning to Career adds only the existing batched refresh');
+      call(h, 'switchSource("session")');
+      old.callback({ ok: true, value: { players: { a: { counters: { hands: 999 } } } } }); await flush();
+      assert.deepStrictEqual(rows(h), sessionRows, 'late Career response cannot overwrite newer Session selection');
+    }
     call(h, 'switchSource("career")'); var oldCareer = requests.at(-1);
     call(h, 'storedSource("session")'); call(h, 'storedSource("career")'); var latest = requests.at(-1);
     latest.callback({ ok: true, value: await driver.call('careerHudStats', [latest.ids]) }); await flush();
@@ -176,6 +180,10 @@ var session = [event('a', 'Alex'), event('b', 'Alex', 'raise'), event('c', 'Alex
     assert.deepStrictEqual(joined.ids, ['b', 'new']);
     call(h, 'seed(' + JSON.stringify(nextSession) + ')');
     assert.deepStrictEqual(rows(h).map(function (r) { return r[0]; }), ['Alex', 'Zed'], 'departed active-only participant disappears under existing rules');
+    call(h, 'careerContext("replacement-career-context")'); var replacementContext = requests.at(-1);
+    assert.ok(rows(h).every(function (row) { return row.length === 1; }) && state(h).html.includes('Career statistics loading'), 'Career backend/context replacement cannot reuse the prior settled snapshot');
+    replacementContext.callback({ ok: true, value: await driver.call('careerHudStats', [replacementContext.ids]) }); await flush();
+    assert.deepStrictEqual(rows(h).map(function (row) { return row.slice(0, 2); }), [['Alex', '1'], ['Zed', '0']], 'replacement Career context settles atomically');
     call(h, 'changeTable("other-table")'); var otherTable = requests.at(-1);
     assert.notStrictEqual(otherTable, joined, 'same IDs on changed table get a new request epoch');
     assert.ok(rows(h).every(function (row) { return row.length === 1; }) && state(h).html.includes('Career statistics loading'), 'room change cannot retain the prior room snapshot or publish false zeros');

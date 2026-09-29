@@ -4,16 +4,16 @@
   var BOARD_SELECTORS = '.table-cards, .table-community-cards, .table-board-cards, .community-cards, .community-board, .board-container, [class*="board-cards" i], [data-board-container], [data-community-cards], [data-community-board]';
   var SLOT_SELECTORS = '.table-card-slot, .community-card-slot, .board-card-slot, [data-card-slot], [data-board-slot], [class*="community-slot" i], [class*="board-slot" i]';
   var CARD_SELECTORS = '.card-container, .table-card, [class*="community-card" i], [class*="board-card" i]';
-  var TABLE_SELECTOR_PRIORITY = ['#table', '.game-table', '[class~="game-table"]', 'main'];
+  var TABLE_SELECTOR_PRIORITY = ['.table', '#table', '.game-table', '[class~="game-table"]', 'main'];
   var TABLE_SELECTORS = TABLE_SELECTOR_PRIORITY.join(', ');
   var BOARD_GAP = 10;
-  var DEFAULT_MODEL = Object.freeze({
-    id: 'pokernow-five-card-table-local-v1',
-    leftRatio: 520 / 1280,
-    topRatio: 260 / 665,
-    widthRatio: 306 / 1280,
-    heightRatio: 80 / 665
-  });
+  var DEFAULT_LEFT_SIZE = Object.freeze({ width: 100, height: 60 });
+  var DEFAULT_RIGHT_SIZE = Object.freeze({ width: 100, height: 60 });
+  // PokerNow game-b743d932b006f794c77f.css, inspected with the live empty
+  // .table-cards.run-1 lane: 24.2rem lane, 4.5 x 5.5rem big cards, .4rem gaps.
+  // The lane's current rect supplies the origin and responsive/portrait scale.
+  // Its zero preflop height is intentional; it is not an invisible landmark.
+  var BOARD_LANE_MODEL = Object.freeze({ laneWidth: 24.2, cardWidth: 4.5, cardHeight: 5.5, gap: 0.4 });
 
   function number(value, fallback) {
     value = Number(value);
@@ -92,6 +92,14 @@
     return normalizedRect({ left: left, top: top, width: width, height: height });
   }
 
+  function companionSlots(boardRect, sizes, gap) {
+    sizes = sizes || {};
+    return {
+      left: companionRect(boardRect, 'left', sizes.left || DEFAULT_LEFT_SIZE, gap),
+      right: companionRect(boardRect, 'right', sizes.right || DEFAULT_RIGHT_SIZE, gap)
+    };
+  }
+
   function materiallyDifferent(left, right) {
     left = normalizedRect(left); right = normalizedRect(right);
     if (!left || !right) return Boolean(left || right);
@@ -106,7 +114,7 @@
 
   function safeClassTokens(element) {
     return className(element).split(/\s+/).filter(function (value) {
-      return value && /(?:table|board|community|card|slot|game|stage|layout|mobile|desktop|narrow|wide|compact|full|portrait|landscape)/i.test(value) && !/(?:player-name|chat|message)/i.test(value);
+      return value && /(?:table|board|community|card|slot|game|stage|layout|mobile|desktop|narrow|wide|compact|full|portrait|landscape)/i.test(value) && !/(?:player-name|chat|message|^card-[cdhs](?:-|$))/i.test(value);
     }).slice(0, 16);
   }
 
@@ -151,6 +159,8 @@
     if (!element) return null;
     var id = String(element.id || '');
     var classes = className(element);
+    if (/(^|\s)table(\s|$)/.test(classes)) return '.table persistent PokerNow table owner';
+    if (/^(body|html)$/i.test(String(element.tagName || ''))) return String(element.tagName).toLowerCase() + ' projection-only coordinate owner';
     if (id === 'table') return '#table persistent PokerNow table/stage owner';
     if (/(^|\s)game-table(\s|$)/.test(classes)) return '.game-table persistent PokerNow table/stage owner';
     if (String(element.tagName || '').toLowerCase() === 'main') return 'main persistent PokerNow table/stage owner';
@@ -193,7 +203,11 @@
     var getStyle = view && view.getComputedStyle ? function (element) { return view.getComputedStyle(element); } : null;
     var tableRect = elementRect(tableElement);
     var tableStyle = getStyle ? getStyle(tableElement) : null;
-    var wrappers = uniqueElements(Array.from(documentLike.querySelectorAll(BOARD_SELECTORS))).filter(function (element) { return !isExcluded(element, options) && visibleElement(element, view); });
+    var wrappers = uniqueElements(Array.from(documentLike.querySelectorAll(BOARD_SELECTORS))).filter(function (element) {
+      if (isExcluded(element, options) || element.isConnected === false) return false;
+      var rect = element.getBoundingClientRect(); var style = getStyle && getStyle(element);
+      return rect.width > 0 && rect.height >= 0 && (!style || style.display !== 'none' && style.visibility !== 'hidden' && number(style.opacity, 1) > 0.01);
+    });
     var rawCards = uniqueElements(Array.from(documentLike.querySelectorAll(CARD_SELECTORS)).map(function (element) {
       var outer = element.closest && element.closest('.card-container');
       return outer && outer.isConnected !== false ? outer : element;
@@ -222,10 +236,11 @@
     });
     var slotRow = sameRow(slots.map(function (element) { return { element: element, rect: elementRect(element) }; })).slice(0, 5);
     var wrapperEvidence = wrappers.map(function (element, index) {
-      var style = getStyle ? getStyle(element) : null; var wrapperRect = elementRect(element);
+      var style = getStyle ? getStyle(element) : null; var wrapperRect = element.getBoundingClientRect();
       var paddingLeft = style ? number(style.paddingLeft) : 0; var paddingRight = style ? number(style.paddingRight) : 0; var paddingTop = style ? number(style.paddingTop) : 0; var paddingBottom = style ? number(style.paddingBottom) : 0;
       return {
         key: 'board-candidate-' + index, element: element, rect: wrapperRect,
+        persistentLane: Boolean(element.matches && element.matches('.table-cards.run-1') && style && style.display === 'flex'),
         innerRect: normalizedRect({ left: wrapperRect.left + paddingLeft, top: wrapperRect.top + paddingTop, width: wrapperRect.width - paddingLeft - paddingRight, height: wrapperRect.height - paddingTop - paddingBottom }),
         classes: className(element), justifyContent: style && String(style.justifyContent || ''), alignItems: style && String(style.alignItems || ''), transform: style && String(style.transform || 'none'),
         cardEntries: cards.filter(function (card) { return element.contains && element.contains(card); }).map(function (card) { return { element: card, rect: elementRect(card), classes: className(card) }; }),
@@ -259,7 +274,7 @@
     return {
       tableId: options.tableId || null, tableElement: null, tableOwnerSource: null, viewportRect: null, tableRect: null, tableTransform: null,
       layoutEpochSequence: 0, layoutEpochId: null, epochSignature: null, canonicalBoardLocalRect: null, canonicalBoardSource: null, canonicalBoardVerified: false, canonicalChangeReason: null,
-      lastKnownGood: null, lastResolved: null, verifiedModel: null, history: [], epochHistory: [], illegalChanges: [], illegalChangeSequence: 0, validationHistory: [],
+      lastKnownGood: null, lastResolved: null, awaitingPostTransitionGeometry: false, transitionEntryCandidate: null, history: [], epochHistory: [], illegalChanges: [], illegalChangeSequence: 0, validationHistory: [],
       maxHistory: Math.max(8, Math.min(128, number(options.maxHistory, 48))), revision: 0, invalidationReason: null, lastInfo: null, signalEssentials: null, listeners: new Set()
     };
   }
@@ -319,6 +334,19 @@
     return null;
   }
 
+  function resolveCanonicalBoardEnvelope(evidence) {
+    var slots = structuralSlotEnvelope(evidence);
+    if (slots) return slots;
+    var lane = (evidence.wrapperCandidates || []).find(function (candidate) { return candidate.persistentLane && candidate.rect && candidate.rect.width > 0; });
+    if (!lane) return null;
+    var unit = lane.rect.width / BOARD_LANE_MODEL.laneWidth;
+    return {
+      rect: normalizedRect({ left: lane.rect.left, top: lane.rect.top, width: unit * (5 * BOARD_LANE_MODEL.cardWidth + 4 * BOARD_LANE_MODEL.gap), height: unit * BOARD_LANE_MODEL.cardHeight }),
+      source: 'persistent PokerNow .table-cards.run-1 lane',
+      pitch: { cardWidth: unit * BOARD_LANE_MODEL.cardWidth, cardHeight: unit * BOARD_LANE_MODEL.cardHeight, pitch: unit * (BOARD_LANE_MODEL.cardWidth + BOARD_LANE_MODEL.gap) }
+    };
+  }
+
   function observedFiveCardEnvelope(evidence) {
     var row = sameRow(evidence.cardEntries || []).slice(0, 5);
     var pitch = cardPitch(row);
@@ -332,25 +360,14 @@
     };
   }
 
-  function bootstrapBoardLocalRect(signature) {
-    var space = localSpace(signature);
-    if (!(space.width > 0 && space.height > 0)) return null;
-    return normalizedRect({ left: space.width * DEFAULT_MODEL.leftRatio, top: space.height * DEFAULT_MODEL.topRatio, width: space.width * DEFAULT_MODEL.widthRatio, height: space.height * DEFAULT_MODEL.heightRatio });
-  }
-
-  function establishCanonicalLocal(evidence, signature, state) {
-    var structural = structuralSlotEnvelope(evidence);
+  function establishCanonicalLocal(evidence, signature) {
+    var structural = resolveCanonicalBoardEnvelope(evidence);
     var localStructural = structural && viewportToLocal(structural.rect, evidence.tableRect, signature);
     if (localStructural) return { rect: localStructural, source: structural.source, verified: true, pitch: structural.pitch, fallback: null };
     var observed = observedFiveCardEnvelope(evidence);
     var localObserved = observed && viewportToLocal(observed.rect, evidence.tableRect, signature);
     if (localObserved) return { rect: localObserved, source: observed.source, verified: true, pitch: observed.pitch, fallback: null };
-    var priorModel = state && state.verifiedModel;
-    var space = localSpace(signature);
-    if (priorModel && priorModel.localWidth === space.width && priorModel.localHeight === space.height && priorModel.layoutMode === (signature.layoutMode || null)) {
-      return { rect: normalizedRect(priorModel.rect), source: 'previously observed table-local five-card envelope for unchanged local table space', verified: true, pitch: clone(priorModel.pitch), fallback: null };
-    }
-    return { rect: bootstrapBoardLocalRect(signature), source: 'PokerNow table-local five-card board model ' + DEFAULT_MODEL.id, verified: false, pitch: null, fallback: 'table-local bootstrap model; fresh live alignment signoff pending' };
+    return { rect: null, source: null, verified: false, pitch: null, fallback: 'no supported semantic board structure available' };
   }
 
   function signalEssentials(state, values) {
@@ -380,7 +397,7 @@
   function invalidate(state, reason) {
     var before = clone(state.signalEssentials);
     state.layoutEpochId = null; state.epochSignature = null; state.canonicalBoardLocalRect = null; state.canonicalBoardSource = null; state.canonicalBoardVerified = false; state.canonicalChangeReason = null;
-    state.lastKnownGood = null; state.lastResolved = null; state.verifiedModel = null; state.invalidationReason = String(reason || 'layout invalidated').slice(0, 240); state.revision += 1;
+    state.lastKnownGood = null; state.lastResolved = null; state.awaitingPostTransitionGeometry = false; state.transitionEntryCandidate = null; state.invalidationReason = String(reason || 'layout invalidated').slice(0, 240); state.revision += 1;
     state.signalEssentials = signalEssentials(state, { tableId: state.tableId, viewport: state.lastInfo && state.lastInfo.viewport || null, tableRect: state.tableRect, canonicalBoardRect: null, invalidationReason: state.invalidationReason });
     if (state.lastInfo) { state.lastInfo.revision = state.revision; state.lastInfo.invalidationReason = state.invalidationReason; }
     emitChange(state, state.invalidationReason, before, state.signalEssentials);
@@ -422,7 +439,24 @@
   }
 
   function publicCandidate(candidate) {
-    return { key: candidate.key, classes: String(candidate.classes || '').slice(0, 240), connected: Boolean(candidate.element && candidate.element.isConnected !== false), rect: roundedRect(candidate.rect), innerRect: roundedRect(candidate.innerRect), justifyContent: candidate.justifyContent || null, transform: candidate.transform || 'none', cardCount: (candidate.cardEntries || []).length, slotCount: (candidate.slotEntries || []).length };
+    return { key: candidate.key, classes: String(candidate.classes || '').slice(0, 240), connected: Boolean(candidate.element && candidate.element.isConnected !== false), rect: roundedRect(candidate.rect), laneRect: candidate.persistentLane ? { left: candidate.rect.left, top: candidate.rect.top, width: candidate.rect.width, height: candidate.rect.height } : null, persistentLane: candidate.persistentLane === true, innerRect: roundedRect(candidate.innerRect), justifyContent: candidate.justifyContent || null, transform: candidate.transform || 'none', cardCount: (candidate.cardEntries || []).length, slotCount: (candidate.slotEntries || []).length };
+  }
+
+  function virtualMeasuredComparison(evidence, signature) {
+    var virtual = resolveCanonicalBoardEnvelope(evidence);
+    var measured = observedFiveCardEnvelope(evidence);
+    var delta = virtual && measured ? {
+      left: measured.rect.left - virtual.rect.left, top: measured.rect.top - virtual.rect.top,
+      width: measured.rect.width - virtual.rect.width, height: measured.rect.height - virtual.rect.height
+    } : null;
+    var mismatch = delta ? Object.keys(delta).some(function (key) { return Math.abs(delta[key]) > 3; }) : null;
+    return {
+      semanticAnchorSource: virtual && virtual.source || null,
+      virtualCardWidth: virtual && virtual.pitch && virtual.pitch.cardWidth || null,
+      virtualBoardLocalRect: roundedRect(virtual && viewportToLocal(virtual.rect, evidence.tableRect, signature)),
+      virtualBoardViewportRect: roundedRect(virtual && virtual.rect), measuredBoardViewportRect: roundedRect(measured && measured.rect),
+      virtualToMeasuredDelta: delta, virtualModelMismatch: mismatch
+    };
   }
 
   function translatedRect(value, offsetX, offsetY) {
@@ -434,10 +468,14 @@
   function boardAlignment(info) {
     var canonical = normalizedRect(info && info.canonicalBoardViewportRect);
     var observed = normalizedRect(info && info.observedFirstVisibleCardRect);
-    var firstWidth = observed && observed.width || canonical && canonical.height * 0.725 || 0;
+    var firstWidth = info && info.virtualCardWidth || observed && observed.width || canonical && canonical.height * 0.725 || 0;
     var firstHeight = observed && observed.height || canonical && canonical.height || 0;
     var expectedFirst = canonical && normalizedRect({ left: canonical.left, top: canonical.top, width: firstWidth, height: firstHeight });
-    var expectedPotOdds = translatedRect(info && info.canonicalLeftCompanionRect, info && info.persistedOffsetX, info && info.persistedOffsetY);
+    var scaleX = number(info && info.coordinateScaleX, 1) || 1;
+    var scaleY = number(info && info.coordinateScaleY, 1) || 1;
+    var viewportOffsetX = Number.isFinite(Number(info && info.viewportOffsetX)) ? Number(info.viewportOffsetX) : number(info && info.persistedOffsetX) * scaleX;
+    var viewportOffsetY = Number.isFinite(Number(info && info.viewportOffsetY)) ? Number(info.viewportOffsetY) : number(info && info.persistedOffsetY) * scaleY;
+    var expectedPotOdds = translatedRect(info && info.canonicalLeftCompanionRect, viewportOffsetX, viewportOffsetY);
     var actualPotOdds = normalizedRect(info && (info.actualPanelRect || info.potOddsActualRect));
     var firstDeltaX = observed && expectedFirst ? Math.round((observed.left - expectedFirst.left) * 10) / 10 : null;
     var firstDeltaY = observed && expectedFirst ? Math.round((observed.top - expectedFirst.top) * 10) / 10 : null;
@@ -453,9 +491,16 @@
   }
 
   function makePublicInfo(state, evidence, result, sizes, context) {
-    var canonical = roundedRect(result.rect); var left = roundedRect(companionRect(canonical, 'left', sizes.left, BOARD_GAP)); var right = roundedRect(companionRect(canonical, 'right', sizes.right, BOARD_GAP));
-    return {
+    var canonical = roundedRect(result.rect); var slots = companionSlots(canonical, sizes, BOARD_GAP); var left = roundedRect(slots.left); var right = roundedRect(slots.right);
+    var scaleX = number(context.coordinateScaleX, evidence.tableTransform && evidence.tableTransform.scaleX || 1) || 1;
+    var scaleY = number(context.coordinateScaleY, evidence.tableTransform && evidence.tableTransform.scaleY || 1) || 1;
+    var persistedOffsetX = Number.isFinite(Number(context.persistedOffsetX)) ? Number(context.persistedOffsetX) : 0;
+    var persistedOffsetY = Number.isFinite(Number(context.persistedOffsetY)) ? Number(context.persistedOffsetY) : 0;
+    var viewportOffsetX = Number.isFinite(Number(context.viewportOffsetX)) ? Number(context.viewportOffsetX) : persistedOffsetX * scaleX;
+    var viewportOffsetY = Number.isFinite(Number(context.viewportOffsetY)) ? Number(context.viewportOffsetY) : persistedOffsetY * scaleY;
+    return Object.assign({
       schemaVersion: 3, revision: state.revision, timestamp: Date.now(), tableId: evidence.tableId || state.tableId || null,
+      manualOverride: context.manualOverride === true,
       layoutEpochId: state.layoutEpochId, layoutEpochSequence: state.layoutEpochSequence, layoutEpochChanged: result.epochChanged === true, canonicalGeometryChanged: result.geometryChanged === true,
       canonicalGeometryChangeReason: result.geometryChanged ? state.canonicalChangeReason : null, lastAcceptedCanonicalChangeReason: state.canonicalChangeReason,
       tableOwnerSource: state.tableOwnerSource, tableOwnerConnected: Boolean(evidence.tableElement && evidence.tableElement.isConnected !== false), viewport: clone(evidence.viewport || null),
@@ -463,15 +508,15 @@
       chosenCanonicalBoardSource: state.canonicalBoardSource, canonicalBoardLocalRect: roundedRect(state.canonicalBoardLocalRect), canonicalBoardRect: canonical, canonicalBoardViewportRect: canonical, canonicalBoardVerified: state.canonicalBoardVerified === true,
       actualVisibleCardRects: (evidence.cardEntries || []).map(function (entry) { return roundedRect(entry.rect); }), observedFirstVisibleCardRect: roundedRect(sameRow(evidence.cardEntries || [])[0] && (sameRow(evidence.cardEntries || [])[0].rect || sameRow(evidence.cardEntries || [])[0])), validationOnlyActualCardRects: (evidence.cardEntries || []).map(function (entry) { return roundedRect(entry.rect); }),
       validationOnlyActualCardLocalRects: clone(result.validation && result.validation.actualCardLocalRects || []), cardValidation: clone(result.validation || null), actualCardUnion: roundedRect(union((evidence.cardEntries || []).map(function (entry) { return entry.rect; }))),
-      explicitSlotRects: (evidence.slotEntries || []).map(function (entry) { return roundedRect(entry.rect); }), pitchEvidence: result.validation && result.validation.pitch ? clone(result.validation.pitch) : clone(result.pitch || null), reconstructionStrategy: 'immutable table-local five-card slot within layout epoch',
+      explicitSlotRects: (evidence.slotEntries || []).map(function (entry) { return roundedRect(entry.rect); }), pitchEvidence: result.validation && result.validation.pitch ? clone(result.validation.pitch) : clone(result.pitch || null), reconstructionStrategy: 'current semantic board lane or explicit five-slot envelope; cards validate the frame',
       leftCompanionRect: left, canonicalLeftCompanionRect: left, rightCompanionRect: right, canonicalRightCompanionRect: right, lastKnownGoodBoardRect: roundedRect(state.lastKnownGood && state.lastKnownGood.viewportRect),
-      cachedGeometryReused: result.cachedGeometryReused === true, fallback: result.fallback || null, invalidationReason: state.invalidationReason, collisionReason: context.collisionReason || null, street: context.street || null,
+      cachedGeometryReused: result.cachedGeometryReused === true, fallback: result.fallback || null, awaitingPostTransitionGeometry: state.awaitingPostTransitionGeometry === true, transitionEntryCandidate: clone(state.transitionEntryCandidate), invalidationReason: state.invalidationReason, collisionReason: context.collisionReason || null, street: context.street || null,
       boardCardCount: (evidence.cardEntries || []).length, settingsVisible: context.settingsVisible === true, layoutResolutionTrigger: context.trigger || null, lifecycleState: context.lifecycleState || null, widgetVisibleReason: context.widgetVisibleReason || null, contentState: context.contentState || null,
-      potOddsActualRect: roundedRect(context.potOddsActualRect), actualPotOddsRect: roundedRect(context.potOddsActualRect), persistedOffsetX: Number.isFinite(Number(context.persistedOffsetX)) ? Number(context.persistedOffsetX) : 0, persistedOffsetY: Number.isFinite(Number(context.persistedOffsetY)) ? Number(context.persistedOffsetY) : 0,
-      featureOffset: { x: Number.isFinite(Number(context.persistedOffsetX)) ? Number(context.persistedOffsetX) : 0, y: Number.isFinite(Number(context.persistedOffsetY)) ? Number(context.persistedOffsetY) : 0 }, unclampedActualRect: roundedRect(context.unclampedActualRect), actualPanelRect: roundedRect(context.actualPanelRect || context.potOddsActualRect),
+      potOddsActualRect: roundedRect(context.potOddsActualRect), actualPotOddsRect: roundedRect(context.potOddsActualRect), persistedOffsetX: persistedOffsetX, persistedOffsetY: persistedOffsetY,
+      featureOffset: { x: persistedOffsetX, y: persistedOffsetY }, coordinateScaleX: scaleX, coordinateScaleY: scaleY, viewportOffsetX: viewportOffsetX, viewportOffsetY: viewportOffsetY, featureOffsetViewport: { x: viewportOffsetX, y: viewportOffsetY }, unclampedActualRect: roundedRect(context.unclampedActualRect), actualPanelRect: roundedRect(context.actualPanelRect || context.potOddsActualRect),
       viewportClampApplied: context.viewportClampApplied === true, draggingNow: context.draggingNow === true, dragState: clone(context.dragState || null), resetPending: context.resetPending === true, resetState: { pending: context.resetPending === true, offsetIsZero: number(context.persistedOffsetX) === 0 && number(context.persistedOffsetY) === 0 }, offsetMutationSource: context.offsetMutationSource || null, gapToCanonicalBoard: context.potOddsActualRect && canonical ? Math.round((canonical.left - normalizedRect(context.potOddsActualRect).right) * 10) / 10 : null,
       latestIllegalCanonicalGeometryChange: state.illegalChanges.length ? clone(state.illegalChanges[state.illegalChanges.length - 1]) : null, illegalCanonicalGeometryChanges: clone(state.illegalChanges), acceptedLayoutEpochChanges: clone(state.epochHistory), rejectedOwnedTableCandidates: clone(evidence.rejectedOwnedTableCandidates || []), dom: clone(evidence.domNodes || [])
-    };
+    }, virtualMeasuredComparison(evidence, state.epochSignature));
   }
 
   function resolveEvidence(state, evidence, options) {
@@ -490,36 +535,29 @@
     var epochChanged = Boolean(nextSignature && (!state.layoutEpochId || ownerChanged || !sameEpochSignature(state.epochSignature, nextSignature)));
     var previousSignal = clone(state.signalEssentials);
     var changeReason = epochChanged ? epochChangeReason(state, evidence, nextSignature) : null;
-
+    var currentStructural = resolveCanonicalBoardEnvelope(evidence);
+    var candidate = establishCanonicalLocal(evidence, nextSignature);
+    var structuralRefresh = Boolean(!epochChanged && currentStructural && !settingsGeometrySignal(context) &&
+      (JSON.stringify(candidate.rect) !== JSON.stringify(state.canonicalBoardLocalRect) || candidate.source !== state.canonicalBoardSource));
+    var bootstrapCompleted = Boolean(!epochChanged && !state.canonicalBoardLocalRect && candidate.rect && !settingsGeometrySignal(context));
+    var geometryChanged = epochChanged || structuralRefresh || bootstrapCompleted;
     state.tableId = incomingTableId; state.tableElement = evidence.tableElement || state.tableElement; state.tableOwnerSource = evidence.tableOwnerSource || state.tableOwnerSource;
     state.viewportRect = viewportRect || state.viewportRect; state.tableRect = tableRect || state.tableRect; state.tableTransform = clone(evidence.tableTransform || state.tableTransform);
-
-    // A bootstrap estimate is provisional. Complete it once real five-slot evidence
-    // arrives, then retain the verified model for the rest of this table epoch.
-    // Settings transitions cannot supply or authorize that completion.
-    var measuredBootstrap = !epochChanged && !state.canonicalBoardVerified && tableRect && !settingsGeometrySignal(context)
-      ? establishCanonicalLocal(evidence, nextSignature, state) : null;
-    var bootstrapCompleted = Boolean(measuredBootstrap && measuredBootstrap.verified);
-    var geometryChanged = epochChanged || bootstrapCompleted && materiallyDifferent(measuredBootstrap.rect, state.canonicalBoardLocalRect);
     var established = null;
-    if (epochChanged || bootstrapCompleted) {
-      established = bootstrapCompleted ? measuredBootstrap : establishCanonicalLocal(evidence, nextSignature, state);
+    if (geometryChanged) {
+      established = candidate;
       if (epochChanged) {
         state.layoutEpochSequence += 1;
         state.layoutEpochId = String(incomingTableId || 'pokernow-table').replace(/[^a-z0-9_-]/gi, '-').slice(0, 80) + ':layout-epoch-' + state.layoutEpochSequence;
       } else {
-        changeReason = 'provisional table-local bootstrap completed by first measured five-card envelope';
+        changeReason = 'current semantic board structure updated';
       }
       state.epochSignature = clone(nextSignature); state.canonicalBoardLocalRect = normalizedRect(established.rect); state.canonicalBoardSource = established.source; state.canonicalBoardVerified = established.verified === true; state.canonicalChangeReason = changeReason; state.invalidationReason = null;
-      if (established.verified && state.canonicalBoardLocalRect) {
-        var establishedSpace = localSpace(nextSignature);
-        state.verifiedModel = { rect: clone(state.canonicalBoardLocalRect), pitch: clone(established.pitch), localWidth: establishedSpace.width, localHeight: establishedSpace.height, layoutMode: nextSignature.layoutMode || null, source: established.source, observedAt: Date.now() };
-      }
+      state.awaitingPostTransitionGeometry = false; state.transitionEntryCandidate = null;
       if (epochChanged) state.epochHistory.push({ layoutEpochId: state.layoutEpochId, timestamp: Date.now(), reason: changeReason, tableOwnerSource: state.tableOwnerSource, viewport: clone(evidence.viewport || null), tableViewportRect: roundedRect(tableRect), tableTransform: clone(evidence.tableTransform || null), canonicalBoardLocalRect: roundedRect(state.canonicalBoardLocalRect), canonicalBoardSource: state.canonicalBoardSource });
       if (state.epochHistory.length > 32) state.epochHistory.shift();
-    } else if (state.layoutEpochId && tableRect) {
-      var structural = structuralSlotEnvelope(evidence); var proposedLocal = structural && viewportToLocal(structural.rect, tableRect, state.epochSignature);
-      if (proposedLocal && materiallyDifferent(proposedLocal, state.canonicalBoardLocalRect)) recordIllegalChange(state, proposedLocal, context, evidence, structural.source);
+    } else if (currentStructural && settingsGeometrySignal(context) && materiallyDifferent(candidate.rect, state.canonicalBoardLocalRect)) {
+      recordIllegalChange(state, candidate.rect, context, evidence, candidate.source);
     }
 
     var canonicalViewport = state.canonicalBoardLocalRect && tableRect ? localToViewport(state.canonicalBoardLocalRect, tableRect, state.epochSignature || nextSignature) : null;
@@ -532,17 +570,18 @@
       state.lastKnownGood = { localRect: clone(state.canonicalBoardLocalRect), viewportRect: clone(canonicalViewport), source: state.canonicalBoardSource, layoutEpochId: state.layoutEpochId, timestamp: Date.now() };
       state.lastResolved = { rect: clone(canonicalViewport), source: state.canonicalBoardSource, timestamp: Date.now() };
     }
-    var currentStructuralEvidence = structuralSlotEnvelope(evidence);
+    var currentStructuralEvidence = currentStructural;
     var cachedGeometryReused = Boolean(!epochChanged && !bootstrapCompleted && !currentStructuralEvidence && canonicalViewport);
-    var result = { rect: canonicalViewport, source: state.canonicalBoardSource, verified: state.canonicalBoardVerified, epochChanged: epochChanged, geometryChanged: geometryChanged, cachedGeometryReused: cachedGeometryReused, validation: validation, pitch: established && established.pitch || null, fallback: established && established.fallback || (!state.canonicalBoardVerified ? 'table-local bootstrap model; fresh live alignment signoff pending' : null) };
+    var result = { rect: canonicalViewport, source: state.canonicalBoardSource, verified: state.canonicalBoardVerified, epochChanged: epochChanged, geometryChanged: geometryChanged, cachedGeometryReused: cachedGeometryReused, validation: validation, pitch: established && established.pitch || null, fallback: established && established.fallback || (!state.canonicalBoardVerified ? 'no supported semantic board structure available' : null) };
     var nextSignal = signalEssentials(state, { tableId: incomingTableId, layoutEpochId: state.layoutEpochId, tableOwnerSource: state.tableOwnerSource, viewport: evidence.viewport || null, tableRect: tableRect, tableTransform: evidence.tableTransform || null, canonicalBoardLocalRect: state.canonicalBoardLocalRect, canonicalBoardRect: canonicalViewport, canonicalBoardSource: state.canonicalBoardSource, canonicalBoardVerified: state.canonicalBoardVerified, canonicalChangeReason: state.canonicalChangeReason, invalidationReason: state.invalidationReason });
     var signalChanged = !sameSignal(previousSignal, nextSignal); if (signalChanged) state.revision += 1;
-    var sizes = { left: options.leftSize || { width: 100, height: 60 }, right: options.rightSize || options.leftSize || { width: 100, height: 60 } };
+    var sizes = { left: options.leftSize || DEFAULT_LEFT_SIZE, right: options.rightSize || DEFAULT_RIGHT_SIZE };
     var info = makePublicInfo(state, evidence, result, sizes, context); info.boardAlignment = boardAlignment(info); info.expectedFirstSlotRect = clone(info.boardAlignment.expectedFirstSlotRect); var historyEntry = clone(info); delete historyEntry.history; delete historyEntry.illegalCanonicalGeometryChanges; delete historyEntry.acceptedLayoutEpochChanges;
     state.history.push(historyEntry); if (state.history.length > state.maxHistory) state.history.shift(); info.history = clone(state.history); state.lastInfo = info; state.signalEssentials = nextSignal;
-    if (signalChanged) emitChange(state, epochChanged || bootstrapCompleted ? state.canonicalChangeReason : !previousSignal || !previousSignal.geometryAvailable && nextSignal.geometryAvailable ? 'stable table-local board-companion geometry became placement-capable' : 'placement-capable table-layout input materially changed', previousSignal, nextSignal);
+    if (signalChanged) emitChange(state, geometryChanged ? state.canonicalChangeReason : !previousSignal || !previousSignal.geometryAvailable && nextSignal.geometryAvailable ? 'stable table-local board-companion geometry became placement-capable' : 'placement-capable table-layout input materially changed', previousSignal, nextSignal);
     var wrappers = evidence.wrapperCandidates || [];
-    return { canonicalBoardRect: normalizedRect(canonicalViewport), canonicalBoardLocalRect: normalizedRect(state.canonicalBoardLocalRect), leftCompanionRect: companionRect(canonicalViewport, 'left', sizes.left, BOARD_GAP), rightCompanionRect: companionRect(canonicalViewport, 'right', sizes.right, BOARD_GAP), source: state.canonicalBoardSource || null, verified: state.canonicalBoardVerified === true, cachedGeometryReused: cachedGeometryReused, layoutEpochId: state.layoutEpochId, tableOwnerSource: state.tableOwnerSource, observerElement: evidence.tableElement || null, resizeElements: uniqueElements([evidence.tableElement].concat(wrappers.map(function (candidate) { return candidate.element; }))), info: clone(info) };
+    var resolvedSlots = companionSlots(canonicalViewport, sizes, BOARD_GAP);
+    return { canonicalBoardRect: normalizedRect(canonicalViewport), canonicalBoardLocalRect: normalizedRect(state.canonicalBoardLocalRect), leftCompanionRect: resolvedSlots.left, rightCompanionRect: resolvedSlots.right, source: state.canonicalBoardSource || null, verified: state.canonicalBoardVerified === true, cachedGeometryReused: cachedGeometryReused, layoutEpochId: state.layoutEpochId, tableOwnerSource: state.tableOwnerSource, observerElement: evidence.tableElement || null, resizeElements: uniqueElements([evidence.tableElement].concat(wrappers.map(function (candidate) { return candidate.element; }))), info: clone(info) };
   }
 
   function resolveDom(state, options) {
@@ -555,6 +594,7 @@
   function updateContext(state, context) {
     if (!state || !state.lastInfo) return null;
     context = context || {}; var info = state.lastInfo;
+    if (Object.prototype.hasOwnProperty.call(context, 'manualOverride')) info.manualOverride = context.manualOverride === true;
     if (Object.prototype.hasOwnProperty.call(context, 'potOddsActualRect')) { info.potOddsActualRect = roundedRect(context.potOddsActualRect); info.actualPotOddsRect = roundedRect(context.potOddsActualRect); }
     if (Object.prototype.hasOwnProperty.call(context, 'collisionReason')) info.collisionReason = context.collisionReason || null;
     if (Object.prototype.hasOwnProperty.call(context, 'street')) info.street = context.street || null;
@@ -566,6 +606,13 @@
     if (Object.prototype.hasOwnProperty.call(context, 'persistedOffsetX')) info.persistedOffsetX = Number.isFinite(Number(context.persistedOffsetX)) ? Number(context.persistedOffsetX) : 0;
     if (Object.prototype.hasOwnProperty.call(context, 'persistedOffsetY')) info.persistedOffsetY = Number.isFinite(Number(context.persistedOffsetY)) ? Number(context.persistedOffsetY) : 0;
     info.featureOffset = { x: info.persistedOffsetX || 0, y: info.persistedOffsetY || 0 };
+    if (Object.prototype.hasOwnProperty.call(context, 'coordinateScaleX')) info.coordinateScaleX = number(context.coordinateScaleX, 1) || 1;
+    if (Object.prototype.hasOwnProperty.call(context, 'coordinateScaleY')) info.coordinateScaleY = number(context.coordinateScaleY, 1) || 1;
+    if (Object.prototype.hasOwnProperty.call(context, 'viewportOffsetX')) info.viewportOffsetX = number(context.viewportOffsetX);
+    else info.viewportOffsetX = number(info.persistedOffsetX) * (number(info.coordinateScaleX, 1) || 1);
+    if (Object.prototype.hasOwnProperty.call(context, 'viewportOffsetY')) info.viewportOffsetY = number(context.viewportOffsetY);
+    else info.viewportOffsetY = number(info.persistedOffsetY) * (number(info.coordinateScaleY, 1) || 1);
+    info.featureOffsetViewport = { x: info.viewportOffsetX, y: info.viewportOffsetY };
     if (Object.prototype.hasOwnProperty.call(context, 'unclampedActualRect')) info.unclampedActualRect = roundedRect(context.unclampedActualRect);
     if (Object.prototype.hasOwnProperty.call(context, 'actualPanelRect')) info.actualPanelRect = roundedRect(context.actualPanelRect);
     if (Object.prototype.hasOwnProperty.call(context, 'viewportClampApplied')) info.viewportClampApplied = context.viewportClampApplied === true;
@@ -578,7 +625,7 @@
     info.boardAlignment = boardAlignment(info); info.expectedFirstSlotRect = clone(info.boardAlignment.expectedFirstSlotRect);
     if (info.history && info.history.length) {
       var latest = info.history[info.history.length - 1];
-      ['potOddsActualRect', 'actualPotOddsRect', 'gapToCanonicalBoard', 'collisionReason', 'street', 'settingsVisible', 'layoutResolutionTrigger', 'lifecycleState', 'widgetVisibleReason', 'contentState', 'persistedOffsetX', 'persistedOffsetY', 'featureOffset', 'unclampedActualRect', 'actualPanelRect', 'viewportClampApplied', 'draggingNow', 'dragState', 'resetPending', 'resetState', 'offsetMutationSource', 'boardAlignment', 'expectedFirstSlotRect'].forEach(function (key) { latest[key] = clone(info[key]); });
+      ['manualOverride', 'potOddsActualRect', 'actualPotOddsRect', 'gapToCanonicalBoard', 'collisionReason', 'street', 'settingsVisible', 'layoutResolutionTrigger', 'lifecycleState', 'widgetVisibleReason', 'contentState', 'persistedOffsetX', 'persistedOffsetY', 'featureOffset', 'coordinateScaleX', 'coordinateScaleY', 'viewportOffsetX', 'viewportOffsetY', 'featureOffsetViewport', 'unclampedActualRect', 'actualPanelRect', 'viewportClampApplied', 'draggingNow', 'dragState', 'resetPending', 'resetState', 'offsetMutationSource', 'boardAlignment', 'expectedFirstSlotRect'].forEach(function (key) { latest[key] = clone(info[key]); });
     }
     if (state.history.length && info.history && info.history.length) state.history[state.history.length - 1] = clone(info.history[info.history.length - 1]);
     return clone(info);
@@ -589,21 +636,22 @@
     return {
       schemaVersion: 3, capturedAt: Date.now(), privacy: 'geometry and board-layout identifiers only; no names, card values, or chat', fixtureWorkflow: 'capture in live PokerNow DevTools, sanitize, save exact geometry as a regression fixture',
       layoutEpochId: info.layoutEpochId, layoutEpochSequence: info.layoutEpochSequence, tableOwnerSource: info.tableOwnerSource, tableOwnerConnected: info.tableOwnerConnected,
+      semanticAnchorSource: info.semanticAnchorSource, virtualBoardLocalRect: info.virtualBoardLocalRect, virtualBoardViewportRect: info.virtualBoardViewportRect, measuredBoardViewportRect: info.measuredBoardViewportRect, virtualToMeasuredDelta: info.virtualToMeasuredDelta, virtualModelMismatch: info.virtualModelMismatch, manualOverride: info.manualOverride,
       viewport: info.viewport, tableViewportRect: info.tableViewportRect, tableTransform: info.tableTransform, boardCandidates: info.boardCandidates, chosenCanonicalBoardSource: info.chosenCanonicalBoardSource,
       canonicalBoardLocalRect: info.canonicalBoardLocalRect, canonicalBoardRect: info.canonicalBoardViewportRect, canonicalBoardViewportRect: info.canonicalBoardViewportRect, canonicalGeometryChanged: info.canonicalGeometryChanged, canonicalGeometryChangeReason: info.canonicalGeometryChangeReason, lastAcceptedCanonicalChangeReason: info.lastAcceptedCanonicalChangeReason,
       validationOnlyActualCardRects: info.validationOnlyActualCardRects, validationOnlyActualCardLocalRects: info.validationOnlyActualCardLocalRects, observedFirstVisibleCardRect: info.observedFirstVisibleCardRect, expectedFirstSlotRect: info.expectedFirstSlotRect, boardAlignment: info.boardAlignment, cardValidation: info.cardValidation, actualCardUnion: info.actualCardUnion, explicitSlotRects: info.explicitSlotRects, pitchEvidence: info.pitchEvidence,
       leftCompanionRect: info.canonicalLeftCompanionRect, rightCompanionRect: info.canonicalRightCompanionRect,
-      canonicalLeftCompanionRect: info.canonicalLeftCompanionRect, canonicalRightCompanionRect: info.canonicalRightCompanionRect, featureOffset: info.featureOffset, potOddsActualRect: info.potOddsActualRect, actualPotOddsRect: info.actualPotOddsRect, unclampedActualRect: info.unclampedActualRect, actualPanelRect: info.actualPanelRect,
+      canonicalLeftCompanionRect: info.canonicalLeftCompanionRect, canonicalRightCompanionRect: info.canonicalRightCompanionRect, featureOffset: info.featureOffset, coordinateScaleX: info.coordinateScaleX, coordinateScaleY: info.coordinateScaleY, featureOffsetViewport: info.featureOffsetViewport, potOddsActualRect: info.potOddsActualRect, actualPotOddsRect: info.actualPotOddsRect, unclampedActualRect: info.unclampedActualRect, actualPanelRect: info.actualPanelRect,
       viewportClampApplied: info.viewportClampApplied, draggingNow: info.draggingNow, dragState: info.dragState, resetPending: info.resetPending, resetState: info.resetState, offsetMutationSource: info.offsetMutationSource, gapToCanonicalBoard: info.gapToCanonicalBoard, street: info.street, boardCardCount: info.boardCardCount, settingsVisible: info.settingsVisible, layoutResolutionTrigger: info.layoutResolutionTrigger,
-      cachedGeometryReused: info.cachedGeometryReused, fallback: info.fallback, collisionReason: info.collisionReason, lifecycleState: info.lifecycleState, contentState: info.contentState,
+      cachedGeometryReused: info.cachedGeometryReused, fallback: info.fallback, awaitingPostTransitionGeometry: info.awaitingPostTransitionGeometry, transitionEntryCandidate: info.transitionEntryCandidate, collisionReason: info.collisionReason, lifecycleState: info.lifecycleState, contentState: info.contentState,
       latestIllegalCanonicalGeometryChange: info.latestIllegalCanonicalGeometryChange, acceptedLayoutEpochChanges: info.acceptedLayoutEpochChanges, rejectedOwnedTableCandidates: info.rejectedOwnedTableCandidates, dom: info.dom
     };
   }
 
   var api = Object.freeze({
-    BOARD_SELECTORS: BOARD_SELECTORS, SLOT_SELECTORS: SLOT_SELECTORS, TABLE_SELECTORS: TABLE_SELECTORS, DEFAULT_MODEL: DEFAULT_MODEL,
+    BOARD_SELECTORS: BOARD_SELECTORS, SLOT_SELECTORS: SLOT_SELECTORS, TABLE_SELECTORS: TABLE_SELECTORS, BOARD_LANE_MODEL: BOARD_LANE_MODEL, resolveCanonicalBoardEnvelope: resolveCanonicalBoardEnvelope,
     createState: createState, invalidate: invalidate, subscribe: subscribe, collectDomEvidence: collectDomEvidence, resolveEvidence: resolveEvidence, resolveDom: resolveDom,
-    companionRect: companionRect, updateContext: updateContext, layoutInfo: layoutInfo, captureLayoutSnapshot: captureLayoutSnapshot
+    companionRect: companionRect, companionSlots: companionSlots, updateContext: updateContext, layoutInfo: layoutInfo, captureLayoutSnapshot: captureLayoutSnapshot
   });
   root.PokerBoardCompanionLayout = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

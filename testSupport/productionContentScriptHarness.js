@@ -24,6 +24,7 @@ function FakeElement(tag, document) {
   };
   this.dataset = {};
   this.attributes = {};
+  this.listeners = {};
   this.className = '';
   this.textContent = '';
   this.innerHTML = '';
@@ -58,8 +59,13 @@ FakeElement.prototype.appendChild = function (child) {
 };
 FakeElement.prototype.insertBefore = FakeElement.prototype.appendChild;
 FakeElement.prototype.remove = function () { this.isConnected = false; if (this.id) this.ownerDocument.elements.delete(this.id); };
-FakeElement.prototype.addEventListener = function () {};
-FakeElement.prototype.removeEventListener = function () {};
+FakeElement.prototype.addEventListener = function (type, listener) { (this.listeners[type] || (this.listeners[type] = [])).push(listener); };
+FakeElement.prototype.removeEventListener = function (type, listener) { this.listeners[type] = (this.listeners[type] || []).filter(function (item) { return item !== listener; }); };
+FakeElement.prototype.dispatchEvent = function (event) {
+  if (!event.target) event.target = this;
+  (this.listeners[event.type] || []).slice().forEach(function (listener) { listener.call(this, event); }, this);
+  return true;
+};
 FakeElement.prototype.setAttribute = function (name, value) { this.attributes[name] = String(value); if (name === 'id') this.id = value; };
 FakeElement.prototype.getAttribute = function (name) { return this.attributes[name] || null; };
 FakeElement.prototype.removeAttribute = function (name) { delete this.attributes[name]; };
@@ -157,7 +163,9 @@ function createHarness(options) {
     cancelAnimationFrame: function (frameId) { if (options.controlledAnimationFrames) animationFrames.delete(frameId); },
     MutationObserver: options.MutationObserver || function () { this.observe = function () {}; this.disconnect = function () {}; },
     ResizeObserver: options.ResizeObserver || function () { this.observe = function () {}; this.unobserve = function () {}; this.disconnect = function () {}; },
-    Blob: Blob, URL: URL,
+    Blob: Blob, URL: URL, Response: Response, TextEncoder: TextEncoder, TextDecoder: TextDecoder,
+    CompressionStream: CompressionStream, DecompressionStream: DecompressionStream,
+    ReadableStream: ReadableStream, Uint8Array: Uint8Array, ArrayBuffer: ArrayBuffer,
     Node: { ELEMENT_NODE: 1, TEXT_NODE: 3, DOCUMENT_POSITION_FOLLOWING: 4 },
     CustomEvent: function (type, init) { this.type = type; this.detail = init && init.detail; },
     Event: function (type) { this.type = type; },

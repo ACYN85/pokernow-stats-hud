@@ -3,7 +3,7 @@
   var console = globalThis.PokerHudDiagnostics && typeof globalThis.PokerHudDiagnostics.createConsole === 'function'
     ? globalThis.PokerHudDiagnostics.createConsole(globalThis.console)
     : globalThis.console;
-  var PNHUD_BUILD_ID = 'v1.2.0-rc2-20260922-1612';
+  var PNHUD_BUILD_ID = 'v1.3.0-rc4-20260929-0321';
   var PNHUD_EXTENSION_ID = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id || 'unavailable';
   var runtimeScopeFallbackActive = false;
 
@@ -334,6 +334,7 @@
   var liveEvents = [];
   var finalizedSessionRevision = 0;
   var sessionStatsCache = PokerSessionStatsCache.create({ maxEntries: 256 });
+  var sessionContextState = PokerFilteredStats.createSessionContextState();
   var sessionPersistencePlanner = PokerSessionRuntime.createPersistencePlanner({ initialFinalizedRevision: 0, persistedFinalizedRevision: 0 });
   var activeHandState = null;
   // One fresh, fully observed deal may reacquire ownership after a lifecycle
@@ -353,7 +354,7 @@
   var careerDiagnostics = { accepted: 0, externalAccepted: 0, duplicates: 0, conflicts: 0, rejected: 0, recent: [] };
   var careerDataUiState = { info: null, summaryError: null, loading: false, busy: false, message: '', messageKind: 'none', activeFlow: null, importPreview: null, importCandidate: null, importRequestToken: 0, preview: null, backupCandidate: null, restoreRequestToken: 0, removalPreview: null, removalRequest: null, removalFlowActive: false, removalRequestToken: 0, fetchedAt: 0 };
   var playerNotesState = PokerPlayerNotesStore.normalize(null);
-  var playerDashboardState = { open: false, playerId: null, displayName: '', mode: 'session', position: null, overallPosition: null, situation: 'overall', opponentMode: 'overall', selfPlayerId: null, coreStats: null, relationalStats: {}, sessionStats: null, careerStats: null, careerTrackingStartedAt: null, trends: null, trendWindow: null, trendError: null, loading: false, error: null, profile: null, note: '', noteDraft: '', noteStatus: '', requestToken: 0, returnFocus: null };
+  var playerDashboardState = { open: false, playerId: null, displayName: '', mode: 'session', position: null, overallPosition: null, situation: 'overall', tableSize: 'all', opponentMode: 'overall', selfPlayerId: null, coreStats: null, relationalStats: {}, comparisonContexts: null, sessionRevision: null, careerRevision: null, sessionStats: null, careerStats: null, careerTrackingStartedAt: null, trends: null, trendWindow: null, trendError: null, loading: false, error: null, profile: null, note: '', noteDraft: '', noteStatus: '', requestToken: 0, returnFocus: null };
   var playerDashboardElement = null;
   var playerDashboardGeometry = { geometry: null, positionCustomized: false };
   var playerDashboardGeometryController = null;
@@ -536,7 +537,7 @@
   var heroPotOddsDecisionFingerprint = null;
   var potOddsPresentation = null;
   var heroPotOddsResetPending = false;
-  var potOddsBoardResetState = PokerPotOddsPosition.createBoardResetState();
+  var potOddsPositionPreferenceState = PokerPotOddsPosition.createPositionPreferenceState();
   var heroPotOddsLastVisibleRect = null;
   var boardCompanionEventSequence = 0;
   var boardCompanionEventHistory = [];
@@ -576,6 +577,7 @@
   var seatDiscoveryLastAt = 0;
   var windowLayoutListener = null;
   var windowLayoutFrame = null;
+  var windowLayoutSettlementTimer = null;
   var windowLayoutPriorViewport = null;
   var displayMode = 'seat-overlays-only';
   var showOverlayBoxes = false;
@@ -585,9 +587,8 @@
   var manualOverlayPositions = {};
   var seatHudCareerStatsByPlayer = new Map();
   // Presentation aggregates only; Career persistence, revisions and resolution remain backend-owned.
-  var leaderboardCareerStatsByPlayer = new Map();
   var leaderboardCareerSignature = '';
-  var leaderboardCareerSnapshotSignature = '';
+  var leaderboardCareerSettledSnapshot = null;
   var leaderboardCareerFailedSignature = '';
   var leaderboardCareerRequestToken = 0;
   var seatHudCareerLoadedSignature = '';
@@ -910,6 +911,8 @@
       ['PokerCareerDataSettings', globalThis.PokerCareerDataSettings, 'careerDataSettings.js'],
       ['PokerPlayerNotesStore', globalThis.PokerPlayerNotesStore, 'playerNotesStore.js'],
       ['PokerStatEvidence', globalThis.PokerStatEvidence, 'statEvidence.js'],
+      ['PokerPlayerInsights', globalThis.PokerPlayerInsights, 'playerInsights.js'],
+      ['PokerStrategicImplications', globalThis.PokerStrategicImplications, 'strategicImplications.js'],
       ['PokerPlayerDashboard', globalThis.PokerPlayerDashboard, 'playerDashboard.js'],
       ['PokerTrackedPlayers', globalThis.PokerTrackedPlayers, 'trackedPlayers.js'],
       ['PokerHandStatExplanation', globalThis.PokerHandStatExplanation, 'statExplanation.js'],
@@ -1158,11 +1161,16 @@
     var next = PokerHudSettings.merge(hudUiPreferences, patch);
     if (PokerHudSettings.equal(hudUiPreferences, next)) {
       settingsUiDiagnostics.duplicateListenerPreventions += 1;
+      if (options.persist !== false && options.storageUpdate && Object.keys(options.storageUpdate).length) {
+        chrome.storage.local.set(Object.assign({}, options.storageUpdate), function () {
+          if (typeof options.onPersisted === 'function') options.onPersisted(next);
+        });
+      }
       return false;
     }
     applyHudUiPreference(next, source);
     if (options.persist !== false) {
-      var update = {};
+      var update = Object.assign({}, options.storageUpdate || {});
       update[STORAGE_KEYS.hudUiPreferences] = next;
       chrome.storage.local.set(update, function () {
         if (typeof options.onPersisted === 'function') options.onPersisted(next);
@@ -1228,7 +1236,7 @@
       if (!Object.prototype.hasOwnProperty.call(saved, STORAGE_KEYS.activeHand) && !Object.prototype.hasOwnProperty.call(update, STORAGE_KEYS.activeHand)) update[STORAGE_KEYS.activeHand] = null;
       if (!saved[STORAGE_KEYS.finalizedHandIds] && !update[STORAGE_KEYS.finalizedHandIds]) update[STORAGE_KEYS.finalizedHandIds] = [];
       if (!Object.prototype.hasOwnProperty.call(saved, STORAGE_KEYS.hostControl) && !Object.prototype.hasOwnProperty.call(update, STORAGE_KEYS.hostControl)) update[STORAGE_KEYS.hostControl] = null;
-      potOddsBoardResetState = PokerPotOddsPosition.createBoardResetState(saved[STORAGE_KEYS.potOddsBoardReset]);
+      potOddsPositionPreferenceState = PokerPotOddsPosition.createPositionPreferenceState(saved[STORAGE_KEYS.potOddsBoardReset]);
       update[STORAGE_KEYS.sessionMeta] = { gameId: pokerNowGameId, sessionKey: gameSessionKey, url: location.href, updatedAt: Date.now() };
       if (!saved[STORAGE_KEYS.mode]) update[STORAGE_KEYS.mode] = 'session';
       if (!saved[STORAGE_KEYS.displayMode]) update[STORAGE_KEYS.displayMode] = 'seat-overlays-only';
@@ -1796,6 +1804,7 @@
     var pillRect = pill && pill.isConnected && pill.getBoundingClientRect ? pill.getBoundingClientRect() : null;
     return PokerBoardCompanionLayout.updateContext(boardCompanionLayoutState, {
       potOddsActualRect: pillRect,
+      manualOverride: Boolean(potOddsPositionPreferenceState && potOddsPositionPreferenceState.manualOverride),
       collisionReason: collisionReason === undefined ? heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.collisionReason || null : collisionReason,
       street: potOddsPresentation && potOddsPresentation.street || null,
       settingsVisible: hudUiPreferences.settingsOpen === true,
@@ -1805,11 +1814,15 @@
       contentState: potOddsPresentation && potOddsPresentation.contentState || null,
       persistedOffsetX: hudUiPreferences.potOddsOffsetX,
       persistedOffsetY: hudUiPreferences.potOddsOffsetY,
+      coordinateScaleX: heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.coordinateScaleX,
+      coordinateScaleY: heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.coordinateScaleY,
+      viewportOffsetX: heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.viewportOffsetX,
+      viewportOffsetY: heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.viewportOffsetY,
       unclampedActualRect: heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.unclampedActualRect || null,
       actualPanelRect: heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.actualPanelRect || pillRect,
       viewportClampApplied: heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.viewportClampApplied === true,
       draggingNow: Boolean(activePotOddsDrag),
-      dragState: activePotOddsDrag ? { pointerId: activePotOddsDrag.pointerId, moved: activePotOddsDrag.moved, captureRequested: activePotOddsDrag.captureRequested, captureEstablished: activePotOddsDrag.captureEstablished, listenerOwner: 'stable delegated #' + potOddsRootId } : { active: false, listenerOwner: 'stable delegated #' + potOddsRootId },
+      dragState: activePotOddsDrag ? { pointerId: activePotOddsDrag.pointerId, moved: activePotOddsDrag.moved, captureRequested: activePotOddsDrag.captureRequested, captureEstablished: activePotOddsDrag.captureEstablished, coordinateScale: cloneJson(activePotOddsDrag.coordinateScale), listenerOwner: 'stable delegated #' + potOddsRootId } : { active: false, listenerOwner: 'stable delegated #' + potOddsRootId },
       resetPending: heroPotOddsResetPending === true,
       offsetMutationSource: cloneJson(lastPotOddsOffsetMutation)
     });
@@ -2021,6 +2034,17 @@
     var key = String(scope || currentStatsScope) + '|' + String(playerId || ('name:' + playerName));
     tooltipStatsByPlayerKey.set(key, { playerId: playerId || null, playerName: playerName, stats: stats });
     return key;
+  }
+
+  function registerSeatOverlayTooltipPlayers(refreshCurrentStats) {
+    if (!seatOverlayController) return;
+    seatOverlayController.records.forEach(function (record) {
+      var entry = record.entry;
+      var stats = refreshCurrentStats && entry.statSource === currentSeatHudStatSource()
+        ? seatHudStatsForPlayer(entry.playerId, entry.name)
+        : entry.stats;
+      registerTooltipPlayer(entry.playerId, entry.name, stats, entry.statSource);
+    });
   }
 
   function statTooltipTargetHtml(definition, displayedValue, playerKey, scope, tagName) {
@@ -2251,6 +2275,8 @@
       playerDashboardElement.setAttribute('aria-modal', 'false');
       playerDashboardElement.setAttribute('aria-label', 'Player Dashboard');
       playerDashboardElement.dataset.pnhudOwned = 'true';
+      playerDashboardElement.dataset.pnhudExtensionId = chrome.runtime.id || '';
+      playerDashboardElement.dataset.pnhudBuildId = PNHUD_BUILD_ID;
       (document.body || document.documentElement).appendChild(playerDashboardElement);
       playerDashboardElement.addEventListener('click', handlePlayerDashboardClick);
       playerDashboardElement.addEventListener('input', handlePlayerDashboardInput);
@@ -2272,22 +2298,61 @@
     if (target && target.focus) target.focus();
   }
 
-  function refreshPlayerDashboardSession() {
+  function refreshPlayerDashboardSession(addedHandEvents) {
     if (!playerDashboardState.playerId) return;
+    var incremental = Array.isArray(addedHandEvents) && playerDashboardState.sessionRevision === finalizedSessionRevision - 1 &&
+      Boolean(playerDashboardState.sessionStats && playerDashboardState.coreStats);
+    var previousSessionStats = playerDashboardState.sessionStats;
+    var previousCore = playerDashboardState.coreStats;
+    var previousRelational = playerDashboardState.relationalStats || {};
     var name = socketPlayerNames.get(playerDashboardState.playerId) || playerDashboardState.displayName;
     playerDashboardState.displayName = name || playerDashboardState.displayName || 'Tracked player';
-    playerDashboardState.sessionStats = cachedSessionPlayerStats(playerDashboardState.playerId, playerDashboardState.displayName);
+    playerDashboardState.sessionStats = incremental
+      ? Object.assign(PokerStats.combinePlayerStats(playerDashboardState.displayName, [previousSessionStats,
+        PokerStats.computePlayerStatsByIdentity(addedHandEvents, playerDashboardState.playerId, playerDashboardState.displayName)]),
+        { playerId: playerDashboardState.playerId })
+      : cachedSessionPlayerStats(playerDashboardState.playerId, playerDashboardState.displayName);
     playerDashboardState.selfPlayerId = localUserPlayerId;
-    playerDashboardState.coreStats = cachedSessionFilteredStats(playerDashboardState.playerId, dashboardScopeFilters());
+    var scope = dashboardScopeFilters();
+    playerDashboardState.coreStats = scope.position || scope.situation || scope.tableSize
+      ? PokerFilteredStats.sessionContextResult(sessionContextState, playerDashboardState.playerId, scope)
+      : incremental ? PokerFilteredStats.appendSessionResult(previousCore, addedHandEvents, playerDashboardState.playerId, scope)
+        : cachedSessionFilteredStats(playerDashboardState.playerId, scope);
+    playerDashboardState.sessionRevision = finalizedSessionRevision;
+    if (playerDashboardState.mode === 'session') playerDashboardState.comparisonContexts = PokerFilteredStats.sessionComparisonContexts(sessionContextState, playerDashboardState.playerId, finalizedSessionRevision, scope.tableSize);
     playerDashboardState.relationalStats = dashboardRelationalQueries(function (filters) {
-      return cachedSessionFilteredStats(playerDashboardState.playerId, filters);
+      return incremental ? PokerFilteredStats.appendSessionResult(previousRelational[filters.statId], addedHandEvents, playerDashboardState.playerId, filters)
+        : cachedSessionFilteredStats(playerDashboardState.playerId, filters);
     });
-    playerDashboardState.profile = playerDashboardProfile(playerDashboardState.playerId);
+    var counts = playerDashboardState.coreStats && playerDashboardState.coreStats.coverage && playerDashboardState.coreStats.coverage.tableSizeHands || {};
+    var coreCounters = playerDashboardState.coreStats && playerDashboardState.coreStats.counters;
+    var bucket = scope.tableSize || ['HU', '3_TO_5', 'SIX_PLUS'].find(function (key) { return coreCounters && coreCounters.hands > 0 && counts[key] === coreCounters.hands; });
+    var coverage = playerDashboardState.coreStats && playerDashboardState.coreStats.coverage || {};
+    playerDashboardState.profile = bucket && coreCounters ? PokerPlayerDashboard.careerProfile({
+      version: PokerCareerStatsAggregator.PROFILE_PROJECTION_VERSION,
+      playerId: playerDashboardState.playerId, latestDisplayName: playerDashboardState.displayName,
+      counters: coreCounters, tableSize: bucket,
+      profileContext: { version: PokerCareerStatsAggregator.PROFILE_CONTEXT_VERSION,
+        preflopTableSizeSum: Number(coverage.preflopTableSizeSum || 0),
+        preflopTableSizeOpportunities: Number(coverage.preflopTableSizeOpportunities || 0) }
+    }, PokerPlayerProfileClassifier, PokerPlayerProfilePresentation, PokerPlayerProfileExplanation) : null;
+  }
+
+  function refreshOpenPlayerDashboardSessionAfterCommit(result, finalizedRange) {
+    if (!playerDashboardState.open || playerDashboardState.mode !== 'session' || !playerDashboardState.playerId) return;
+    var addedEvents = !result.reconciled && finalizedRange
+      ? handAccounting.finalizedEvents.slice(finalizedRange.start, finalizedRange.start + finalizedRange.length) : null;
+    if (addedEvents && addedEvents.length && !addedEvents.some(function (event) {
+      return !event || event.playerId === null || event.playerId === undefined || String(event.playerId) === playerDashboardState.playerId;
+    })) return;
+    refreshPlayerDashboardSession(addedEvents);
+    renderPlayerDashboard();
   }
 
   function dashboardScopeFilters() {
-    if (playerDashboardState.situation === 'ip' || playerDashboardState.situation === 'oop') return { situation: playerDashboardState.situation };
-    return playerDashboardState.position ? { position: playerDashboardState.position } : {};
+    var scope = playerDashboardState.situation === 'ip' || playerDashboardState.situation === 'oop' ? { situation: playerDashboardState.situation } : playerDashboardState.position ? { position: playerDashboardState.position } : {};
+    if (playerDashboardState.tableSize && playerDashboardState.tableSize !== 'all') scope.tableSize = playerDashboardState.tableSize;
+    return scope;
   }
 
   function dashboardRelationalFilters(statId) {
@@ -2313,14 +2378,17 @@
     var token = ++playerDashboardState.requestToken;
     var position = playerDashboardState.position;
     var situation = playerDashboardState.situation || 'overall';
+    var tableSize = playerDashboardState.tableSize || 'all';
     var opponentMode = playerDashboardState.opponentMode;
-    var requestSnapshot = { playerId: playerId, mode: 'career', position: position, situation: situation, opponentMode: opponentMode, requestToken: token };
+    var requestSnapshot = { playerId: playerId, mode: 'career', position: position, situation: situation, tableSize: tableSize, opponentMode: opponentMode, requestToken: token };
     playerDashboardState.loading = true;
     playerDashboardState.profile = null;
     playerDashboardState.error = null;
     playerDashboardState.careerStats = null;
     playerDashboardState.coreStats = null;
     playerDashboardState.relationalStats = {};
+    playerDashboardState.comparisonContexts = null;
+    playerDashboardState.careerRevision = null;
     playerDashboardState.trends = null;
     playerDashboardState.trendError = null;
     playerDashboardState.selfPlayerId = localUserPlayerId;
@@ -2333,6 +2401,7 @@
     var dashboardRequest = careerIndexedService.careerDashboardStats(playerId, {
       position: position,
       situation: situation,
+      tableSize: tableSize,
       opponentMode: opponentMode,
       selfPlayerId: localUserPlayerId
     });
@@ -2352,6 +2421,8 @@
       }
       playerDashboardState.profile = result.profileStats && String(result.profileStats.playerId) === playerId ? PokerPlayerDashboard.careerProfile(result.profileStats, PokerPlayerProfileClassifier, PokerPlayerProfilePresentation, PokerPlayerProfileExplanation) : null;
       playerDashboardState.coreStats = result.core;
+      playerDashboardState.careerRevision = result.query.playerRevision;
+      playerDashboardState.comparisonContexts = result.comparisonContexts && String(result.comparisonContexts.playerId) === playerId && result.comparisonContexts.source === 'career' && result.comparisonContexts.playerRevision === result.query.playerRevision ? result.comparisonContexts : null;
       playerDashboardState.careerStats = result.core;
       playerDashboardState.careerTrackingStartedAt = result.careerTrackingStartedAt || null;
       playerDashboardState.relationalStats = result.relational || {};
@@ -2383,10 +2454,13 @@
     playerDashboardState.position = null;
     playerDashboardState.overallPosition = null;
     playerDashboardState.situation = 'overall';
+    playerDashboardState.tableSize = 'all';
     playerDashboardState.opponentMode = 'overall';
     playerDashboardState.selfPlayerId = localUserPlayerId;
     playerDashboardState.coreStats = null;
     playerDashboardState.relationalStats = {};
+    playerDashboardState.comparisonContexts = null;
+    playerDashboardState.careerRevision = null;
     playerDashboardState.careerStats = null;
     playerDashboardState.careerTrackingStartedAt = null;
     playerDashboardState.trends = null;
@@ -2395,6 +2469,8 @@
     playerDashboardState.error = null;
     refreshPlayerDashboardSession();
     playerDashboardState.mode = playerDashboardState.sessionStats && playerDashboardState.sessionStats.handsPlayed > 0 ? 'session' : 'career';
+    playerDashboardState.comparisonContexts = playerDashboardState.mode === 'session'
+      ? PokerFilteredStats.sessionComparisonContexts(sessionContextState, canonicalId, finalizedSessionRevision, null) : null;
     renderPlayerDashboard('.pnhud-dashboard-close');
     if (playerDashboardState.mode === 'career') loadPlayerDashboardCareer();
   }
@@ -2600,6 +2676,15 @@
   }
 
   function handlePlayerDashboardInput(event) {
+    if (event.target.matches('[data-dashboard-table-size]')) {
+      var tableSize = PokerPlayerDashboard.TABLE_SIZE_OPTIONS.some(function (option) { return option.value === event.target.value; }) ? event.target.value : 'all';
+      if (tableSize === playerDashboardState.tableSize) return;
+      playerDashboardState.tableSize = tableSize;
+      playerDashboardState.error = null;
+      if (playerDashboardState.mode === 'career') loadPlayerDashboardCareer();
+      else { refreshPlayerDashboardSession(); renderPlayerDashboard('[data-dashboard-table-size]'); }
+      return;
+    }
     if (event.target.matches('[data-dashboard-situation]')) {
       var situation = PokerPlayerDashboard.SITUATION_OPTIONS.some(function (option) { return option.value === event.target.value; }) ? event.target.value : 'overall';
       if (situation === playerDashboardState.situation) return;
@@ -3373,7 +3458,7 @@
         '<div class="pnhud-settings-position-group"><h3>Leaderboard HUD position</h3><div class="pnhud-settings-control-row"><span>Position is ' + (leaderboardHudPosition.locked ? 'locked' : 'unlocked') + '</span><button type="button" class="pnhud-unlock-leaderboard"' + (!leaderboardHudPosition.locked ? ' disabled' : '') + '>Unlock dragging</button><button type="button" class="pnhud-lock-leaderboard"' + (leaderboardHudPosition.locked ? ' disabled' : '') + '>Lock position</button><button type="button" class="pnhud-reset-leaderboard-position">Reset position</button></div><p class="pnhud-settings-help">Drag the leaderboard using an empty part of its header while unlocked.</p></div>' +
         '<p class="pnhud-settings-help">HUD size is controlled in Appearance. The existing top-right HUD button remains available when the leaderboard is hidden.</p>' +
         '<label class="pnhud-settings-check"><input type="checkbox" class="pnhud-settings-pot-odds"' + (hudUiPreferences.showPotOdds ? ' checked' : '') + '> Show pot odds</label>' +
-        '<div class="pnhud-settings-position-group"><h3>Pot Odds position</h3><div class="pnhud-settings-control-row"><span>Offset ' + escapeHtml(hudUiPreferences.potOddsOffsetX) + ' / ' + escapeHtml(hudUiPreferences.potOddsOffsetY) + ' px</span><button type="button" class="pnhud-reset-pot-odds-position">Reset Pot Odds Position</button></div><p class="pnhud-settings-help">Drag the POT ODDS title. The saved offset remains relative to the canonical LEFT board-companion slot.</p></div>' +
+        '<div class="pnhud-settings-position-group"><h3>Pot Odds position</h3><div class="pnhud-settings-control-row"><span>Local offset ' + escapeHtml(hudUiPreferences.potOddsOffsetX) + ' / ' + escapeHtml(hudUiPreferences.potOddsOffsetY) + '</span><button type="button" class="pnhud-reset-pot-odds-position">Reset Pot Odds Position</button></div><p class="pnhud-settings-help">Drag the POT ODDS title. The saved table-local offset is projected from the current canonical LEFT slot after zoom or resize.</p></div>' +
         leaderboardStatCustomizerHtml() + '</section>';
     }
     if (section === 'appearance') {
@@ -3404,7 +3489,7 @@
         (armedMarker ? '<p class="pnhud-settings-help pnhud-pause-capture-armed">Active ' + escapeHtml(armedMarker === 'pause' ? 'Pause' : 'Resume') + ' capture window; no click is required.</p>' : '') +
         healthPanelHtml(hudUiPreferences.developerToolsVisible) + '<p class="pnhud-build-inline">Build ' + escapeHtml(PNHUD_BUILD_ID) + '</p></section>';
     }
-    var version = chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : '1.2.0';
+    var version = chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : '1.3.0';
     return '<section class="pnhud-settings-section" data-settings-content="about"><h2>About</h2><p><strong>PokerNow Stats HUD</strong></p><p>Live finalized poker statistics with configurable per-seat overlays.</p><dl class="pnhud-about-meta"><div><dt>Version</dt><dd>' + escapeHtml(version) + '</dd></div><div><dt>Build</dt><dd>' + escapeHtml(PNHUD_BUILD_ID) + '</dd></div></dl><button type="button" class="pnhud-reset-configuration">Reset interface configuration</button><p class="pnhud-settings-help">Resets display, appearance, positions, and overlay selection. Accumulated poker statistics are not erased.</p></section>';
   }
 
@@ -4781,10 +4866,16 @@
     return Boolean(element.closest('#' + potOddsRootId + ', #' + overlayRootId + ', [data-pnhud-owned="true"]'));
   }
 
+  function potOddsBoardGeometryElement(element, includeDescendants) {
+    if (!element) return false;
+    var selector = PokerBoardCompanionLayout.BOARD_SELECTORS + ', ' + PokerBoardCompanionLayout.SLOT_SELECTORS + ', .card-container, [class*="board-card" i], [class*="community-card" i]';
+    return Boolean(element.matches && element.matches(selector) || includeDescendants && element.querySelector && element.querySelector(selector));
+  }
+
   function currentPokerNowTableElement() {
     var retained = boardCompanionLayoutState && boardCompanionLayoutState.tableElement;
     if (!(retained && retained.isConnected && !potOddsOwnedElement(retained))) retained = null;
-    var selectors = ['#table', '.game-table', '[class~="game-table"]', 'main'];
+    var selectors = PokerBoardCompanionLayout.TABLE_SELECTORS.split(', ');
     var retainedPriority = retained && retained.matches ? selectors.findIndex(function (selector) { return retained.matches(selector); }) : -1;
     for (var selectorIndex = 0; selectorIndex < selectors.length; selectorIndex += 1) {
       var candidates = Array.from(document.querySelectorAll(selectors[selectorIndex]));
@@ -4822,9 +4913,11 @@
       tableElement: tableElement,
       isOwnedElement: potOddsOwnedElement,
       leftSize: panelSize,
-      rightSize: panelSize,
+      // RIGHT is an independent future companion region; Pot Odds sizing owns LEFT only.
+      rightSize: { width: 100, height: 60 },
       context: {
         trigger: reason || heroPotOddsRenderReason || 'pot-odds placement resolution',
+        manualOverride: Boolean(potOddsPositionPreferenceState && potOddsPositionPreferenceState.manualOverride),
         street: potOddsPresentation && potOddsPresentation.street || null,
         settingsVisible: hudUiPreferences.settingsOpen === true,
         lifecycleState: potOddsPresentation && potOddsPresentation.tableLifecycleState || null,
@@ -4837,6 +4930,7 @@
         , dragState: activePotOddsDrag ? { pointerId: activePotOddsDrag.pointerId, moved: activePotOddsDrag.moved, captureRequested: activePotOddsDrag.captureRequested, captureEstablished: activePotOddsDrag.captureEstablished, listenerOwner: 'stable delegated #' + potOddsRootId } : { active: false, listenerOwner: 'stable delegated #' + potOddsRootId }
         , resetPending: heroPotOddsResetPending === true
         , offsetMutationSource: cloneJson(lastPotOddsOffsetMutation)
+        , geometrySettlementSignal: /structural board geometry settled/i.test(String(reason || ''))
       }
     });
     var info = layout.info || {};
@@ -5008,6 +5102,16 @@
     return PokerPotOddsPosition.normalizeOffset({ x: hudUiPreferences.potOddsOffsetX, y: hudUiPreferences.potOddsOffsetY });
   }
 
+  function setPotOddsManualPlacementCustomized(enabled, reason) {
+    PokerPotOddsPosition.setManualPlacementCustomized(potOddsPositionPreferenceState, enabled);
+    recordBoardCompanionEvent(enabled ? 'manual-override-enabled' : 'manual-override-cleared', reason || 'Pot Odds user placement changed');
+  }
+
+  function currentPotOddsCoordinateScale(anchorDiagnostic) {
+    var transform = anchorDiagnostic && anchorDiagnostic.tableTransform || heroPotOddsAnchorDiagnostic && heroPotOddsAnchorDiagnostic.tableTransform || null;
+    return PokerPotOddsPosition.normalizeCoordinateScale({ scaleX: transform && transform.scaleX, scaleY: transform && transform.scaleY });
+  }
+
   function effectivePotOddsOffset() {
     return activePotOddsDrag && activePotOddsDrag.moved ? cloneJson(activePotOddsDrag.currentOffset) : persistedPotOddsOffset();
   }
@@ -5021,7 +5125,7 @@
     if (!drag.moved && Math.hypot(deltaX, deltaY) < 4) return;
     if (!drag.moved) recordBoardCompanionEvent('drag-threshold-crossed', 'pot-odds title drag crossed the 4px movement threshold');
     drag.moved = true;
-    drag.currentOffset = PokerPotOddsPosition.offsetFromDrag(drag.startOffset, drag.startPointer, { x: Number(event.clientX), y: Number(event.clientY) });
+    drag.currentOffset = PokerPotOddsPosition.offsetFromDrag(drag.startOffset, drag.startPointer, { x: Number(event.clientX), y: Number(event.clientY) }, drag.coordinateScale);
     var liveElement = heroPotOddsElement && heroPotOddsElement.isConnected ? heroPotOddsElement : drag.element;
     if (liveElement) liveElement.classList.add('pnhud-pot-odds-dragging');
     document.documentElement.classList.add('pnhud-pot-odds-dragging');
@@ -5049,7 +5153,10 @@
     }
     if (event && drag.moved) { event.preventDefault(); event.stopPropagation(); }
     if (!cancelled && drag.moved) {
-      updateHudUiPreferences({ potOddsOffsetX: drag.currentOffset.x, potOddsOffsetY: drag.currentOffset.y }, 'pot-odds-pointer-drag', { render: false, onPersisted: function () { recordBoardCompanionEvent('offset-persisted', 'pot-odds drag offset storage write completed'); } });
+      setPotOddsManualPlacementCustomized(true, 'committed POT ODDS drag owns the persistent user placement');
+      var dragStorageUpdate = {};
+      dragStorageUpdate[STORAGE_KEYS.potOddsBoardReset] = PokerPotOddsPosition.createPositionPreferenceState(potOddsPositionPreferenceState);
+      updateHudUiPreferences({ potOddsOffsetX: drag.currentOffset.x, potOddsOffsetY: drag.currentOffset.y }, 'pot-odds-pointer-drag', { render: false, storageUpdate: dragStorageUpdate, onPersisted: function () { recordBoardCompanionEvent('offset-persisted', 'pot-odds drag offset and manual-override storage write completed atomically'); } });
       positionHeroPotOdds('pot-odds pointer drag committed');
     } else {
       positionHeroPotOdds(cancelled ? 'pot-odds drag cancelled' : 'pot-odds drag no-op');
@@ -5084,6 +5191,7 @@
       startPointer: { x: Number(event.clientX), y: Number(event.clientY) },
       startOffset: persistedPotOddsOffset(),
       currentOffset: persistedPotOddsOffset(),
+      coordinateScale: currentPotOddsCoordinateScale(),
       moved: false,
       captureRequested: false,
       captureEstablished: false
@@ -5129,10 +5237,13 @@
   function resetPotOddsPosition(source) {
     if (activePotOddsDrag) finishPotOddsDrag(null, true);
     heroPotOddsResetPending = true;
+    setPotOddsManualPlacementCustomized(false, 'Reset Position cleared the customized user placement');
     recordBoardCompanionEvent('reset-requested', source || 'reset-pot-odds-position');
     lastPotOddsOffsetMutation = { reasonCode: 'RESET_POSITION', source: String(source || 'reset-pot-odds-position').slice(0, 180), timestamp: Date.now(), before: persistedPotOddsOffset(), after: { x: 0, y: 0 } };
     recordBoardCompanionEvent('offset-mutation', 'RESET_POSITION: feature offset set to exactly 0/0');
-    updateHudUiPreferences({ potOddsOffsetX: 0, potOddsOffsetY: 0 }, source || 'reset-pot-odds-position', { render: false, onPersisted: function () { recordBoardCompanionEvent('offset-persisted', 'reset 0/0 storage write completed'); } });
+    var resetStorageUpdate = {};
+    resetStorageUpdate[STORAGE_KEYS.potOddsBoardReset] = PokerPotOddsPosition.createPositionPreferenceState(potOddsPositionPreferenceState);
+    updateHudUiPreferences({ potOddsOffsetX: 0, potOddsOffsetY: 0 }, source || 'reset-pot-odds-position', { render: false, storageUpdate: resetStorageUpdate, onPersisted: function () { recordBoardCompanionEvent('offset-persisted', 'reset 0/0 and manual-override storage write completed atomically'); } });
     positionHeroPotOdds(source || 'reset-pot-odds-position');
     renderSettingsPanel();
   }
@@ -5293,16 +5404,24 @@
     heroPotOddsObservedAnchorType = anchors.anchorType || null;
     heroPotOddsObservedResizeTargets = resizeTargets;
     if (typeof MutationObserver !== 'undefined' && observerElement) {
-      heroPotOddsAnchorMutationObserver = new MutationObserver(function () {
+      heroPotOddsAnchorMutationObserver = new MutationObserver(function (records) {
+        var structuralMutation = (records || []).some(function (record) {
+          if (potOddsBoardGeometryElement(record.target)) return true;
+          return Array.from(record.addedNodes || []).concat(Array.from(record.removedNodes || [])).some(function (node) { return potOddsBoardGeometryElement(node, true); });
+        });
         recordPotOddsForensic('anchor-mutation-signal', 'pot-odds anchor DOM changed');
-        scheduleHeroPotOddsAnchorReconcile('pot-odds anchor DOM changed');
+        scheduleHeroPotOddsAnchorReconcile(structuralMutation ? 'pot-odds structural board geometry settled after layout transition' : 'pot-odds anchor DOM changed');
       });
       heroPotOddsAnchorMutationObserver.observe(observerElement, { childList: true, subtree: true });
+      resizeTargets.filter(function (element) { return element !== observerElement && potOddsBoardGeometryElement(element); }).forEach(function (element) {
+        try { heroPotOddsAnchorMutationObserver.observe(element, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] }); } catch (_error) {}
+      });
     }
     if (typeof ResizeObserver !== 'undefined' && (card || observerElement || seat)) {
-      heroPotOddsAnchorResizeObserver = new ResizeObserver(function () {
+      heroPotOddsAnchorResizeObserver = new ResizeObserver(function (entries) {
+        var structuralResize = (entries || []).some(function (entry) { return entry && entry.target !== observerElement && potOddsBoardGeometryElement(entry.target); });
         recordPotOddsForensic('anchor-resize-signal', 'pot-odds anchor region resized');
-        scheduleHeroPotOddsAnchorReconcile('pot-odds anchor region resized');
+        scheduleHeroPotOddsAnchorReconcile(structuralResize ? 'pot-odds structural board geometry settled after layout transition' : 'pot-odds anchor region resized');
       });
       resizeTargets.forEach(function (element) { try { heroPotOddsAnchorResizeObserver.observe(element); } catch (_error) {} });
     }
@@ -5457,36 +5576,20 @@
     if (!anchors) {
       anchors = { leftCompanionRect: null, rightCompanionRect: null, canonicalBoardRect: null, anchorRect: null, anchorType: 'canonical-board-slot', obstacleRects: [], obstacleDiagnostics: [], heroAnchorDiagnostic: cloneJson(heroPotOddsAnchorDiagnostic) };
     }
-    var boardReset = PokerPotOddsPosition.observeAuthoritativeBoard(potOddsBoardResetState, {
-      handId: potOddsPresentation && potOddsPresentation.handId || potOddsLiveState.currentHandId || null,
-      authoritativeStreet: potOddsPresentation && potOddsPresentation.street || null,
-      canonicalBoardVerified: Boolean(anchors.heroAnchorDiagnostic && anchors.heroAnchorDiagnostic.canonicalBoardVerified),
-      measuredBoardCardCount: anchors.heroAnchorDiagnostic && anchors.heroAnchorDiagnostic.selectedBoardCards ? anchors.heroAnchorDiagnostic.selectedBoardCards.length : 0
-    });
-    if (boardReset.reset) {
-      var offsetBeforeBoardReset = persistedPotOddsOffset();
-      heroPotOddsResetPending = true;
-      lastPotOddsOffsetMutation = { reasonCode: 'NEW_BOARD_CANONICAL_RESET', source: boardReset.reason, timestamp: Date.now(), handId: boardReset.handId, sequence: boardReset.sequence, before: offsetBeforeBoardReset, after: { x: 0, y: 0 } };
-      recordBoardCompanionEvent('offset-mutation', 'NEW_BOARD_CANONICAL_RESET: first authoritative board set the feature offset to exactly 0/0');
-      updateHudUiPreferences({ potOddsOffsetX: 0, potOddsOffsetY: 0 }, 'new-board-canonical-reset', { render: false, persist: false });
-      var boardResetUpdate = {};
-      boardResetUpdate[STORAGE_KEYS.hudUiPreferences] = hudUiPreferences;
-      boardResetUpdate[STORAGE_KEYS.potOddsBoardReset] = PokerPotOddsPosition.createBoardResetState(potOddsBoardResetState);
-      chrome.storage.local.set(boardResetUpdate, function () { recordBoardCompanionEvent('offset-persisted', 'new-board canonical reset 0/0 and per-hand latch storage write completed'); });
-      if (activePotOddsDrag) finishPotOddsDrag(null, true);
-    }
     var viewport = { width: window.innerWidth, height: window.innerHeight };
     var canonicalPlacementReady = Boolean(anchors.leftCompanionRect);
+    var coordinateScale = canonicalPlacementReady ? currentPotOddsCoordinateScale(anchors.heroAnchorDiagnostic) : { x: 1, y: 1 };
     var retainedVisibleRect = !canonicalPlacementReady && potOddsRect(heroPotOddsLastVisibleRect || heroPotOddsPlacementDiagnostic && heroPotOddsPlacementDiagnostic.actualPanelRect || null);
+    var retainedViewportPlacement = retainedVisibleRect && PokerPotOddsPosition.place(retainedVisibleRect, { x: 0, y: 0 }, viewport);
     var manualPlacement = canonicalPlacementReady
-      ? PokerPotOddsPosition.place(anchors.leftCompanionRect, effectivePotOddsOffset(), viewport)
+      ? PokerPotOddsPosition.place(anchors.leftCompanionRect, effectivePotOddsOffset(), viewport, undefined, coordinateScale)
       : retainedVisibleRect ? {
         canonicalLeftCompanionRect: null,
         persistedOffsetX: effectivePotOddsOffset().x,
         persistedOffsetY: effectivePotOddsOffset().y,
-        unclampedActualRect: retainedVisibleRect,
-        actualPanelRect: retainedVisibleRect,
-        viewportClampApplied: false,
+        unclampedActualRect: retainedViewportPlacement.unclampedActualRect,
+        actualPanelRect: retainedViewportPlacement.actualPanelRect,
+        viewportClampApplied: retainedViewportPlacement.viewportClampApplied,
         fallback: 'last visible panel position retained while canonical geometry is unavailable'
       } : PokerPotOddsPosition.deterministicFallback(panelSize, effectivePotOddsOffset(), viewport);
     var canonicalLeft = anchors.leftCompanionRect;
@@ -5524,6 +5627,10 @@
       persistedOffsetY: hudUiPreferences.potOddsOffsetY,
       effectiveOffsetX: manualPlacement ? manualPlacement.persistedOffsetX : hudUiPreferences.potOddsOffsetX,
       effectiveOffsetY: manualPlacement ? manualPlacement.persistedOffsetY : hudUiPreferences.potOddsOffsetY,
+      coordinateScaleX: manualPlacement ? manualPlacement.coordinateScaleX : coordinateScale.x,
+      coordinateScaleY: manualPlacement ? manualPlacement.coordinateScaleY : coordinateScale.y,
+      viewportOffsetX: manualPlacement ? manualPlacement.viewportOffsetX : 0,
+      viewportOffsetY: manualPlacement ? manualPlacement.viewportOffsetY : 0,
       unclampedActualRect: manualPlacement ? potOddsRect(manualPlacement.unclampedActualRect) : null,
       actualPanelRect: manualPlacement ? potOddsRect(manualPlacement.actualPanelRect) : null,
       viewportClampApplied: Boolean(manualPlacement && manualPlacement.viewportClampApplied),
@@ -5562,6 +5669,8 @@
       canonicalLeftCompanionRect: placement.canonicalLeftCompanionRect,
       persistedOffsetX: placement.persistedOffsetX, persistedOffsetY: placement.persistedOffsetY,
       effectiveOffsetX: placement.effectiveOffsetX, effectiveOffsetY: placement.effectiveOffsetY,
+      coordinateScaleX: placement.coordinateScaleX, coordinateScaleY: placement.coordinateScaleY,
+      viewportOffsetX: placement.viewportOffsetX, viewportOffsetY: placement.viewportOffsetY,
       unclampedActualRect: placement.unclampedActualRect, actualPanelRect: placement.actualPanelRect,
       viewportClampApplied: placement.viewportClampApplied, draggingNow: placement.draggingNow,
       actualBoardCardUnion: potOddsRect(anchors.actualBoardCardUnion), emptyBoardContainerRect: potOddsRect(anchors.emptyBoardContainerRect),
@@ -6071,6 +6180,7 @@
     seatOverlayLayer.style.display = overlaysVisible ? 'block' : 'none';
     seatOverlayLayer.setAttribute('aria-hidden', overlaysVisible && !seatHudBlockingPanelState.blocked ? 'false' : 'true');
     seatOverlayController.reconcile(entries, { displayMode: displayMode });
+    registerSeatOverlayTooltipPlayers();
     positionAllSeatOverlays(entries);
     renderWithheldOverlayPlaceholders();
     renderAnchorDebugBoxes(entries);
@@ -6200,6 +6310,13 @@
         });
         applyLeaderboardHudPosition('viewport-clamp', true);
         closeStatTooltip('viewport changed');
+        clearTimeout(windowLayoutSettlementTimer);
+        windowLayoutSettlementTimer = setTimeout(function () {
+          windowLayoutSettlementTimer = null;
+          if (extensionCleanedUp || !currentPotOddsPresentationDecision()) return;
+          var settled = ensureHeroPotOddsVisibility('bounded post-resize BoardCompanion geometry remeasure');
+          recordPotOddsForensic('viewport-geometry-remeasured', 'bounded post-resize BoardCompanion remeasurement pass', { placementSucceeded: settled });
+        }, 160);
       });
     };
     window.addEventListener('resize', windowLayoutListener, { passive: true });
@@ -6589,6 +6706,8 @@
     currentStatsScope = currentLeaderboardStatSource() === 'career' ? 'career' : data.mode === 'allTime' ? 'allTime' : 'session';
     ensureStatTooltipUi();
     var rows = leaderboardRows(data);
+    // Existing seat cards remain interactive until the throttled reconcile runs.
+    registerSeatOverlayTooltipPlayers(true);
     rows.forEach(function (row) {
       if (currentLeaderboardStatSource() === 'career') return;
       var playerEntry = row.playerId ? [row.playerId, row.player] : Array.from(socketPlayerNames.entries()).find(function (entry) { return entry[1] === row.player; });
@@ -8361,7 +8480,10 @@
     return authoritativePersistenceQueue.enqueue(update, callback);
   }
 
-  function advanceFinalizedSessionRevision(reason) {
+  function advanceFinalizedSessionRevision(reason, addedHandEvents) {
+    sessionContextState = Array.isArray(addedHandEvents)
+      ? PokerFilteredStats.appendSessionContextHand(sessionContextState, addedHandEvents)
+      : PokerFilteredStats.rebuildSessionContexts(liveEvents);
     finalizedSessionRevision = PokerSessionStatsCache.advance(sessionStatsCache, reason || 'authoritative finalized-session data changed');
     return finalizedSessionRevision;
   }
@@ -8386,9 +8508,8 @@
   function clearLeaderboardCareerStats() {
     leaderboardCareerRequestToken += 1;
     leaderboardCareerSignature = '';
-    leaderboardCareerSnapshotSignature = '';
+    leaderboardCareerSettledSnapshot = null;
     leaderboardCareerFailedSignature = '';
-    leaderboardCareerStatsByPlayer.clear();
   }
 
   function invalidateLeaderboardCareerRequest() {
@@ -8404,7 +8525,10 @@
   }
 
   function leaderboardCareerKey(ids) {
-    return JSON.stringify([pokerNowGameId, ids]);
+    var sourceContext = careerIndexedService
+      ? String(careerIndexedService.backend || 'career-indexed-service')
+      : careerStoreState ? 'career-memory-fallback' : 'career-unavailable';
+    return JSON.stringify([pokerNowGameId, sourceContext, ids]);
   }
 
   function requestLeaderboardCareerBatch(data) {
@@ -8414,10 +8538,7 @@
     // One signature covers pending and settled requests, including missing/error results.
     if (signature === leaderboardCareerSignature) return;
     invalidateLeaderboardCareerRequest();
-    if (leaderboardCareerSnapshotSignature !== signature) {
-      leaderboardCareerSnapshotSignature = '';
-      leaderboardCareerStatsByPlayer.clear();
-    }
+    if (leaderboardCareerSettledSnapshot && leaderboardCareerSettledSnapshot.signature !== signature) leaderboardCareerSettledSnapshot = null;
     leaderboardCareerSignature = signature;
     if (!ids.length) {
       leaderboardCareerFailedSignature = signature;
@@ -8435,10 +8556,12 @@
     Promise.all(batches).then(function (results) {
       if (!stillCurrent()) return;
       var players = Object.assign.apply(Object, [{}].concat(results.map(function (result) { return result && result.players || {}; })));
-      leaderboardCareerStatsByPlayer = new Map(ids.map(function (id) {
-        return [id, Object.prototype.hasOwnProperty.call(players, id) ? players[id] : null];
-      }));
-      leaderboardCareerSnapshotSignature = signature;
+      leaderboardCareerSettledSnapshot = {
+        signature: signature,
+        statsByPlayer: new Map(ids.map(function (id) {
+          return [id, Object.prototype.hasOwnProperty.call(players, id) ? players[id] : null];
+        }))
+      };
       leaderboardCareerFailedSignature = '';
       refreshHud();
     }).catch(function (error) {
@@ -8464,18 +8587,18 @@
   function leaderboardRows(data) {
     // Invalidate identity even while Session is selected, so a roster that leaves
     // and later returns cannot resurrect a snapshot from an earlier context.
-    if (leaderboardCareerSnapshotSignature && leaderboardCareerSnapshotSignature !== leaderboardCareerKey(leaderboardCareerIds(data))) clearLeaderboardCareerStats();
+    if (leaderboardCareerSettledSnapshot && leaderboardCareerSettledSnapshot.signature !== leaderboardCareerKey(leaderboardCareerIds(data))) clearLeaderboardCareerStats();
     if (currentLeaderboardStatSource() === 'career') {
       requestLeaderboardCareerBatch(data);
       var signature = leaderboardCareerKey(leaderboardCareerIds(data));
-      var snapshotMatches = leaderboardCareerSnapshotSignature === signature;
+      var settledSnapshot = leaderboardCareerSettledSnapshot && leaderboardCareerSettledSnapshot.signature === signature ? leaderboardCareerSettledSnapshot : null;
       var entries = data.realPage ? data.playerEntries : data.players.map(function (name) { return { playerId: null, playerName: name }; });
       return entries.map(function (entry) {
-        var careerStats = !snapshotMatches || entry.playerId === null || entry.playerId === undefined ? null : leaderboardCareerStatsByPlayer.get(String(entry.playerId));
+        var careerStats = !settledSnapshot || entry.playerId === null || entry.playerId === undefined ? null : settledSnapshot.statsByPlayer.get(String(entry.playerId));
         return Object.assign(PokerSeatOverlay.careerStatsToOverlayStats(careerStats || null), {
           playerId: entry.playerId, player: entry.playerName,
-          careerPending: !snapshotMatches && leaderboardCareerFailedSignature !== signature,
-          careerUnavailable: !snapshotMatches && leaderboardCareerFailedSignature === signature
+          careerPending: !settledSnapshot && leaderboardCareerFailedSignature !== signature,
+          careerUnavailable: !settledSnapshot && leaderboardCareerFailedSignature === signature
         });
       });
     }
@@ -9170,7 +9293,8 @@
         consumeCertifiedCareerHand(semanticResult.record, reductionResult, flopCBetReductionResult, showdownReductionResult);
       }
     }
-    if (result.committed) advanceFinalizedSessionRevision(result.reconciled ? 'finalized hand reconciliation' : 'finalized hand commit');
+    if (result.committed) advanceFinalizedSessionRevision(result.reconciled ? 'finalized hand reconciliation' : 'finalized hand commit',
+      !result.reconciled && finalizedRange ? handAccounting.finalizedEvents.slice(finalizedRange.start, finalizedRange.start + finalizedRange.length) : null);
     if (result.discarded) {
       PokerSemanticHandLedger.discard(semanticLedgerState, String(handId), { reason: result.reason || reason });
       console.log('[HUD HAND FINALIZE] incomplete hand discarded/recovered', { handId: handId, reason: result.reason || reason, hand: result.hand || null });
@@ -9181,6 +9305,7 @@
       console.log('[HUD HAND FINALIZE] hand committed', { handId: handId, reason: reason, reconciled: Boolean(result.reconciled), addedEvents: result.addedEvents || [], finalizedEventCount: handAccounting.finalizedEvents.length });
       PokerInterruptedHandRecovery.finalize(interruptedHandRecoveryState, handId);
       refreshShadowProfiles('finalized-hand-commit', handAccounting.finalizedEvents);
+      refreshOpenPlayerDashboardSessionAfterCommit(result, finalizedRange);
     }
     traceFirstHandLifecycle('finalizationDecisions', {
       handId: String(handId),
@@ -13977,6 +14102,8 @@
     clearTimeout(uiRootRecoveryTimer);
     if (windowLayoutFrame !== null) cancelAnimationFrame(windowLayoutFrame);
     windowLayoutFrame = null;
+    clearTimeout(windowLayoutSettlementTimer);
+    windowLayoutSettlementTimer = null;
     windowLayoutPriorViewport = null;
     if (nativePanelOcclusionFrame !== null) cancelAnimationFrame(nativePanelOcclusionFrame);
     nativePanelOcclusionFrame = null;

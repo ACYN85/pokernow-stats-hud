@@ -1,7 +1,7 @@
 /* MV3 extension-origin owner for the career IndexedDB database. */
 'use strict';
 
-var PNHUD_BUILD_ID = 'v1.2.0-rc2-20260922-1612';
+var PNHUD_BUILD_ID = 'v1.3.0-rc4-20260929-0321';
 
 importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js');
 

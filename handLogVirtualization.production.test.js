@@ -84,12 +84,12 @@ function trace(input) {
 }
 
 var latestFingerprint = 'hand-3-ending-and-actions';
-assert.strictEqual(trace({ nodeId: 'row-latest-a', textFingerprint: latestFingerprint, parsedPokerNowHandId: 'synthetic-log-hand-3', firstRender: true }).renderClassification, 'first-render');
-assert.strictEqual(trace({ nodeId: 'row-old-2', textFingerprint: 'hand-2-history', parsedPokerNowHandId: 'synthetic-log-hand-2' }).renderClassification, 'lazy-render');
-assert.strictEqual(trace({ nodeId: 'row-old-1', textFingerprint: 'hand-1-history', parsedPokerNowHandId: 'synthetic-log-hand-1' }).renderClassification, 'lazy-render');
-assert.strictEqual(trace({ nodeId: 'row-old-1', textFingerprint: 'hand-1-history', parsedPokerNowHandId: 'synthetic-log-hand-1', removed: true }).renderClassification, 'virtualized-row-unmount');
-assert.strictEqual(trace({ nodeId: 'row-latest-b', textFingerprint: latestFingerprint, parsedPokerNowHandId: 'synthetic-log-hand-3' }).renderClassification, 'virtualized-row-remount');
-assert.strictEqual(trace({ nodeId: 'row-old-2', textFingerprint: latestFingerprint, parsedPokerNowHandId: 'synthetic-log-hand-3', characterData: true }).renderClassification, 'recycled-dom-node');
+assert.strictEqual(trace({ nodeId: 'row-latest-a', textFingerprint: latestFingerprint, parsedPokerNowHandId: 'real-hand-3', firstRender: true }).renderClassification, 'first-render');
+assert.strictEqual(trace({ nodeId: 'row-old-2', textFingerprint: 'hand-2-history', parsedPokerNowHandId: 'real-hand-2' }).renderClassification, 'lazy-render');
+assert.strictEqual(trace({ nodeId: 'row-old-1', textFingerprint: 'hand-1-history', parsedPokerNowHandId: 'real-hand-1' }).renderClassification, 'lazy-render');
+assert.strictEqual(trace({ nodeId: 'row-old-1', textFingerprint: 'hand-1-history', parsedPokerNowHandId: 'real-hand-1', removed: true }).renderClassification, 'virtualized-row-unmount');
+assert.strictEqual(trace({ nodeId: 'row-latest-b', textFingerprint: latestFingerprint, parsedPokerNowHandId: 'real-hand-3' }).renderClassification, 'virtualized-row-remount');
+assert.strictEqual(trace({ nodeId: 'row-old-2', textFingerprint: latestFingerprint, parsedPokerNowHandId: 'real-hand-3', characterData: true }).renderClassification, 'recycled-dom-node');
 
 var observer2 = handLogDom.installObserver(domState, 'modal-container-b', 12000);
 assert.strictEqual(observer2.installed, true);
@@ -103,7 +103,7 @@ assert.strictEqual(domState.activeObserverId, null);
 var observer3 = handLogDom.installObserver(domState, 'modal-container-c', 13000);
 assert.strictEqual(observer3.installationCount, 3, 'modal reopen installs one new observer');
 assert.strictEqual(handLogDom.installObserver(domState, 'modal-container-c', 13001).installed, false, 'repeat discovery does not overlap observers');
-trace({ nodeId: 'row-reopen-1', textFingerprint: 'hand-1-history', parsedPokerNowHandId: 'synthetic-log-hand-1', firstRender: true });
+trace({ nodeId: 'row-reopen-1', textFingerprint: 'hand-1-history', parsedPokerNowHandId: 'real-hand-1', firstRender: true });
 
 commitLiveHand(4, [
   { player: 'PlayerA', action: 'call', street: 'preflop', amount: 10 },
@@ -113,8 +113,8 @@ var afterHand4 = displayedStats();
 assert.strictEqual(afterHand4.PlayerA.handsPlayed, 4, 'Hand 4 counts exactly once through WebSocket');
 assert.strictEqual(afterHand4.PlayerB.handsPlayed, 4, 'Hand 4 counts exactly once through WebSocket');
 baseline = afterHand4;
-trace({ nodeId: 'row-hand-4', textFingerprint: 'hand-4-ending-and-actions', parsedPokerNowHandId: 'synthetic-log-hand-4' });
-trace({ nodeId: 'row-hand-4-remount', textFingerprint: 'hand-4-ending-and-actions', parsedPokerNowHandId: 'synthetic-log-hand-4' });
+trace({ nodeId: 'row-hand-4', textFingerprint: 'hand-4-ending-and-actions', parsedPokerNowHandId: 'real-hand-4' });
+trace({ nodeId: 'row-hand-4-remount', textFingerprint: 'hand-4-ending-and-actions', parsedPokerNowHandId: 'real-hand-4' });
 
 var traces = handLogDom.snapshot(domState);
 assert.ok(traces.length >= 10);

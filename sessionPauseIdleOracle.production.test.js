@@ -78,7 +78,7 @@ function storageSetup(gameId) {
   var keys = harnessSupport.storageKeys(gameId);
   var storage = {};
   storage[keys.schema] = 4;
-  storage[keys.playerMap] = { P1: 'Player A', P2: 'Player B' };
+  storage[keys.playerMap] = { P1: 'PlayerA', P2: 'PlayerB' };
   return { keys: keys, storage: storage };
 }
 
@@ -100,28 +100,28 @@ var active = harnessSupport.createHarness({ gameId: gameId, initialStorage: setu
 assert.deepStrictEqual(active.evaluationErrors, []);
 register(active, predeal(), 1000);
 dispatch(active, 'incoming', 'gC', hand('H1', 'P1', 'P2'), 'active-h1', 5000);
-assert.strictEqual(handsFor(active.storage, setup.keys, 'Player A'), 0, 'an active hand is staged, not counted before finalization');
+assert.strictEqual(handsFor(active.storage, setup.keys, 'PlayerA'), 0, 'an active hand is staged, not counted before finalization');
 
 dispatch(active, 'outgoing', 'action', { type: 'UP' }, 'host-pause', 9000);
 dispatch(active, 'incoming', 'gC', { hI: 'H1', handId: 'H1', tB: { P1: 20, P2: 20 }, pGS: { P1: 'inGame', P2: 'fold' }, cPI: 'P2', pITT: 'P2' }, 'paused-stale-betting-state', 9500);
 dispatch(active, 'incoming', 'gC', { hI: 'PAUSED-PHANTOM-1', handId: 'PAUSED-PHANTOM-1', now: 10000 }, 'paused-id-change-1', 10000);
 dispatch(active, 'incoming', 'gC', { hI: 'PAUSED-PHANTOM-2', handId: 'PAUSED-PHANTOM-2', now: 14000 }, 'paused-id-change-2', 14000);
-assert.strictEqual(handsFor(active.storage, setup.keys, 'Player A'), 0, 'verified Pause suppresses hand boundaries and cannot increment Session hands');
+assert.strictEqual(handsFor(active.storage, setup.keys, 'PlayerA'), 0, 'verified Pause suppresses hand boundaries and cannot increment Session hands');
 
 var pausedReload = harnessSupport.createHarness({ gameId: gameId, initialStorage: active.storage, controlledClock: true });
 assert.deepStrictEqual(pausedReload.evaluationErrors, []);
 register(pausedReload, Object.assign(hand('PAUSED-RELOAD-PHANTOM', 'P2', 'P1'), { status: 'paused', gamePaused: true }), 18000);
-assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'Player A'), 0, 'reload into a verified paused table cannot finalize or create a hand');
+assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'PlayerA'), 0, 'reload into a verified paused table cannot finalize or create a hand');
 
 dispatch(pausedReload, 'outgoing', 'action', { type: 'UR' }, 'host-resume', 22000);
 dispatch(pausedReload, 'incoming', 'gC', hand('H2', 'P2', 'P1'), 'resumed-h2', 26000);
-assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'Player A'), 0, 'the unobserved recovered hand is conservatively discarded when verified play resumes');
+assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'PlayerA'), 0, 'the unobserved recovered hand is conservatively discarded when verified play resumes');
 dispatch(pausedReload, 'incoming', 'gC', hand('H3', 'P1', 'P2'), 'resumed-h3', 31000);
-assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'Player A'), 1, 'the next verified active boundary finalizes the observed post-resume hand exactly once');
+assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'PlayerA'), 1, 'the next verified active boundary finalizes the observed post-resume hand exactly once');
 
 dispatch(pausedReload, 'incoming', 'gC', { now: 35000 }, 'resumed-idle', 35000);
 dispatch(pausedReload, 'incoming', 'gC', { now: 65000 }, 'resumed-idle-long', 65000);
-assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'Player A'), 1, 'elapsed active or paused time without a hand boundary cannot increment Session hands');
+assert.strictEqual(handsFor(pausedReload.storage, setup.keys, 'PlayerA'), 1, 'elapsed active or paused time without a hand boundary cannot increment Session hands');
 
 var settlementGameId = 'session-pause-owned-settlement-oracle';
 var settlementSetup = storageSetup(settlementGameId);
@@ -137,7 +137,7 @@ dispatch(pausedSettlement, 'incoming', 'gC', {
   gameResult: { P1: { gained: 40 }, P2: { gained: 0 } },
   tB: { P1: 20, P2: 20 }, pGS: { P1: 'inGame', P2: 'fold' }
 }, 'settle-terminal-with-stale-actions', 73000);
-var pausedSettlementStats = stats.computePlayerStats(pausedSettlement.storage[settlementSetup.keys.liveEvents] || [], 'Player A');
+var pausedSettlementStats = stats.computePlayerStats(pausedSettlement.storage[settlementSetup.keys.liveEvents] || [], 'PlayerA');
 assert.deepStrictEqual({ hands: pausedSettlementStats.handsPlayed, vpip: pausedSettlementStats.vpipHands, pfr: pausedSettlementStats.pfrHands, af: pausedSettlementStats.af }, { hands: 1, vpip: 0, pfr: 0, af: 0 }, 'owned terminal settlement completes during Pause without importing repeated stale tB/pGS as actions');
 
 function statEvent(handId, player, action, timestamp, extra) {
@@ -154,7 +154,7 @@ function careerRecord(handId, counters, finalizedAt) {
     lifecycleHandIds: [handId],
     finalizedAt: finalizedAt,
     semanticVersions: { core: 1, preflop: 2, flopCBet: 1, showdown: 1, sourceLedger: 1 },
-    players: [{ playerId: 'P1', displayName: 'Player A', counters: Object.assign(career.emptyCounters(), counters), decisions: {} }],
+    players: [{ playerId: 'P1', displayName: 'PlayerA', counters: Object.assign(career.emptyCounters(), counters), decisions: {} }],
     supersedesFingerprint: null
   };
   record.fingerprint = career.fingerprint(record);
@@ -168,29 +168,29 @@ for (var idleHand = 1; idleHand <= 742; idleHand += 1) {
   var timestamp = idleHand * 10;
   var counters;
   if (idleHand <= 700) {
-    huEvents.push(statEvent(idleHandId, 'Player A', 'blind', timestamp, { amount: 10, blindType: 'small' }));
-    huEvents.push(statEvent(idleHandId, 'Player B', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
-    huEvents.push(statEvent(idleHandId, 'Player A', 'fold', timestamp + 2));
+    huEvents.push(statEvent(idleHandId, 'PlayerA', 'blind', timestamp, { amount: 10, blindType: 'small' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerB', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerA', 'fold', timestamp + 2));
     counters = { hands: 1, vpipOpportunities: 1, pfrOpportunities: 1 };
   } else if (idleHand <= 740) {
-    huEvents.push(statEvent(idleHandId, 'Player B', 'blind', timestamp, { amount: 10, blindType: 'small' }));
-    huEvents.push(statEvent(idleHandId, 'Player A', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
-    huEvents.push(statEvent(idleHandId, 'Player B', 'fold', timestamp + 2));
+    huEvents.push(statEvent(idleHandId, 'PlayerB', 'blind', timestamp, { amount: 10, blindType: 'small' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerA', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerB', 'fold', timestamp + 2));
     counters = { hands: 1 };
   } else if (idleHand === 741) {
-    huEvents.push(statEvent(idleHandId, 'Player A', 'blind', timestamp, { amount: 10, blindType: 'small' }));
-    huEvents.push(statEvent(idleHandId, 'Player B', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
-    huEvents.push(statEvent(idleHandId, 'Player A', 'call', timestamp + 2, { amount: 10 }));
+    huEvents.push(statEvent(idleHandId, 'PlayerA', 'blind', timestamp, { amount: 10, blindType: 'small' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerB', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerA', 'call', timestamp + 2, { amount: 10 }));
     counters = { hands: 1, vpipMade: 1, vpipOpportunities: 1, pfrOpportunities: 1 };
   } else {
-    huEvents.push(statEvent(idleHandId, 'Player A', 'blind', timestamp, { amount: 10, blindType: 'small' }));
-    huEvents.push(statEvent(idleHandId, 'Player B', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
-    huEvents.push(statEvent(idleHandId, 'Player A', 'raise', timestamp + 2, { amount: 60 }));
+    huEvents.push(statEvent(idleHandId, 'PlayerA', 'blind', timestamp, { amount: 10, blindType: 'small' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerB', 'blind', timestamp + 1, { amount: 20, blindType: 'big' }));
+    huEvents.push(statEvent(idleHandId, 'PlayerA', 'raise', timestamp + 2, { amount: 60 }));
     counters = { hands: 1, vpipMade: 1, vpipOpportunities: 1, pfrMade: 1, pfrOpportunities: 1 };
   }
   assert.strictEqual(career.append(careerState, careerRecord(idleHandId, counters, timestamp + 5)).accepted, true);
 }
-var huSession = stats.computePlayerStats(huEvents, 'Player A');
+var huSession = stats.computePlayerStats(huEvents, 'PlayerA');
 var huCareer = career.playerStats(careerState, 'P1');
 assert.deepStrictEqual({
   hands: huSession.handsPlayed,

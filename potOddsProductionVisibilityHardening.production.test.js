@@ -87,11 +87,13 @@ assertOneVisibleLeftPill(full, 760, 'same-table board owner replacement');
 
 full.fixture.setLayout('narrow');
 full.setViewport(1160, 900, true);
+full.triggerResizeObserver(full.fixture.boardSlot);
 full.runFor(500, 16);
 assertOneVisibleLeftPill(full, 430, 'material viewport resize recalculates current slot geometry');
 assert.strictEqual(full.document.getElementById('pnhud-hero-pot-odds'), stableHost, 'resize reuses host');
 full.fixture.setLayout('full');
 full.setViewport(1720, 900, true);
+full.triggerResizeObserver(full.fixture.boardSlot);
 full.runFor(500, 16);
 assertOneVisibleLeftPill(full, 760, 'viewport round trip');
 

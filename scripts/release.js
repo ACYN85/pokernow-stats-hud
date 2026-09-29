@@ -74,8 +74,8 @@ function validate(dir = root, documentation = true) {
         assert(fs.existsSync(path.resolve(root, path.dirname(file), target)), 'broken local documentation link: ' + file + ' -> ' + target);
       }
     });
-    assert(read('CHANGELOG.md').toString().startsWith('# 1.2.0'));
-    assert(read('LIVE_VALIDATION_MATRIX.md').toString().includes('AUTOMATED CERTIFIED / LIVE NOT OBSERVED'));
+    assert(read('CHANGELOG.md').toString().startsWith('# ' + config.version));
+    assert(read('LIVE_VALIDATION_MATRIX.md').toString().includes('SIGNED-IN RC4 SMOKE ACCEPTED'));
     assert(read('PRIVACY.md').toString().includes('No extension-controlled external server'));
     assert(read('RELEASE_RUNBOOK.md').toString().includes(config.tag));
     assert(read('README.md').toString().includes(config.buildId));

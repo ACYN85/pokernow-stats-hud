@@ -54,6 +54,6 @@ assert.ok(!content.includes("placeholder.textContent = 'WITHHELD: ' + item.playe
 assert.ok(/white-space:\s*nowrap/.test(css), 'identity and compact statistics remain on one line');
 assert.ok(/pointer-events:\s*auto/.test(css) && /cursor:\s*grab/.test(css), 'unlocked overlays capture pointer input and show a drag cursor');
 assert.ok(popup.includes('Unlock overlay dragging') && popup.includes('Lock overlay positions') && popup.includes('Reset overlay positions'), 'popup exposes unlock, lock, and reset controls');
-assert.strictEqual(overlays.identityLabel('playerA', 'P1'), 'playerA [P1]', 'debug identity is a clean name plus short ID');
+assert.strictEqual(overlays.identityLabel('playerA', 'Lwy-ervQBl'), 'playerA [Lwy-]', 'debug identity is a clean name plus short ID');
 
 console.log('Hybrid automatic/manual overlay dragging and persistence tests passed.');

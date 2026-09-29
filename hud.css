@@ -11,10 +11,10 @@
 #pnhud-overlay-root .pnhud-seat-overlay.pnhud-dragging { box-shadow: 0 3px 10px rgba(0, 0, 0, .5); }
 #pnhud-pot-odds-root .pnhud-hero-pot-odds { position: fixed; top: 0; left: 0; z-index: 1; max-width: calc(100vw - 16px); pointer-events: auto; }
 #pnhud-pot-odds-root .pnhud-hero-pot-odds[hidden] { display: none !important; }
-#pnhud-pot-odds-root .pnhud-pot-odds { display: inline-grid; grid-template-columns: minmax(0,1fr) auto; align-items: baseline; column-gap: 6px; row-gap: 3px; width: 100px; min-height: 60px; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 6px 7px; border: 1px solid rgba(45,212,191,.56); border-radius: 10px; color: #d9fffa; background: rgba(5,46,39,.9); box-shadow: 0 2px 8px rgba(0,0,0,.38); backdrop-filter: blur(2px); cursor: help; text-align: left; }
-#pnhud-pot-odds-root .pnhud-pot-odds-title { display: grid; grid-column: 1 / -1; place-items: center; box-sizing: border-box; width: auto; min-height: 18px; margin: -4px -5px 0; padding: 4px 5px 2px; color: var(--pnhud-accent, #5eead4); cursor: grab; font-size: 8px; font-weight: 900; letter-spacing: .08em; text-align: center; touch-action: none; user-select: none; -webkit-user-select: none; }
-#pnhud-pot-odds-root .pnhud-pot-odds-label { color: #9fb5c8; font-size: 9px; font-weight: 700; }
-#pnhud-pot-odds-root .pnhud-pot-odds strong { overflow: hidden; font-size: 10px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+#pnhud-pot-odds-root .pnhud-pot-odds { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; column-gap: 5px; row-gap: 2px; width: 76px; min-height: 56px; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 5px 6px; border: 1px solid rgba(45,212,191,.56); border-radius: 9px; color: #d9fffa; background: rgba(5,46,39,.9); box-shadow: 0 2px 8px rgba(0,0,0,.38); backdrop-filter: blur(2px); cursor: help; text-align: left; }
+#pnhud-pot-odds-root .pnhud-pot-odds-title { display: grid; grid-column: 1 / -1; place-items: center; box-sizing: border-box; width: auto; min-height: 18px; margin: -4px -5px 0; padding: 4px 5px 2px; color: var(--pnhud-accent, #5eead4); cursor: grab; font-size: 8px; font-weight: 900; letter-spacing: .08em; text-align: center; white-space: nowrap; touch-action: none; user-select: none; -webkit-user-select: none; }
+#pnhud-pot-odds-root .pnhud-pot-odds-label { justify-self: start; color: #9fb5c8; font-size: 9px; font-weight: 700; white-space: nowrap; }
+#pnhud-pot-odds-root .pnhud-pot-odds strong { min-width: 0; width: 100%; overflow: hidden; font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 #pnhud-pot-odds-root .pnhud-pot-odds-label, #pnhud-pot-odds-root .pnhud-pot-odds strong { cursor: text; user-select: text; }
 #pnhud-pot-odds-root .pnhud-hero-pot-odds.pnhud-pot-odds-dragging .pnhud-pot-odds-title { cursor: grabbing; }
 #pnhud-pot-odds-root .pnhud-pot-odds:focus-visible { outline: 2px solid var(--pnhud-accent, #5eead4); outline-offset: 1px; }
@@ -329,13 +329,15 @@ html.pnhud-leaderboard-hud-dragging, html.pnhud-leaderboard-hud-dragging * { use
 #pnhud-player-dashboard .pnhud-dashboard-close { padding: 0 4px; border: 0; color: #99f6e4; background: transparent; font-size: 24px; line-height: 1; }
 #pnhud-player-dashboard .pnhud-dashboard-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 8px 10px 14px; }
 #pnhud-player-dashboard .pnhud-dashboard-filter-row { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 9px; margin-bottom: 7px; }
-#pnhud-player-dashboard .pnhud-dashboard-tabs { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid #28534c; border-radius: 6px; background: rgba(2,12,10,.5); }
+#pnhud-player-dashboard .pnhud-dashboard-tabs { display: inline-flex; flex: 0 0 100%; gap: 4px; padding: 3px; border: 1px solid #28534c; border-radius: 6px; background: rgba(2,12,10,.5); box-sizing: border-box; }
 #pnhud-player-dashboard .pnhud-dashboard-tabs button { min-width: 78px; padding: 5px 10px; border: 1px solid transparent; border-radius: 4px; color: #a7c8c1; background: transparent; }
 #pnhud-player-dashboard .pnhud-dashboard-tabs button.active { border-color: var(--pnhud-accent, #5eead4); color: #052e2b; background: var(--pnhud-accent, #5eead4); font-weight: 800; }
 #pnhud-player-dashboard .pnhud-dashboard-position,
-#pnhud-player-dashboard .pnhud-dashboard-situation { display: grid; gap: 2px; color: #86bdb2; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+#pnhud-player-dashboard .pnhud-dashboard-situation,
+#pnhud-player-dashboard .pnhud-dashboard-table-size { display: grid; flex: 1 1 132px; min-width: 0; gap: 2px; color: #86bdb2; font-size: 9px; font-weight: 800; text-transform: uppercase; }
 #pnhud-player-dashboard .pnhud-dashboard-position select,
-#pnhud-player-dashboard .pnhud-dashboard-situation select { min-width: 132px; padding: 5px 25px 5px 8px; border: 1px solid #3f766d; border-radius: 5px; color: #ecfdf5; background: #0b2b25; text-transform: none; }
+#pnhud-player-dashboard .pnhud-dashboard-situation select,
+#pnhud-player-dashboard .pnhud-dashboard-table-size select { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px 25px 5px 8px; border: 1px solid #3f766d; border-radius: 5px; color: #ecfdf5; background: #0b2b25; text-transform: none; }
 #pnhud-player-dashboard .pnhud-dashboard-position select:disabled { color: #71938d; border-color: #294c46; opacity: .75; }
 #pnhud-player-dashboard .pnhud-dashboard-section { margin: 0 0 8px; padding: 8px; border: 1px solid #28534c; border-radius: 7px; background: rgba(2,12,10,.48); }
 #pnhud-player-dashboard .pnhud-dashboard-section h3 { margin: 0 0 6px; color: #f0fdfa; font-size: 13px; }
@@ -361,6 +363,23 @@ html.pnhud-leaderboard-hud-dragging, html.pnhud-leaderboard-hud-dragging * { use
 #pnhud-player-dashboard .pnhud-dashboard-evidence-weak > em { color: #fde68a; }
 #pnhud-player-dashboard .pnhud-dashboard-evidence-insufficient > em { color: #fca5a5; }
 #pnhud-player-dashboard .pnhud-dashboard-evidence-unavailable > em { color: #71938d; }
+#pnhud-player-dashboard .pnhud-dashboard-insights { background: rgba(2,12,10,.28); }
+#pnhud-player-dashboard .pnhud-dashboard-insights ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+#pnhud-player-dashboard .pnhud-dashboard-insight { display: grid; gap: 1px; padding: 4px 6px; border-left: 2px solid #3f766d; background: rgba(11,43,37,.38); }
+#pnhud-player-dashboard .pnhud-dashboard-insight strong { color: #d9fffa; font-size: 10px; font-weight: 700; }
+#pnhud-player-dashboard .pnhud-dashboard-insight small { color: #86bdb2; font-size: 9px; }
+#pnhud-player-dashboard .pnhud-dashboard-action { border-left-color: #84bb89; background: rgba(35,61,39,.42); }
+#pnhud-player-dashboard .pnhud-dashboard-action > strong, #pnhud-player-dashboard .pnhud-dashboard-review-action > strong { font-size: 11px; line-height: 1.25; }
+#pnhud-player-dashboard .pnhud-dashboard-analysis-reason { color: #bdddd4; font-size: 10px; line-height: 1.25; }
+#pnhud-player-dashboard .pnhud-dashboard-analysis-evidence { display: block; color: #86bdb2; font-size: 9px; line-height: 1.2; }
+#pnhud-player-dashboard .pnhud-dashboard-observations { margin-top: 5px; color: #9bd8ca; font-size: 10px; }
+#pnhud-player-dashboard .pnhud-dashboard-observations summary { cursor: pointer; padding: 3px 2px; }
+#pnhud-player-dashboard .pnhud-dashboard-observations ul { margin-top: 3px; }
+#pnhud-player-dashboard .pnhud-dashboard-review-signals { background: rgba(32,28,13,.28); }
+#pnhud-player-dashboard .pnhud-dashboard-review-signals ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+#pnhud-player-dashboard .pnhud-dashboard-review-signals .pnhud-dashboard-insight { border-left-color: #a68b52; background: rgba(61,49,24,.32); }
+#pnhud-player-dashboard .pnhud-dashboard-review-signals .pnhud-dashboard-insight strong { color: #fff0c9; }
+#pnhud-player-dashboard .pnhud-dashboard-review-signals .pnhud-dashboard-insight small { color: #d5c59d; }
 #pnhud-player-dashboard .pnhud-dashboard-coverage { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 10px; margin: -2px 0 9px; color: #bdece4; }
 #pnhud-player-dashboard .pnhud-dashboard-coverage span { color: #6f918a; font-size: 9px; }
 #pnhud-player-dashboard .pnhud-dashboard-section-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 5px 9px; margin-bottom: 6px; }

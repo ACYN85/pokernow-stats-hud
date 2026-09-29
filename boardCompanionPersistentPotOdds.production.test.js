@@ -88,7 +88,7 @@ harness.runFor(240, 16);
 var cached = panel(harness, 'ZERO', 'same-table temporary board DOM loss');
 var cachedInfo = JSON.parse(harness.evaluate('JSON.stringify(PokerNowHUDBoardCompanion.layoutInfo())'));
 assert.strictEqual(cachedInfo.cachedGeometryReused, true, 'temporary geometry loss reuses last verified same-table geometry');
-assert.strictEqual(cached.actual.pillRect.left, 410, 'temporary loss does not move the widget');
+assert.strictEqual(cached.actual.pillRect.left, 434, 'temporary loss does not move the compact widget');
 harness.fixture.restoreBoardSlotOwner();
 harness.runFor(240, 16);
 panel(harness, 'ZERO', 'same-table board owner remount');

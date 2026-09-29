@@ -78,7 +78,7 @@ assert.deepEqual([computePlayerStats(reapplied.events, 'Ben').threeBetMade, comp
 
 const lifecycleAliasContribution = {
   reducerVersion: 1,
-  handIdentity: { handId: 'fixture-preflop-2', lifecycleHandId: 'synthetic-lifecycle-2' },
+  handIdentity: { handId: 'authoritative-preflop-2', lifecycleHandId: 'synthetic-lifecycle-2' },
   players: {
     P3: { threeBet: { opportunityCount: 1, madeCount: 1 }, foldToThreeBet: { opportunityCount: 0, foldCount: 0 } }
   }

@@ -42,7 +42,7 @@ async function assertExact(harness, records) {
     var b = record('B', 'P1', 'Alicia', 20);
     var update = await harness.sampleSummary('append', [b]);
     assert.strictEqual(update.value.accepted, true);
-    assert.strictEqual(update.probe.playerHistoryRetrievals, 1, 'only the affected player history is recalculated');
+    assert.strictEqual(update.probe.playerHistoryRetrievals, 0, 'ordinary append updates the maintained player aggregate without history retrieval');
     if (browserMode) assert.deepStrictEqual(update.probe.headWrites, ['P1']);
     var after = await harness.run(() => readSummaryHeads());
     assert.deepStrictEqual(after.find(h => h.playerId === 'P2'), before.find(h => h.playerId === 'P2'), 'unaffected head is byte-for-byte unchanged');
@@ -133,8 +133,8 @@ async function assertExact(harness, records) {
     assert.strictEqual((await harness.call('careerStatsFiltered', ['P1', {}])).counters.hands, 1);
     var crossUpdate = await harness.sampleSummary('append', [crossNext]);
     assert.strictEqual(crossUpdate.value.accepted, true);
-    assert.strictEqual(crossUpdate.probe.playerHistoryRetrievals, 1);
-    if (browserMode) assert.strictEqual(crossUpdate.probe.historyRetrievals, 3, 'one hand check, one player lookup, and one exceptional full-hand context lookup');
+    assert.strictEqual(crossUpdate.probe.playerHistoryRetrievals, 0);
+    if (browserMode) assert.strictEqual(crossUpdate.probe.historyRetrievals, 1, 'ordinary append checks only the new hand before extending the aggregate');
     rows = await assertExact(harness, [crossRoot, crossPeer, crossValid, crossNext]);
     assert.deepStrictEqual({ hands: rows[0].hands, latestDisplayName: rows[0].latestDisplayName, lastSeenAt: rows[0].lastSeenAt }, { hands: 2, latestDisplayName: 'Next name', lastSeenAt: 20 });
     assert.strictEqual((await harness.call('careerHudStats', [['P1']])).players.P1.counters.hands, 2);
@@ -152,10 +152,10 @@ async function assertExact(harness, records) {
     assert.strictEqual(contextRead.probe.aggregateRebuilds, 0);
     var cleanPlayerHand = record('CROSS-CLEAN', 'CLEAN', 'Clean player', 50);
     var cleanAppend = await harness.sampleSummary('append', [cleanPlayerHand]);
-    assert.strictEqual(cleanAppend.probe.historyRetrievals, 2, 'quarantine elsewhere adds no history reads to a normal player append');
+    assert.strictEqual(cleanAppend.probe.historyRetrievals, 1, 'quarantine elsewhere adds no player-history read to a normal append');
     var cleanStats = await harness.sampleSummary('careerStats', ['CLEAN']);
     assert.strictEqual(cleanStats.value.counters.hands, 1);
-    assert.strictEqual(cleanStats.probe.historyRetrievals, 1, 'normal cold aggregate still uses one player history read');
+    assert.strictEqual(cleanStats.probe.historyRetrievals, 0, 'new player aggregate is warm immediately after append');
     assert.strictEqual((await harness.sampleSummary('careerStats', ['CLEAN'])).probe.historyRetrievals, 0);
 
 

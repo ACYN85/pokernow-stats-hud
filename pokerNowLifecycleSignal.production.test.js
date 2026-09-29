@@ -11,7 +11,13 @@ var hands = require('./handFinalization.js');
 var recovery = require('./interruptedHandRecovery.js');
 var stats = require('./stats.js');
 
-var playerIds = ['P1', 'y65AIpIFzL'];
+var playerIds = ['Lwy-ervQBl', 'y65AIpIFzL'];
+['paused', 'isPaused', 'gamePaused', 'game_paused'].forEach(function (key) {
+  assert.strictEqual(signal.authoritativeControl('gC', { [key]: true }, 'incoming').classification, 'paused');
+  assert.strictEqual(signal.authoritativeControl('registered', { gameState: { [key]: true } }, 'incoming').classification, 'paused');
+  assert.strictEqual(signal.authoritativeControl('gC', { [key]: false, status: 'inProgress' }, 'incoming'), null, 'false/active fields cannot authorize Resume');
+  assert.strictEqual(signal.authoritativeControl('gC', { players: { P1: { [key]: true } } }, 'incoming'), null, 'player fields are not room Pause');
+});
 var livePatch = {
   status: 'inProgress',
   hI: 'deal-live-1',
@@ -21,9 +27,9 @@ var livePatch = {
   dealerID: playerIds[0],
   cPI: playerIds[0],
   pITT: playerIds[0],
-  tB: { 'P1': 10, 'y65AIpIFzL': 20 },
+  tB: { 'Lwy-ervQBl': 10, 'y65AIpIFzL': 20 },
   players: {
-    'P1': { name: 'playerA', status: 'inGame', stack: 1990 },
+    'Lwy-ervQBl': { name: 'playerA', status: 'inGame', stack: 1990 },
     'y65AIpIFzL': { name: 'playerB', status: 'inGame', stack: 1480 }
   }
 };
@@ -42,7 +48,7 @@ assert.strictEqual(activeSignal.classification, 'active');
 assert.strictEqual(activeSignal.confidence, 'corroborated', 'inProgress alone is not authoritative resume evidence');
 assert.deepStrictEqual(activeSignal.evidencePaths, ['$.status']);
 
-var breakState = lifecycle.createState({ buildId: 'synthetic-gc-fixture', gameSessionKey: 'synthetic-table-1' });
+var breakState = lifecycle.createState({ buildId: 'real-gc-fixture', gameSessionKey: 'table-1' });
 function lifecycleTrace(timestamp, normalized, activeHand, activeCount) {
   return lifecycle.recordSnapshot(breakState, {
     timestamp: timestamp,
@@ -76,7 +82,7 @@ assert.strictEqual(runtime.reconcile(hud, {
   eligiblePlayerCount: 2
 }).status, 'live');
 
-// Synthetic waiting-table shape. This is not treated as proof of a host-controlled mid-hand pause.
+// Captured waiting-table shape. This is not treated as proof of a host-controlled mid-hand pause.
 var sparsePausePatch = { status: 'waiting' };
 var decodedPauseFrame = tbTrace.decodeSocketIoEventFrame('42["gC",{"status":"waiting"}]');
 var pauseContribution = signal.authoritativeContribution(decodedPauseFrame.eventName, decodedPauseFrame.payload);
@@ -187,7 +193,7 @@ recoveryState.socketGameContextHandIdAfterRestore = socketGameContext.handId;
 recoveryState.ownershipRestoredBeforeSettlement = true;
 
 // Recovery ownership is established before settlement from the same/resume patch is finalized.
-var settlementPatch = { status: 'inProgress', gameResult: { 'P1': { gained: 120, position: 1 } } };
+var settlementPatch = { status: 'inProgress', gameResult: { 'Lwy-ervQBl': { gained: 120, position: 1 } } };
 var resumed = signal.normalize({ currentPatch: settlementPatch, mergedState: merge(merged, settlementPatch), eligiblePlayerCount: 2, occupiedPlayerCount: 2 });
 assert.strictEqual(resumed.classification, 'active');
 assert.strictEqual(runtime.reconcile(hud, {
@@ -248,4 +254,4 @@ assert.ok(content.includes('pausePersistenceDiagnostics.persistenceRequestedAt')
 assert.ok(content.includes('pausePersistenceDiagnostics.persistenceCompletedAt'));
 assert.ok(content.includes('[HUD INTERRUPTED HAND] ownership invariant violation before settlement'));
 
-console.log('Synthetic sparse mixed-case gC lifecycle, pause persistence, reload recovery, and settlement-order tests passed.');
+console.log('Real sparse mixed-case gC lifecycle, pause persistence, reload recovery, and settlement-order tests passed.');

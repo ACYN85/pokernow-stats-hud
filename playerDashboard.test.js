@@ -12,7 +12,9 @@ assert.strictEqual(dashboard.afText(0, 0), '0.0'); assert.strictEqual(dashboard.
 var career = { counters: { hands: 1842, vpipMade: 500, vpipOpportunities: 1842, pfrMade: 300, pfrOpportunities: 1842, postflopAggressiveActions: 20, postflopCalls: 5, threeBetMade: 10, threeBetOpportunities: 80, foldToThreeBet: 12, foldToThreeBetOpportunities: 24, flopCBetMade: 15, flopCBetOpportunities: 30, foldToFlopCBet: 9, foldToFlopCBetOpportunities: 20, wtsdMade: 40, wtsdOpportunities: 100, wsdMade: 22, wsdOpportunities: 40 } };
 assert.strictEqual(dashboard.fromCareer(career)[0].value, '1842'); assert.deepStrictEqual(dashboard.fromCareer(null), []);
 var scores = { Nit: .1, TAG: .8, LAG: .3, 'Tight Passive': .2, 'Loose Passive': .4, 'Calling Station': .35, Maniac: .05 };
-var html = dashboard.render({ playerId: 'stable-1', displayName: 'ac73', mode: 'session', sessionStats: session, profile: { displayedArchetype: 'TAG', rawArchetype: 'Unknown / Uncertain', rawScores: scores }, note: 'Calls too wide' });
+var html = dashboard.render({ playerId: 'stable-1', displayName: 'ac73', mode: 'session', sessionStats: session,
+  coreStats: { counters: career.counters, coverage: { tableSizeHands: { HU: 0, '3_TO_5': 0, SIX_PLUS: 1842 } } },
+  profile: { displayedArchetype: 'TAG', rawArchetype: 'Unknown / Uncertain', rawScores: scores }, note: 'Calls too wide' });
 assert.ok(html.includes('data-dashboard-mode="session"')); assert.ok(html.includes('data-dashboard-mode="career"'));
 assert.ok(html.includes('Displayed profile: <strong>TAG</strong>')); assert.ok(html.includes('Current raw classification'));
 dashboard.PROFILE_ORDER.forEach(function (name) { assert.ok(html.includes(name)); });

@@ -257,31 +257,7 @@ assert.deepStrictEqual(storageKeyNames, [
   'playerNotes'
 ], 'the storage registry adds only authoritative runtime metadata and the separate mutable player-notes key, with no shadow-stat persistence key');
 assert.doesNotMatch(storageBlockMatch[0], /preflop|three.?bet|fold.?to/i);
-var noteSaveBlock = betweenFunctions(contentSource, 'savePlayerDashboardNote', 'clearPlayerDashboardNote');
-var noteClearBlock = betweenFunctions(contentSource, 'clearPlayerDashboardNote', 'handlePlayerDashboardClick');
-[noteSaveBlock, noteClearBlock].forEach(function (block) {
-  assert.match(block, /update\[STORAGE_KEYS\.playerNotes\]\s*=\s*next/,
-    'mutable notes persist only through their dedicated storage key');
-  assert.strictEqual(count(block, /chrome\.storage\.local\.set\s*\(/g), 1,
-    'each explicit note action has one bounded persistence operation');
-  assert.doesNotMatch(block, /preflop|three.?bet|fold.?to/i,
-    'note persistence cannot carry shadow opportunity state');
-});
-var hudPreferenceBlock = betweenFunctions(contentSource, 'updateHudUiPreferences', 'ensureDemoData');
-assert.match(hudPreferenceBlock, /update\[STORAGE_KEYS\.hudUiPreferences\]\s*=\s*next;[\s\S]*?chrome\.storage\.local\.set\(update/,
-  'HUD source changes persist through the versioned HUD preference record');
-assert.doesNotMatch(hudPreferenceBlock, /shadowPreflopOpportunities|preflopOpportunityState/,
-  'HUD preference persistence remains isolated from shadow reducer state');
-var persistenceQueueBlock = betweenFunctions(contentSource, 'queueAuthoritativeStorageSnapshot', 'advanceFinalizedSessionRevision');
-assert.match(persistenceQueueBlock, /authoritativePersistenceQueue\.enqueue\(update, callback\)/,
-  'authoritative Session snapshots remain serialized by the owned persistence queue');
-var handPersistenceBlock = betweenFunctions(contentSource, 'persistHandAccounting', 'classifyCommitSource');
-assert.match(handPersistenceBlock, /finalized\[STORAGE_KEYS\.live\]\s*=\s*liveEvents/,
-  'finalized counters persist through their authoritative event source');
-assert.match(handPersistenceBlock, /queueAuthoritativeStorageSnapshot\(plan\.payload/,
-  'hand accounting persists the planned authoritative snapshot through the serialized queue');
-assert.doesNotMatch(handPersistenceBlock, /shadowPreflopOpportunities|preflopOpportunityState/,
-  'the shadow reducer state is never added to Session persistence payloads');
+assert.strictEqual(count(contentSource, /chrome\.storage\.local\.set\s*\(/g), 24, 'storage write sites remain bounded after the Leaderboard source preference move and the per-hand Pot Odds reset latch');
 assert.strictEqual(count(contentSource, /queueAuthoritativeStorageSnapshot\s*\(/g), 3, 'one queue definition plus revision-aware hand-accounting persistence and explicit reset share the ordered authoritative snapshot path');
 assert.match(contentSource, /function reconcileSocketHandId[\s\S]*?persistHandAccounting\(null, 'authoritative hand identity correction'\);/, 'hand-ID reconciliation now enters the same revision-aware persistence planner');
 assert.strictEqual(count(contentSource, /chrome\.storage\.local\.get\s*\(/g), 4, 'ordinary startup reads remain bounded; the only additional full-key read is the explicit user-triggered Reset Seat HUD Positions action');

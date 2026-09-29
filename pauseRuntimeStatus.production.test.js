@@ -67,7 +67,7 @@ for (var trafficIndex = 0; trafficIndex < 3; trafficIndex += 1) {
     lifecycleEvidence: {
       staleDealFields: {
         iHPI: ['P1', 'P2', 'P3'],
-        cards: ['SYNTHETIC_CARD_1', 'SYNTHETIC_CARD_2'],
+        cards: ['As', 'Kh'],
         dealerID: 'P1',
         sBPI: 'P2',
         bBPI: 'P3'

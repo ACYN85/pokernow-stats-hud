@@ -2,7 +2,7 @@
 
 PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into a real-time, configurable player-statistics overlay with persistent Session and Career history.
 
-**Version 1.2.0** · Release Build `v1.2.0-rc2-20260922-1612`
+**Version 1.3.0** · Release Build `v1.3.0-rc4-20260929-0321`
 
 ## Demo
 
@@ -32,7 +32,8 @@ PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into
 - Hand-state, lifecycle, position, action-opportunity, and showdown inference with conservative handling of incomplete evidence.
 - Movable and resizable player dashboards with Reset Position, notes, position/opponent filters, and exact heads-up-postflop IP/OOP analysis.
 - Statistical Evidence labels and exact support counts for dashboard statistics; low-support values retain their count without an “Insufficient” suffix. These labels describe sample support, not predictive certainty.
-- Career profiles built from supported exact 3+ handed history, with lightweight player summaries and Recent Trends windows for the latest 25/50/100/250 eligible hands.
+- Table-size-aware HU, 3–5, and 6+ Dashboard statistics and supported Profile explanations, with lightweight Career summaries and Recent Trends windows for the latest 25/50/100/250 eligible hands.
+- Evidence-gated opponent Insights and Strategic Implications, plus self-only Review Signals, use the selected supported Dashboard population.
 - In-hand Pot Odds showing call cost, eligible pot, and required equity.
 - Configurable Seat HUD visibility, statistic ordering, display modes, and draggable persistent overlays.
 - Hardened Reset Session identity, Pause/Resume, first-fresh-hand-after-Restore ownership, Career/Leaderboard pending-state presentation, cache/race/quarantine, and per-hand Pot Odds placement lifecycles.
@@ -63,7 +64,7 @@ Session and Career persistence remain separate, and no extension-controlled exte
 
 ### Install from a release ZIP
 
-If a GitHub Release includes `pokernow-hud-v1.2.0.zip`, extract the ZIP first and load the extracted directory through **Load unpacked**.
+Extract the exact `pokernow-hud-v1.3.0.zip` release archive and load the extracted directory through **Load unpacked**.
 
 Chrome does not load the ZIP directly.
 
@@ -71,7 +72,7 @@ Keep only one copy of the extension enabled at a time. Export a Career backup be
 
 ## Testing
 
-The public source includes behavioral tests and a separate release-integrity gate covering hand inference, statistics, Career portability, dashboards, overlays, Pot Odds, and package boundaries. The final ZIP is byte-identical to the accepted RC2 package; it is not a rebuilt variant.
+The public source includes behavioral tests and a separate release-integrity gate covering hand inference, statistics, Career portability, dashboards, overlays, Pot Odds, and package boundaries. The final ZIP is byte-identical to the accepted RC4 package (SHA-256 `18966EA9C96C102139E3DAABD0778248847ECFA8F3123D67ABAE47304BC6FD92`).
 
 ```powershell
 node runTests.js full

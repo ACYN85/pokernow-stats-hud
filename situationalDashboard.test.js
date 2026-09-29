@@ -39,6 +39,26 @@ assert.strictEqual(aggregator.validateRecord(incomplete), null);
 var legacy = structuredClone(ip); legacy.authoritativeHandId = 'LEGACY'; legacy.handKey = 'pokernow|pokernow.com|SITUATION|LEGACY'; legacy.lifecycleHandIds = ['lifecycle:LEGACY']; legacy.schemaVersion = 2; legacy.players.forEach(function (entry) { delete entry.position; }); legacy.fingerprint = aggregator.fingerprint(legacy);
 assert.strictEqual(aggregator.validateRecord(legacy), null);
 var records = [ip, oop, multiway, incomplete, legacy];
+var maintained = aggregator.rebuild(records).aggregate.players.subject;
+var beforeAppend = aggregator.rebuild([ip]).aggregate.players.subject;
+var afterAppend = aggregator.appendPlayer(beforeAppend, oop, oop.players[0], aggregator.careerSituationMap(oop).subject);
+assert.deepStrictEqual(afterAppend, aggregator.rebuild([ip, oop]).aggregate.players.subject,
+  'ordinary append extends Overall and only the correct supported partitions');
+assert.strictEqual(beforeAppend.contexts.situations.oop, undefined, 'prior aggregate remains detached');
+assert.strictEqual(afterAppend.contexts.situations.ip.hands, 1);
+assert.strictEqual(afterAppend.contexts.situations.oop.hands, 1);
+assert.strictEqual(afterAppend.contexts.positions.BTN.hands, 1);
+assert.strictEqual(afterAppend.contexts.positions.SB.hands, 1);
+['ip', 'oop'].forEach(function (situation) {
+  assert.deepStrictEqual(maintained.contexts.situations[situation] || aggregator.emptyCounters(),
+    filtered.careerStatsFiltered(records, 'subject', { situation: situation }).counters,
+    'maintained ' + situation + ' counters equal the authoritative filtered traversal');
+});
+aggregator.POSITION_LABELS.forEach(function (position) {
+  assert.deepStrictEqual(maintained.contexts.positions[position] || aggregator.emptyCounters(),
+    filtered.careerStatsFiltered(records, 'subject', { position: position }).counters,
+    'maintained ' + position + ' counters equal the authoritative filtered traversal');
+});
 var contradictory = structuredClone(ip); var contradictorySpectator = contradictory.players.find(function (entry) { return entry.playerId === 'spectator'; }); contradictorySpectator.decisions.wtsd = exactDecision(1); contradictorySpectator.counters.wtsdOpportunities = 1; contradictory.fingerprint = aggregator.fingerprint(contradictory); assert.strictEqual(aggregator.validateRecord(contradictory), null);
 assert.strictEqual(filtered.careerStatsFiltered([contradictory], 'subject', { situation: 'ip' }).counters.hands, 0, 'a known unsupported-position flop entrant makes Career IP/OOP contradictory');
 
@@ -58,8 +78,11 @@ var original = structuredClone(ip); original.authoritativeHandId = 'CORRECTED'; 
 var correction = structuredClone(original); correction.semanticVersions.preflop = 2; correction.supersedesFingerprint = original.fingerprint; correction.players[0].position.dealtPosition = 'SB'; correction.players[1].position.dealtPosition = 'BTN'; correction.fingerprint = aggregator.fingerprint(correction);
 assert.strictEqual(filtered.careerStatsFiltered([original, correction], 'subject', { situation: 'ip' }).counters.hands, 0, 'superseded IP history is not counted');
 assert.strictEqual(filtered.careerStatsFiltered([original, correction], 'subject', { situation: 'oop' }).counters.hands, 1, 'only the active corrected OOP record contributes');
+assert.strictEqual(aggregator.rebuild([original, correction]).aggregate.players.subject.contexts.situations.ip, undefined);
+assert.strictEqual(aggregator.rebuild([original, correction]).aggregate.players.subject.contexts.situations.oop.hands, 1);
 var conflict = structuredClone(correction); conflict.supersedesFingerprint = original.fingerprint; conflict.players[0].counters.vpipMade = 0; conflict.fingerprint = aggregator.fingerprint(conflict);
 assert.strictEqual(filtered.careerStatsFiltered([original, correction, conflict], 'subject', { situation: 'oop' }).counters.hands, 0, 'conflicting successors quarantine the logical hand before situation filtering');
+assert.strictEqual(aggregator.rebuild([original, correction, conflict]).aggregate.players.subject, undefined, 'quarantined hand has no maintained context');
 var malformed = structuredClone(ip); malformed.players[0].counters.hands = -1;
 assert.strictEqual(filtered.careerStatsFiltered([malformed], 'subject', { situation: 'ip' }).counters.hands, 0, 'malformed records are rejected before situation filtering');
 
@@ -88,6 +111,30 @@ var contradictorySession = sessionHand(ip, [{ street: 'preflop', action: 'raise'
 assert.strictEqual(contradictorySession[0].postflopSituation, null, 'a known unsupported-position flop entrant makes Session IP/OOP contradictory');
 var sessionIp = filtered.sessionStatsFiltered(sessionEvents, 'subject', { situation: 'ip' });
 var sessionOop = filtered.sessionStatsFiltered(sessionEvents, 'subject', { situation: 'oop' });
+var sessionContexts = filtered.rebuildSessionContexts(sessionEvents);
+var incrementalContexts = filtered.createSessionContextState();
+filtered.appendSessionContextHand(incrementalContexts, sessionEvents.filter(function (event) { return event.handId === 'IP'; }));
+filtered.appendSessionContextHand(incrementalContexts, sessionEvents.filter(function (event) { return event.handId === 'OOP'; }));
+assert.deepStrictEqual(incrementalContexts, sessionContexts, 'finalized Session hands maintain the same contexts as one hydration rebuild');
+var sessionBundle = filtered.sessionComparisonContexts(sessionContexts, 'subject', 7);
+assert.strictEqual(sessionBundle.source, 'session');
+assert.strictEqual(sessionBundle.playerId, 'subject');
+assert.strictEqual(sessionBundle.sessionRevision, 7);
+['ip', 'oop'].forEach(function (situation) {
+  assert.deepStrictEqual(filtered.sessionContextResult(sessionContexts, 'subject', { situation: situation }),
+    filtered.sessionStatsFiltered(sessionEvents, 'subject', { situation: situation }),
+    'maintained Session situation has exact counters, derived values, and coverage');
+  assert.deepStrictEqual(sessionBundle.situations[situation].counters,
+    filtered.sessionStatsFiltered(sessionEvents, 'subject', { situation: situation }).counters);
+});
+aggregator.POSITION_LABELS.forEach(function (position) {
+  assert.deepStrictEqual(filtered.sessionContextResult(sessionContexts, 'subject', { position: position }),
+    filtered.sessionStatsFiltered(sessionEvents, 'subject', { position: position }),
+    'maintained Session position has exact counters, derived values, and coverage');
+  var slice = sessionBundle.positions[position];
+  assert.deepStrictEqual(slice ? slice.counters : aggregator.emptyCounters(),
+    filtered.sessionStatsFiltered(sessionEvents, 'subject', { position: position }).counters);
+});
 assert.deepStrictEqual(filtered.sessionStatsFiltered(sessionEvents, 'subject', { situation: 'overall' }), filtered.sessionStatsFiltered(sessionEvents, 'subject', {}), 'Session Overall remains unchanged');
 assert.deepStrictEqual(sessionIp.counters, careerIp.counters, 'Session and Career IP counters use the same exact subset rule');
 assert.deepStrictEqual(sessionOop.counters, careerOop.counters, 'Session and Career OOP counters use the same exact subset rule');
@@ -98,7 +145,7 @@ assert.throws(function () { filtered.normalizeFilters({ situation: 'btn_vs_blind
 assert.throws(function () { filtered.normalizeFilters({ situation: 'blinds_vs_steal' }); }, /unsupported situation/);
 assert.throws(function () { filtered.normalizeFilters({ position: 'BTN', situation: 'ip' }); }, /mutually exclusive/);
 var rendered = dashboard.render({ open: true, playerId: 'subject', displayName: 'Subject', mode: 'career', situation: 'ip', position: 'BTN', coreStats: careerIp, profile: { displayedArchetype: 'TAG' } });
-assert.match(rendered, /data-dashboard-situation/); assert.match(rendered, /In position/); assert.match(rendered, /data-dashboard-position[^>]* disabled/); assert.match(rendered, /TAG/);
+assert.match(rendered, /data-dashboard-situation/); assert.match(rendered, /In position/); assert.match(rendered, /data-dashboard-position[^>]* disabled/); assert.doesNotMatch(rendered, /<h3>Career profile/, 'an unproved table-size slice cannot display a borrowed profile');
 assert.strictEqual(dashboard.requestMatches({ open: true, playerId: 'subject', mode: 'career', situation: 'oop', position: null, opponentMode: 'overall', requestToken: 2 }, { playerId: 'subject', mode: 'career', situation: 'ip', position: null, opponentMode: 'overall', requestToken: 2 }), false);
 
 console.log('Situational Dashboard exact IP/OOP provenance, core stats, exclusions, composition, Session/Career parity, UI and request isolation passed.');

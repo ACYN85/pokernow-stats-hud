@@ -120,3 +120,141 @@ assert.deepStrictEqual(filtered.careerStatsFilteredBatch(records, 'subject', [{ 
   assert.throws(function () { filtered.careerStatsFilteredBatch({}, 'subject', [{}, filters]); }, function (error) { return error.constructor === singleError.constructor && error.message === singleError.message; }, 'filter validation precedes record resolution');
 });
 console.log('Position, relational, historical schemas, malformed/quarantined records, batch equivalence, immutability, validation, AF and session/career consistency tests passed.');
+
+(function () {
+  'use strict';
+  var assert = require('assert');
+  var Stats = require('./stats.js');
+  var Filtered = require('./filteredStats.js');
+  var CareerStore = require('./careerContributionStore.js');
+  var Career = require('./careerStatsAggregator.js');
+  var Dashboard = require('./playerDashboard.js');
+  var Insights = require('./playerInsights.js');
+  var Personal = require('./personalLeakAnalysis.js');
+  var Strategic = require('./strategicImplications.js');
+
+function population(playerId, name, walkCount, vpipCount, pfrCount) {
+  var hands = [];
+  for (var index = 0; index < 64; index += 1) {
+    var handId = name.toUpperCase() + '-' + index;
+    var walk = index < walkCount;
+    var eligibleIndex = index - walkCount;
+    var position = walk ? 'BB' : 'BTN';
+    var subject = { handId: handId, playerId: playerId, player: name, street: 'preflop',
+      action: walk ? 'blind' : eligibleIndex < pfrCount ? 'raise' : eligibleIndex < vpipCount ? 'call' : 'fold',
+      blindType: walk ? 'big' : null, dealtPosition: position, dealtPlayerCount: 2, timestamp: index * 10 + 1 };
+    // These supported reducer results are attached to finalized Session events.
+    if (!walk && eligibleIndex === 0) Object.assign(subject, {
+      threeBetMade: 1, threeBetOpportunities: 1, flopCBetMade: 1, flopCBetOpportunities: 1,
+      sawFlopForWTSD: 1, wentToShowdown: 1, showdownsForWSD: 1, wonMoneyAtShowdown: 1
+    });
+    if (!walk && eligibleIndex === 1 && vpipCount > 1) Object.assign(subject, {
+      foldToThreeBet: 1, foldToThreeBetOpportunities: 1, sawFlopForWTSD: 1
+    });
+    if (!walk && eligibleIndex === 2 && vpipCount > 2) Object.assign(subject, { foldToFlopCBet: 1, foldToFlopCBetOpportunities: 1 });
+    var other = { handId: handId, playerId: 'other', player: 'Other', street: 'preflop',
+      action: walk ? 'fold' : 'dealt', dealtPosition: walk ? 'SB' : 'BB', dealtPlayerCount: 2, timestamp: index * 10 + 2 };
+    var events = [subject, other];
+    if (!walk && eligibleIndex === 0) events.push({ handId: handId, playerId: playerId, player: name, street: 'flop', action: 'bet', timestamp: index * 10 + 3 });
+    if (!walk && eligibleIndex === 1 && vpipCount > 1) events.push({ handId: handId, playerId: playerId, player: name, street: 'flop', action: 'call', timestamp: index * 10 + 3 });
+    hands.push(events);
+  }
+  return hands;
+}
+
+function careerRecord(events, playerId) {
+  var subject = events.find(function (event) { return event.playerId === playerId; });
+  var handId = subject.handId;
+  return CareerStore.buildCertifiedHandRecord({
+    namespace: { host: 'pokernow.com', gameId: 'SESSION-RC1-REGRESSION' },
+    authoritativeHandId: handId, finalizedEvents: events, finalizedAt: 1000 + Number(handId.split('-').pop()),
+    semanticRecord: { status: 'finalized', schemaVersion: 1, handIdentity: { handId: handId },
+      players: [{ playerId: playerId, displayName: subject.player }, { playerId: 'other', displayName: 'Other' }],
+      positionProvenance: { status: 'supported', dealtPlayerCount: 2,
+        assignments: Object.fromEntries([[playerId, subject.dealtPosition], ['other', subject.dealtPosition === 'BB' ? 'SB' : 'BB']]) } }
+  });
+}
+
+function check(playerId, name, walks, vpip, pfr, expectedVpip, expectedPfr) {
+  var hands = population(playerId, name, walks, vpip, pfr);
+  var events = hands.flat();
+  var authoritative = Stats.computePlayerStatsByIdentity(events, playerId, name);
+  var incrementalStats = Stats.computePlayerStatsByIdentity([], playerId, name);
+  hands.forEach(function (hand) {
+    incrementalStats = Object.assign(Stats.combinePlayerStats(name, [incrementalStats,
+      Stats.computePlayerStatsByIdentity(hand, playerId, name)]), { playerId: playerId });
+  });
+  assert.deepStrictEqual(incrementalStats, authoritative, name + ' complete-hand stat accumulation preserves BB walks and support');
+  var overall = Filtered.sessionStatsFiltered(events, playerId, {});
+  var incrementalOverall = Filtered.sessionStatsFiltered([], playerId, {});
+  hands.forEach(function (hand) { incrementalOverall = Filtered.appendSessionResult(incrementalOverall, hand, playerId, {}); });
+  assert.deepStrictEqual(incrementalOverall, overall, name + ' per-hand Overall append matches full Session semantics');
+  var live = Filtered.createSessionContextState();
+  hands.forEach(function (hand) { Filtered.appendSessionContextHand(live, hand); });
+  var hydrated = Filtered.rebuildSessionContexts(events);
+  var career = Career.aggregateActiveRecords(hands.map(function (hand) { return careerRecord(hand, playerId); }));
+  var careerPlayer = career.players[playerId];
+  var sessionCards = Dashboard.fromCounterResult(overall, 'session', { position: null, situation: 'overall', opponentMode: 'overall' });
+  var careerCards = Dashboard.fromCounterResult({ counters: careerPlayer.counters }, 'career', { position: null, situation: 'overall', opponentMode: 'overall' });
+  function card(cards, id) { return cards.find(function (item) { return item.id === id; }); }
+
+  assert.deepStrictEqual([authoritative.handsPlayed, authoritative.vpipHands, authoritative.vpipOpportunities,
+    authoritative.pfrHands, authoritative.pfrOpportunities, authoritative.vpipDetails.walksExcluded],
+    [64, vpip, 64 - walks, pfr, 64 - walks, walks], name + ' authoritative detail');
+  assert.deepStrictEqual([overall.counters.hands, overall.counters.vpipMade, overall.counters.vpipOpportunities,
+    overall.counters.pfrMade, overall.counters.pfrOpportunities], [64, vpip, 64 - walks, pfr, 64 - walks], name + ' Session cards');
+  assert.deepStrictEqual([card(sessionCards, 'vpip').value, card(sessionCards, 'pfr').value], [expectedVpip, expectedPfr]);
+  var detailCards = Dashboard.fromSession(authoritative, { position: null, situation: 'overall', opponentMode: 'overall' });
+  assert.deepStrictEqual([card(detailCards, 'vpip').value, card(detailCards, 'pfr').value], [expectedVpip, expectedPfr], name + ' authoritative cards');
+  assert.deepStrictEqual([card(careerCards, 'vpip').value, card(careerCards, 'pfr').value], [expectedVpip, expectedPfr]);
+  assert.strictEqual(overall.coverage.totalSessionHands, 64, name + ' All positions coverage');
+  assert.strictEqual(overall.coverage.positionTrackedHands, 64, name + ' position coverage');
+  assert.deepStrictEqual(live, hydrated, name + ' live and hydration contexts');
+  assert.strictEqual(live.players[playerId].coverage.totalSessionHands, 64, name + ' maintained total coverage');
+  assert.deepStrictEqual(overall.counters, careerPlayer.counters, name + ' Session and Career exact counter bundles');
+  assert.deepStrictEqual(overall.derived, Career.deriveCounters(careerPlayer.counters), name + ' Session and Career rates');
+  if (vpip > 1) assert.deepStrictEqual([overall.counters.postflopAggressiveActions, overall.counters.postflopCalls, overall.derived.af,
+    overall.counters.flopCBetMade, overall.counters.flopCBetOpportunities,
+    overall.counters.wtsdMade, overall.counters.wtsdOpportunities,
+    overall.counters.wsdMade, overall.counters.wsdOpportunities],
+    [1, 1, 1, 1, 1, 1, 2, 1, 1], name + ' nonzero AF, CBet, WTSD and W$SD');
+  ['BB', 'BTN'].forEach(function (position) {
+    var selected = Filtered.sessionContextResult(live, playerId, { position: position });
+    assert.deepStrictEqual(selected, Filtered.sessionStatsFiltered(events, playerId, { position: position }), name + ' selected ' + position);
+    assert.deepStrictEqual(selected.counters, careerPlayer.contexts.positions[position], name + ' Career ' + position);
+  });
+  assert.deepStrictEqual([live.players[playerId].positions.BB.hands, live.players[playerId].positions.BB.vpipOpportunities,
+    live.players[playerId].positions.BTN.hands, live.players[playerId].positions.BTN.vpipOpportunities],
+    [walks, 0, 64 - walks, 64 - walks], name + ' walk and eligible position partitions');
+  var html = Dashboard.render({ open: true, playerId: playerId, displayName: name, mode: 'session',
+    situation: 'overall', coreStats: overall, sessionStats: authoritative, selfPlayerId: playerId });
+  assert.match(html, /All positions<\/strong> · 64 total hands/);
+  assert.match(html, /Position-tracked: 64 hands/);
+  return { overall: overall, cards: sessionCards };
+}
+
+var playerA = check('playerA', 'PlayerA', 31, 8, 1, '24.2%', '3.0%');
+check('playerB', 'PlayerB', 24, 1, 1, '2.5%', '2.5%');
+var relationalHands = [
+  [{ handId: 'R1', playerId: 'hero', player: 'Hero', street: 'preflop', action: 'raise', dealtPosition: 'SB', dealtPlayerCount: 3,
+    threeBetMade: 1, threeBetOpportunities: 1, threeBetTargetPlayerId: 'villain' }],
+  [{ handId: 'R2', playerId: 'hero', player: 'Hero', street: 'preflop', action: 'fold', dealtPosition: 'BB', dealtPlayerCount: 3,
+    threeBetMade: 0, threeBetOpportunities: 1, threeBetTargetPlayerId: 'self' }]
+];
+['self', 'others'].forEach(function (mode) {
+  var filters = { statId: 'threeBet', counterpartMode: mode, selfPlayerId: 'self' };
+  var prior = Filtered.sessionStatsFiltered(relationalHands[0], 'hero', filters);
+  var appended = Filtered.appendSessionResult(prior, relationalHands[1], 'hero', filters);
+  assert.deepStrictEqual(appended, Filtered.sessionStatsFiltered(relationalHands.flat(), 'hero', filters), mode + ' relational append matches full counters and coverage');
+});
+var context = { position: null, situation: 'overall', opponentMode: 'overall' };
+var vpipCard = playerA.cards.find(function (card) { return card.id === 'vpip'; });
+assert.strictEqual(vpipCard.evidence.supportCount, 33, 'Evidence follows eligible opportunities');
+assert.strictEqual(vpipCard.evidence.status, 'weak', '33 opportunities cannot produce Moderate Evidence');
+var observations = Insights.derive({ cards: playerA.cards, source: 'session', context: context });
+assert.deepStrictEqual(observations, [], 'Opponent Insights consume corrected support');
+assert.deepStrictEqual(Personal.derive({ cards: playerA.cards, source: 'session', context: context }), [], 'self Review Signals consume corrected support');
+assert.deepStrictEqual(Strategic.derive({ observations: observations, source: 'session', context: context }), [], 'Strategic Implications consume corrected Insights');
+console.log('Session BB-walk opportunities, coverage, live/rebuild, Career equivalence, Evidence and analysis regression passed.');
+
+})();

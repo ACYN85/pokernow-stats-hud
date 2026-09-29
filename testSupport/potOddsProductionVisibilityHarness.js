@@ -204,7 +204,7 @@ Object.defineProperty(FakeElement.prototype, 'innerHTML', {
     Array.from(html.matchAll(/<([a-zA-Z][\w-]*)([^>]*)>/g)).slice(0, 300).forEach(function (match) {
       var child = self.ownerDocument.createElement(match[1]); child._htmlMaterialized = true;
       parseHtmlAttributes(child, match[2]);
-      if (child.classList.contains('pnhud-pot-odds')) { child._offsetWidth = 100; child._offsetHeight = 60; }
+      if (child.classList.contains('pnhud-pot-odds')) { child._offsetWidth = 76; child._offsetHeight = 56; }
       self.appendChild(child);
     });
   }
@@ -213,7 +213,7 @@ Object.defineProperty(FakeElement.prototype, 'innerHTML', {
 Object.defineProperty(FakeElement.prototype, 'offsetWidth', {
   get: function () {
     if (this._offsetWidth !== null) return this._offsetWidth;
-    if (this.classList.contains('pnhud-hero-pot-odds') || this.classList.contains('pnhud-pot-odds')) return 100;
+    if (this.classList.contains('pnhud-hero-pot-odds') || this.classList.contains('pnhud-pot-odds')) return 76;
     if (this.classList.contains('pnhud-seat-overlay')) return 132;
     return this._rect ? this._rect.width : 0;
   }, set: function (value) { this._offsetWidth = Number(value); }
@@ -221,7 +221,7 @@ Object.defineProperty(FakeElement.prototype, 'offsetWidth', {
 Object.defineProperty(FakeElement.prototype, 'offsetHeight', {
   get: function () {
     if (this._offsetHeight !== null) return this._offsetHeight;
-    if (this.classList.contains('pnhud-hero-pot-odds') || this.classList.contains('pnhud-pot-odds')) return 60;
+    if (this.classList.contains('pnhud-hero-pot-odds') || this.classList.contains('pnhud-pot-odds')) return 56;
     if (this.classList.contains('pnhud-seat-overlay')) return 18;
     return this._rect ? this._rect.height : 0;
   }, set: function (value) { this._offsetHeight = Number(value); }
@@ -709,13 +709,27 @@ function debugValue(harness, expression) { return JSON.parse(harness.evaluate('J
 function decision(harness) { return debugValue(harness, 'PokerNowHUDPotOdds.currentDecision()'); }
 function placement(harness) { return debugValue(harness, 'PokerNowHUDPotOdds.placementInfo()'); }
 function timeline(harness) { return debugValue(harness, 'PokerNowHUDPotOdds.debugTimeline()'); }
+function effectivePaintState(harness, element) {
+  var ancestors = []; var current = element; var visible = true;
+  while (current) {
+    var style = harness.contextWindow.getComputedStyle(current);
+    var state = {
+      tag: String(current.tagName || '').toLowerCase(), id: current.id || null,
+      hidden: current.hidden === true, display: style.display, visibility: style.visibility, opacity: Number(style.opacity)
+    };
+    state.paintVisible = !state.hidden && state.display !== 'none' && state.visibility !== 'hidden' && state.opacity > 0.01;
+    ancestors.push(state); visible = visible && state.paintVisible; current = current.parentElement;
+  }
+  return { visible: visible, ancestors: ancestors };
+}
 function actualDomVisibility(harness) {
   var host = harness.document.getElementById('pnhud-hero-pot-odds'); var pill = host && host.querySelector('.pnhud-pot-odds');
   if (!host || !pill) return { visible: false, host: host, pill: pill, hostRect: null, pillRect: null };
   var hostRect = host.getBoundingClientRect(); var pillRect = pill.getBoundingClientRect(); var hostStyle = harness.contextWindow.getComputedStyle(host); var pillStyle = harness.contextWindow.getComputedStyle(pill);
+  var effectivePaint = effectivePaintState(harness, pill);
   return {
-    visible: Boolean(host.isConnected && pill.isConnected && !host.hidden && hostRect.width > 0 && hostRect.height > 0 && pillRect.width > 0 && pillRect.height > 0 && pillRect.right > 0 && pillRect.bottom > 0 && pillRect.left < harness.contextWindow.innerWidth && pillRect.top < harness.contextWindow.innerHeight && hostStyle.display !== 'none' && hostStyle.visibility !== 'hidden' && Number(hostStyle.opacity) > 0.01 && pillStyle.display !== 'none' && pillStyle.visibility !== 'hidden' && Number(pillStyle.opacity) > 0.01),
-    host: host, pill: pill, hostRect: hostRect, pillRect: pillRect, hostStyle: hostStyle, pillStyle: pillStyle
+    visible: Boolean(host.isConnected && pill.isConnected && effectivePaint.visible && hostRect.width > 0 && hostRect.height > 0 && pillRect.width > 0 && pillRect.height > 0 && pillRect.right > 0 && pillRect.bottom > 0 && pillRect.left < harness.contextWindow.innerWidth && pillRect.top < harness.contextWindow.innerHeight),
+    host: host, pill: pill, hostRect: hostRect, pillRect: pillRect, hostStyle: hostStyle, pillStyle: pillStyle, effectivePaint: effectivePaint
   };
 }
 

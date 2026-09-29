@@ -1,18 +1,23 @@
 'use strict';
 var assert = require('assert'); var fs = require('fs'); var manifest = require('./manifest.json');
-var content = fs.readFileSync('./content.js', 'utf8'); var css = fs.readFileSync('./hud.css', 'utf8');
+var content = fs.readFileSync('./content.js', 'utf8'); var css = fs.readFileSync('./hud.css', 'utf8'); var evidence = fs.readFileSync('./statEvidence.js', 'utf8');
 var isolated = manifest.content_scripts.find(function (entry) { return entry.js.includes('content.js'); });
-assert.ok(isolated.js.includes('playerNotesStore.js') && isolated.js.includes('playerDashboard.js'));
+assert.ok(isolated.js.includes('playerNotesStore.js') && isolated.js.includes('statEvidence.js') && isolated.js.includes('playerDashboard.js'));
+assert.ok(isolated.js.indexOf('statEvidence.js') < isolated.js.indexOf('playerDashboard.js'));
 assert.ok(isolated.js.indexOf('playerDashboard.js') < isolated.js.indexOf('content.js'));
 assert.ok(content.includes('class="pnhud-overlay-grip"')); assert.ok(content.includes('class="pnhud-player-name"'));
 var begin = content.slice(content.indexOf('  function beginOverlayDrag('), content.indexOf('  function installDragBehavior('));
 assert.ok(begin.includes("event.target.closest('.pnhud-overlay-grip')"), 'only the dedicated grip can begin dragging');
 assert.ok(!begin.includes('pnhud-player-name'));
 assert.ok(content.includes('openPlayerDashboard(String(button.dataset.pnhudPlayerId || playerId)'));
-assert.ok(content.includes('playerDashboardState.sessionStats = cachedSessionPlayerStats(playerDashboardState.playerId'), 'Session uses the shared revision-keyed authoritative cache');
+assert.ok(content.includes('cachedSessionPlayerStats(playerDashboardState.playerId, playerDashboardState.displayName)'), 'full Session refresh uses the shared revision-keyed authoritative cache');
+assert.ok(content.includes('PokerStats.computePlayerStatsByIdentity(addedHandEvents, playerDashboardState.playerId') &&
+  content.includes('PokerStats.combinePlayerStats(playerDashboardState.displayName'), 'routine Session refresh combines authoritative complete-hand counters');
 assert.ok(content.includes('careerIndexedService.careerDashboardStats(playerId'), 'Career uses the combined service-worker dashboard API');
 assert.strictEqual(/\bindexedDB\b/.test(content), false);
 assert.ok(content.includes('PokerPlayerDashboard.requestMatches(playerDashboardState, requestSnapshot)'), 'async career responses are player/mode/position/opponent/token guarded');
+assert.ok(content.includes("['PokerStatEvidence', globalThis.PokerStatEvidence, 'statEvidence.js']"), 'startup requires the evidence policy module');
+assert.strictEqual(evidence.includes('careerIndexedService'), false, 'pure evidence evaluation cannot issue Career queries');
 assert.ok(content.includes("event.key === 'Escape' && playerDashboardState.open"));
 assert.ok(content.includes('focusTarget.isConnected && focusTarget.focus'));
 assert.ok(css.includes('#pnhud-player-dashboard .pnhud-dashboard-body { min-height: 0; overflow: auto;'));

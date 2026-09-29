@@ -28,12 +28,12 @@ const events = details.map((detail) => detail.event).filter(Boolean);
 
 assert.equal(events.length, 5);
 assert.equal(details.find((detail) => detail.roster)?.roster.join('|'), 'playerA|PlayerB');
-const playerAStats = computePlayerStats(events, 'playerA');
-const playerBStats = computePlayerStats(events, 'PlayerB');
-assert.deepEqual({ player: playerAStats.player, handsPlayed: playerAStats.handsPlayed, vpip: playerAStats.vpip, pfr: playerAStats.pfr, af: playerAStats.af }, { player: 'playerA', handsPlayed: 1, vpip: 100, pfr: 100, af: 0 });
-assert.deepEqual(playerAStats.vpipDetails, { qualifiedHands: 1, opportunities: 1, callHands: 1, raiseHands: 1, walksExcluded: 0, finalizedHands: 1 });
-assert.deepEqual({ player: playerBStats.player, handsPlayed: playerBStats.handsPlayed, vpip: playerBStats.vpip, pfr: playerBStats.pfr, af: playerBStats.af }, { player: 'PlayerB', handsPlayed: 1, vpip: 100, pfr: 100, af: 0 });
-assert.deepEqual(playerBStats.vpipDetails, { qualifiedHands: 1, opportunities: 1, callHands: 0, raiseHands: 1, walksExcluded: 0, finalizedHands: 1 });
+const liamStats = computePlayerStats(events, 'playerA');
+const mailStats = computePlayerStats(events, 'PlayerB');
+assert.deepEqual({ player: liamStats.player, handsPlayed: liamStats.handsPlayed, vpip: liamStats.vpip, pfr: liamStats.pfr, af: liamStats.af }, { player: 'playerA', handsPlayed: 1, vpip: 100, pfr: 100, af: 0 });
+assert.deepEqual(liamStats.vpipDetails, { qualifiedHands: 1, opportunities: 1, callHands: 1, raiseHands: 1, walksExcluded: 0, finalizedHands: 1 });
+assert.deepEqual({ player: mailStats.player, handsPlayed: mailStats.handsPlayed, vpip: mailStats.vpip, pfr: mailStats.pfr, af: mailStats.af }, { player: 'PlayerB', handsPlayed: 1, vpip: 100, pfr: 100, af: 0 });
+assert.deepEqual(mailStats.vpipDetails, { qualifiedHands: 1, opportunities: 1, callHands: 0, raiseHands: 1, walksExcluded: 0, finalizedHands: 1 });
 assert.equal(details[details.length - 1].terminal, true);
 assert.equal(details[details.length - 1].reason, 'hand-end state line');
 assert.ok(events.filter((event) => event.action === 'call' || event.action === 'raise').every((event) => event.street === 'preflop'));

@@ -4,7 +4,7 @@ var assert = require('assert');
 var policy = require('./careerBackupPolicy.js');
 
 var small = policy.exportPreflight({ physicalRecordCount: 2000, activeRecordCount: 2000 });
-assert.strictEqual(small.allowed, true, 'a supported multi-player ledger remains inside the V1.2 allocation bound');
+assert.strictEqual(small.allowed, true, 'an observed 32 MiB-era multi-player ledger remains inside the V1 allocation bound');
 assert.strictEqual(small.physicalRecordCount, 2000);
 assert.strictEqual(small.activeRecordCount, 2000);
 assert.strictEqual(small.estimatedBytes, policy.FIXED_BACKUP_OVERHEAD_BYTES + 2000 * policy.REPRESENTATIVE_BYTES_PER_RECORD);
@@ -14,7 +14,7 @@ assert.strictEqual(large.allowed, false, 'the untested hundreds-of-MiB 100k ledg
 assert.ok(large.estimatedBytes > policy.MAX_BACKUP_BYTES);
 assert.strictEqual(policy.restorePreflight(policy.MAX_BACKUP_BYTES).allowed, true, 'the exact supported restore bound is accepted');
 assert.strictEqual(policy.restorePreflight(policy.MAX_BACKUP_BYTES + 1).allowed, false, 'an oversized file is rejected before read/JSON.parse');
-assert.strictEqual(policy.restorePreflight(33702808).allowed, true, 'a valid legacy Backup v1 file remains restorable');
+assert.strictEqual(policy.restorePreflight(33702808).allowed, true, 'the observed valid 32 MiB-era Backup v1 file remains restorable');
 var exact = policy.serializedPreflight({ label: 'π', records: [{ player: 'José' }] });
 assert.strictEqual(exact.actualSerializedBytes, Buffer.byteLength(JSON.stringify({ label: 'π', records: [{ player: 'José' }] }) + '\n'));
 assert.strictEqual(exact.allowed, true);

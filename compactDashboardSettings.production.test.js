@@ -25,7 +25,7 @@ assert.match(content, /pnhud-settings-opacity/);
 assert.match(content, /pnhud-settings-panel-opacity/);
 assert.match(content, /pnhud-dashboard-opacity/);
 
-var html = dashboard.render({ open: true, playerId: 'p1', displayName: 'Player', mode: 'session', position: null, opponentMode: 'overall', sessionStats: { handsPlayed: 1 }, coreStats: { stats: {}, counters: {}, coverage: { totalHands: 1, positionTrackedHands: 1, matchedHands: 1 } }, relationalStats: {}, profile: { displayedArchetype: 'TAG', rawScores: { TAG: 1, LAG: 0.5, Nit: 0.4, CallingStation: 0.3, Maniac: 0.2, Rock: 0.1, Unknown: 0 } }, note: 'note' });
+var html = dashboard.render({ open: true, playerId: 'p1', displayName: 'Player', mode: 'session', position: null, opponentMode: 'overall', sessionStats: { handsPlayed: 1 }, coreStats: { stats: {}, counters: { hands: 1 }, coverage: { totalHands: 1, positionTrackedHands: 1, matchedHands: 1, tableSizeHands: { HU: 0, '3_TO_5': 0, SIX_PLUS: 1 } } }, relationalStats: {}, profile: { displayedArchetype: 'TAG', rawScores: { TAG: 1, LAG: 0.5, Nit: 0.4, CallingStation: 0.3, Maniac: 0.2, Rock: 0.1, Unknown: 0 } }, note: 'note' });
 ['Session', 'Career', 'Position', 'Core stats', 'Relational stats', 'Overall', 'Vs You', 'Vs Everyone Else', 'Current profile', 'Profile fit', 'Notes'].forEach(function (label) { assert.ok(html.includes(label), label + ' remains rendered'); });
 
 console.log('Compact dashboard and Settings sizing, density, responsiveness, coexistence, and content preservation tests passed.');

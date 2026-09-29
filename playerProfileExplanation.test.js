@@ -165,9 +165,16 @@ assert.ok(tagExplanation.guide.find(function (entry) { return entry.archetype ==
 
 var session = { handsPlayed: 200, vpipHands: 48, vpipOpportunities: 200, pfrHands: 40, pfrOpportunities: 200, afDetails: { bets: 38, raises: 27, calls: 35 } };
 var profile = { displayedArchetype: 'TAG', rawArchetype: 'TAG', rawScores: recordFor(archetypeCases.TAG).primary.scores, explanation: tagExplanation };
-var dashboardBase = { playerId: 'stable-profile', displayName: 'Profile Player', mode: 'session', sessionStats: session, coreStats: session, profile: profile, note: '' };
+var coreStats = { schemaVersion: 1, playerId: 'stable-profile', filters: {},
+  counters: { hands: session.handsPlayed, vpipMade: session.vpipHands, vpipOpportunities: session.vpipOpportunities,
+    pfrMade: session.pfrHands, pfrOpportunities: session.pfrOpportunities,
+    postflopAggressiveActions: session.afDetails.bets + session.afDetails.raises, postflopCalls: session.afDetails.calls },
+  coverage: { totalSessionHands: session.handsPlayed, positionTrackedHands: session.handsPlayed,
+    matchedPositionHands: session.handsPlayed, tableSizeHands: { HU: 0, '3_TO_5': session.handsPlayed, SIX_PLUS: 0 } } };
+var dashboardBase = { playerId: 'stable-profile', displayName: 'Profile Player', mode: 'session', sessionStats: session, coreStats: coreStats, profile: profile, note: '' };
 var html = dashboard.render(dashboardBase);
 assert.ok(html.includes('Why this profile?') && html.includes('Profile Guide') && html.includes('Advanced details'), 'dashboard renders compact native explanation toggles');
+assert.strictEqual(html.split('Why this profile?').length - 1, 1, 'supported profile has one explanation toggle');
 assert.ok(html.includes('Fit scores measure how compatible') && html.includes('They are not probabilities'));
 assert.ok(html.includes('Current fit') && html.includes('Confidence') && html.includes('Why it fits'));
 assert.ok(html.includes('W$SD') && !html.includes('W$SD is compatible with TAG'), 'ordinary dashboard stat remains while W$SD is absent from profile evidence');
@@ -181,5 +188,32 @@ var filteredHtml = dashboard.render(Object.assign({}, dashboardBase, { position:
 assert.strictEqual(profileSection(filteredHtml), profileSection(html), 'Session profile explanation is unaffected by dashboard Position/Vs filters');
 var hiddenHtml = dashboard.render(Object.assign({}, dashboardBase, { profile: { displayedArchetype: null, rawArchetype: unknown.rawArchetype, rawScores: insufficientRecord.primary.scores, explanation: unknown } }));
 assert.ok(hiddenHtml.includes('Displayed profile unavailable') && hiddenHtml.includes('No profile shown yet') && hiddenHtml.includes('Why no profile is shown'), 'dashboard explains why a profile is not displayed');
+
+for (var bucket of ['HU', '3_TO_5', 'SIX_PLUS']) {
+  var counts = { HU: 0, '3_TO_5': 0, SIX_PLUS: 0 }; counts[bucket] = session.handsPlayed;
+  var supportedHtml = dashboard.render(Object.assign({}, dashboardBase, { coreStats: Object.assign({}, coreStats,
+    { coverage: Object.assign({}, coreStats.coverage, { tableSizeHands: counts }) }) }));
+  assert.ok(supportedHtml.includes('Current profile') && supportedHtml.includes('Why this profile?') &&
+    supportedHtml.includes('Profile Guide') && supportedHtml.includes('Advanced details'), bucket + ' supported profile retains its explanation UI');
+  assert.strictEqual(supportedHtml.split('Why this profile?').length - 1, 1, bucket + ' shows one explanation toggle');
+}
+for (var population of [{ label: 'unknown', counts: { HU: 0, '3_TO_5': 0, SIX_PLUS: 0 } },
+  { label: 'mixed All', counts: { HU: 80, '3_TO_5': 120, SIX_PLUS: 0 } }]) {
+  var unsupportedHtml = dashboard.render(Object.assign({}, dashboardBase, { coreStats: Object.assign({}, coreStats,
+    { coverage: Object.assign({}, coreStats.coverage, { tableSizeHands: population.counts }) }) }));
+  assert.ok(unsupportedHtml.includes('pnhud-dashboard-stat-hands') && unsupportedHtml.includes('<strong>200</strong>'),
+    population.label + ' retains raw numeric stats');
+  assert.ok(!unsupportedHtml.includes('Current profile') && !unsupportedHtml.includes('Why this profile?'),
+    population.label + ' suppresses calibrated profile and explanation');
+}
+var legacyHtml = dashboard.render(Object.assign({}, dashboardBase, { coreStats: session }));
+assert.ok(!legacyHtml.includes('Current profile') && !legacyHtml.includes('Why this profile?'),
+  'legacy unclassified Session counters do not imply a supported table-size bucket');
+var staleSwitchHtml = dashboard.render(Object.assign({}, dashboardBase, { tableSize: 'HU' }));
+assert.ok(!staleSwitchHtml.includes('Why this profile?'), 'switching table size cannot reuse a stale All profile explanation');
+for (var switched of [{ playerId: 'other-player', coreStats: null }, { mode: 'career', coreStats: null }]) {
+  assert.ok(!dashboard.render(Object.assign({}, dashboardBase, switched)).includes('Why this profile?'),
+    'player/source switch cannot display the prior profile explanation without matching core stats');
+}
 
 console.log('Player-profile explanations: 7 archetypes, Unknown, actual gates, hysteresis, table context, evidence, dashboard toggles, and filter neutrality passed.');

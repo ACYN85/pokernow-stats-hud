@@ -1,57 +1,143 @@
+# 1.3.0
+
+Final V1.3.0 promotes the exact accepted RC4 archive byte-for-byte. Build ID `v1.3.0-rc4-20260929-0321` is retained; RC1, RC2, RC3, and RC4 remain immutable. Signed-in RC4 smoke was accepted before promotion.
+
+## RC4 corrections
+
+- The production-mounted Player Dashboard regression now exercises the actual source and Table Size controls, HU-only Career Profile, empty segments, mixed All suppression, and stale table-size requests.
+- Profile headings identify the selected HU, 3–5, or 6+ population; empty selected segments explain why no supported Profile is available.
+- The Dashboard places Session/Career on its own row and Table/Situation/Position together at normal width, with narrow-width wrapping verified in native Chrome.
+- Signed-in development smoke at `c8f77c7fe66f6bd390d00ec914c006b9ecb4d111` confirmed the selector, contextual-filter layout, table-size coverage, Insights, and Review Signals. The earlier missing-selector observation was traced to an RC2 browser instance.
+
+## RC3 history
+
+RC3 uses Build ID `v1.3.0-rc3-20260928-1800` and includes the accepted Career schema-4 table-size and cold/warm coverage fixes. Its tag and ZIP remain immutable.
+
+## RC3 corrections
+
+- Maintained Career schema-4 aggregates retain exact HU, 3–5, and 6+ dealt-count partitions; unknown historical provenance stays outside classified buckets. Cold and warm Career results both include `coverage.tableSizeHands`, and warm maintained reads retrieve no history.
+- Session and Career analysis use distinct supported table-size calibration. Mixed or unknown All populations retain raw numeric statistics while suppressing calibrated interpretations; supported HU, 3–5, and 6+ populations retain Profile explanations.
+- The native Chrome Career upgrade fixture now injects a failed schema-4 rebuild and verifies atomic rollback, retry, actual page reload, maintained partitions, and zero-history warm reads.
+
+## RC2 history
+
+Release candidate RC2 follows the failed, immutable RC1. It retains the V1.3 feature set and uses Build ID `v1.3.0-rc2-20260927-2039`; signed-in validation of the exact RC2 package remains required before final promotion.
+
+## RC2 corrections
+
+- Restored Session VPIP/PFR opportunity semantics by giving BB-walk detection the complete selected-hand event context. BB walks still count as Hands but are excluded from VPIP/PFR opportunities; numerator counts and Evidence now use eligible opportunities.
+- Restored All-positions Session coverage and live/hydrated Session agreement with Career schema-3 aggregates. The PlayerA 64-hand regression has 31 walks, 33 eligible opportunities, 8 VPIP and 1 PFR; PlayerB has 40 eligible opportunities, 1 VPIP and 1 PFR.
+- Restricted Opponent Insights, Strategic Implications, self Review Signals, and cross-context Review Signals to proven 3+ handed populations. Heads-up and mixed numeric stats remain visible, while unsupported multiway-calibrated interpretations are suppressed. An exact 3+ Session slice can still qualify; mixed Career context cards are suppressed.
+
+## V1.3 features carried forward
+
+Release candidate RC1 freezes `dev/v1.3` commit `406dcde658f51f82d2380a537df40de3890e542c` under Build ID `v1.3.0-rc1-20260926-2109`. Automated and signed-in certification remain separate.
+
+## Player analysis
+
+- Evidence-gated Opponent Insights and action-first Dashboard presentation use the selected player, source, and context.
+- Strategic Implications offer broad adjustments based on supported observed tendencies; they are not hand-specific solver advice.
+- Self-only Review Signals compare IP/OOP and supported positions only when both sides have sufficient Evidence.
+- Session and Career context partitions share same-revision comparison payloads.
+
+## Pot Odds and Career
+
+- Pot Odds uses a persistent canonical preflop board anchor, table-local drag placement across hands, Reset Position, and a compact 76px panel.
+- Career aggregate schema 3 maintains Overall, IP, OOP, and supported positions for warm Dashboard reads; a one-time derived rebuild preserves canonical records and Backup v1 compatibility.
+
+## Release boundary
+
+- The 73-file production inventory includes the three V1.3 analysis modules. V1.0/V1.1/V1.2 tags, baselines, and artifacts remain unchanged.
+- RC1 failed signed-in smoke and remains immutable. RC2 requires its own signed-in smoke before any final promotion.
+
 # 1.2.0
 
-PokerNow Stats HUD 1.2.0 adds portable Career Data management and clearer sample-support presentation while preserving the existing finalized-hand statistics model.
+Release candidate status: RC2 freezes the accepted post-RC1 blocker fixes at `dev/v1.2` commit `327f68a6c2c4f14e3c2a60e14e51bd90f289731a` under Build ID `v1.2.0-rc2-20260922-1612`. RC1 remains an immutable failed candidate. Automated release certification and signed-in PokerNow validation remain separate; no final `v1.2.0` release is created here.
+
+## RC2 blocker corrections
+
+- Restore-triggered Session reset discards the prior boundary cooldown/evidence but excludes the pre-reset hand ID, allowing the first fully observed fresh hand to count once in Session and Career.
+- Career Restore outcome-gates in-flight pre-reset appends: successful replacement discards them; failed replacement or controller retirement preserves legitimate records.
+- Cold-start Career Leaderboard shows `Loading…` while the batch is unresolved and `Unavailable` on failure; H0/--- represents only settled no-history data. Warm settled-snapshot reuse and identity fences remain intact.
 
 ## Added
 
-- **Export Career Data** creates a gzip-compressed `.json.gz` portable backup. Existing uncompressed Backup v1 JSON remains accepted for import and restore.
-- **Import Career Data (Merge)** adds nonduplicate Career records to the existing ledger; an exact duplicate import adds no new hands.
-- **Restore Career Backup (Replace)** provides an explicitly confirmed recovery path. A successful replacement resets Session after Career commits; a failed replacement leaves Session intact.
-- **Remove Current Session from Career & Reset** uses exact stored hand identity rather than date, name, or count estimates.
-- Dashboard Statistical Evidence shows exact support counts and sample-strength labels for supported slices, without a visible “Insufficient” suffix on low-support values.
+- Career Data management with exact current-Session removal, compressed export, merge import, safe replace restore, legacy JSON compatibility, previews/results, integrity checks, conservative portability limits, and a supported whole-ledger envelope of approximately 4,032 physical records.
+- Statistical Evidence support levels based on the exact displayed numerator/denominator slice. Low support retains the internal `insufficient` state while showing only the support count; Weak, Moderate, and Strong semantics remain unchanged.
 
-## Improved
+## Reliability
 
-- Leaderboard Career loading distinguishes unresolved, unavailable, settled no-history, and settled values. A Session-to-Career switch may briefly show Loading before values arrive; it no longer presents a pending lookup as authoritative H0.
-- Restore, Pause/Resume, reload, and controller hand-ownership fences protect the first eligible fresh hand and prevent stale Career append outcomes from crossing a successful replacement.
-- Career transfer validation, duplicate/ambiguity handling, and bounded whole-ledger processing strengthen data integrity.
+- Career Leaderboard stale-while-revalidate publication and settled Career reuse across source switches.
+- Seat HUD and content-controller ownership fencing, including explicit PokerNow Pause latch behavior and reinjection protection.
+- Restore resets Session only after successful Career replacement; failed transfer operations preserve Session.
 
-## Data limits
+## Release boundary
 
-- Compressed input and decoded JSON have separate 64 MiB limits. Whole-ledger export/import/restore processing is conservatively bounded to 4,032 physical records; gzip does not make the format streaming or unlimited.
+- The production package inventory now explicitly includes `careerPortableFile.js` and `statEvidence.js` and contains 70 allowlisted root files.
+- V1.0 and V1.1 tags, artifacts, Build IDs, and freeze metadata remain immutable.
 
 # 1.1.0
 
-PokerNow Stats HUD 1.1.0 expands Career analysis and improves live-table reliability while preserving local-only data storage and conservative evidence requirements.
+Release candidate status: RC3 packages the accepted post-RC2 lifecycle fix under Build ID `v1.1.0-rc3-20260913-1702` together with the earlier bounded blocker corrections. RC1 and RC2 remain immutable failed/not-promotable candidates. The user passed DEV live checks for the fix commit, but that is not signed-in validation of the RC3 package. No final `v1.1.0` release is created here.
+
+## Post-RC2 blocker correction
+
+- Rearm one narrow sparse-deal acquisition after startup/reload, Reset Session, or verified Resume while keeping the global boundary threshold unchanged. The path requires fresh authoritative hand identity, complete deal evidence, an empty pre-deal baseline, no board or settlement, and existing Pause/signature/deduplication guards.
+- Reset still discards the current partial hand; paused stale traffic, excluded prior IDs, and finalized signature replay cannot create ownership. Accepted fresh hands publish Session and Career exactly once and retain existing Leaderboard/Seat HUD refresh ownership.
+- User-reported DEV live validation passed Reset-next-hand, Pause/Resume, reload-next-hand, and duplicate-protection cases for commit `028d3e2`. The RC3 package itself remains live-unvalidated until the final signed-in RC3 smoke.
+
+## Post-RC1 blocker corrections
+
+- Verified PokerNow Pause now rejects hand-boundary and semantic betting-action progression from sparse or stale nonterminal patches while retaining recovery metadata and an owned terminal settlement path.
+- Pot Odds now resets its manual offset to exact `0,0` once per authoritative hand on the first verified measured postflop board. Authoritative preflop rejects stale prior-board DOM, and the per-hand latch survives reload so later user movement remains intact.
+- Normal source identifies itself as `PokerNow Stats HUD - DEV VERSION`; release staging projects only that manifest display name to `PokerNow Stats HUD`.
+- Reset Session now clears Session statistics/lifecycle state while immediately reconciling authoritative current-seat stable identities, preserving Career Leaderboard and Career Seat HUD links without appending or deleting Career data; same-name players remain distinct by stable ID.
 
 ## Added
 
-- Career-backed numeric source for the Leaderboard while preserving its current-table player list and alphabetical ordering.
+- Career-backed numeric source for the Leaderboard while preserving its Session-derived player inclusion and ordering.
+- Tracked Players browser under Settings → Players with local search, sorting and stable-ID dashboard navigation.
+- Career-backed player profiles derived only from accepted, exact 3+ handed schema-v3 evidence.
+- Movable and resizable Player Dashboard with page-lifetime geometry retention and position-only reset.
+- Exact heads-up-postflop In position / Out of position Dashboard situations with conservative provenance exclusions.
+- Career Recent Trends for Last 25, 50, 100 and 250 eligible dated hands, including revision, cache and race protection.
 - Seat HUD visibility control.
-- Settings → Players browser with local search, sorting, lightweight Career summaries, and stable-ID dashboard navigation.
-- Career player profiles derived only from accepted history with exact supported 3+ handed context.
-- Movable and resizable Player Dashboard with page-lifetime geometry retention and Reset Position.
-- Exact heads-up-postflop In position / Out of position Dashboard situations; incomplete, multiway, legacy, and unsupported-position hands are excluded rather than inferred.
-- Career Recent Trends for the latest 25, 50, 100, and 250 eligible dated hands.
 
 ## Improved
 
-- Career Dashboard filtered-query resolution reuse, player-summary indexing, query caching, concurrent-request sharing, and deterministic invalidation.
-- Dashboard snapshot isolation, revision consistency, partial supported table-context handling, and quarantine-aware summaries.
-- Settings-to-player navigation and Leaderboard reset behavior.
-- Reset Session now clears Session statistics and lifecycle state while immediately reconciling current-seat stable identities, preserving Career links without adding or deleting Career data.
-- Verified Pause blocks stale or sparse nonterminal traffic from creating hand boundaries or betting-action inference until verified Resume.
-- Startup, reload, Reset Session, and Resume can rearm one tightly gated sparse fresh-hand acquisition without weakening normal ownership, signature, or deduplication checks.
-- Pot Odds placement resets to its canonical position once on the first authoritative measured flop of each hand, then preserves later user movement across streets and same-hand reload.
-- Related lifecycle, race, cache, correctness, and quarantine handling.
+- Career Dashboard filtered-query resolution reuse and lightweight Career player-summary indexing.
+- Dashboard observer behavior, Settings-to-player navigation, Pot Odds placement and Leaderboard reset reliability.
+- Career snapshot isolation, partial supported table-context handling, quarantine-aware summaries and deterministic cache invalidation.
 
-## Notes
+## Notes and limitations
 
 - Profiles require sufficient supported evidence; heads-up and unknown-context hands do not enter Career archetypes.
-- IP/OOP situations require exact supported two-player postflop provenance.
-- Trends are Career-only and are not changed by Dashboard position, situation, or opponent filters.
-- BTN-vs-blinds, blinds-vs-steal, trend charts, arbitrary date ranges, and Session Trends are not part of V1.1.
+- IP/OOP requires exact supported two-player postflop provenance and is not inferred for multiway, legacy or incomplete hands.
+- Trends are Career-only and overall; Dashboard filters do not alter them.
+- BTN-vs-blinds, blinds-vs-steal, trend charts, arbitrary windows/date ranges and Session Trends remain deferred.
 
 # 1.0.0
 
-- Initial public release with live Seat HUD statistics, Session and Career persistence, player dashboards and notes, player profiles, Pot Odds, backup/restore, and lifecycle-safe finalized-hand accounting.
+Release candidate: RC1. Feature-complete baseline passed user live visual signoff and final soak. Final V1 promotion remains an explicit later decision.
+
+## Added
+
+- Live Seat HUD and Session leaderboard with configurable poker statistics.
+- Session/Career numeric sources, persistent local Career history, health reporting, integrity-checked backup and previewed replace-only restore.
+- Player dashboard with position/relational filters and local stable-ID notes.
+- Interpretable player archetypes, sample/confidence gates and profile explanations.
+- Hands, VPIP, PFR, AF, 3Bet, F3B, flop CBet/FCB, WTSD and W$SD with explicit support boundaries.
+- Persistent preflop/postflop Pot Odds arithmetic, chip-based wording and drag/reset controls.
+- Painted-player-panel Seat HUD centering, manual offsets, accessibility clamps and native-panel layering.
+
+## Reliability
+
+- Evidence-based lifecycle boundaries, bounded reload/reconnect continuity and exactly-once finalized-hand accounting.
+- Immutable Career contributions, fingerprint deduplication, explicit supersession and conservative quarantine.
+- Shared Session caches, batched Career queries and bounded observer/diagnostic work.
+- Stable table-local BoardCompanion geometry and preserved drag lifecycle.
+- Production-shaped regression fixtures, package dependency/order guards and reproducible release packaging.
+
+## RC1 release hygiene
+
+Version/build labels and manifest description are production-facing. Misleading legacy “All-time” controls are labeled “Session (legacy)” without changing the underlying source. Documentation, local-data/privacy notes, certification boundaries, frozen-file verification and a canonical Git release workflow are included. No feature, statistic, profile or storage semantics changed during RC1 finalization.

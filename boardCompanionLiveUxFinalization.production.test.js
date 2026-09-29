@@ -119,11 +119,14 @@ assert.deepStrictEqual(afterContentRefresh.offset, { x: 30, y: -5 }, 'content re
 
 host = harness.document.getElementById('pnhud-hero-pot-odds');
 host.remove();
+var writesBeforeNewHand = harness.storageWrites.length;
 frame(harness, 'gC', activeState('LIVE-UX-2', 188), 'host-replacement');
 assert.strictEqual(harness.document.getElementById('pnhud-pot-odds-root'), stableRoot, 'delegated listener root identity survives host replacement');
-drag(harness, -30, 5, 503);
+assert.deepStrictEqual(invariantSnapshot(harness).offset, { x: 30, y: -5 }, 'new hand preserves the user offset across host replacement');
+assert.strictEqual(harness.storageWrites.slice(writesBeforeNewHand).some(function (write) { return Object.keys(write).some(function (key) { return /PotOddsBoardReset|hudUiPreferences/.test(key); }); }), false, 'new hand and remount do not write a placement reset');
+drag(harness, -15, 10, 503);
 var afterHostReplacement = invariantSnapshot(harness);
-assert.deepStrictEqual(afterHostReplacement.offset, { x: -30, y: 5 }, 'new measured hand resets first, then replacement host remains draggable');
+assert.deepStrictEqual(afterHostReplacement.offset, { x: 15, y: 5 }, 'replacement host remains draggable from the saved user offset');
 
 click(harness, '#pnhud-settings-launcher');
 click(harness, '[data-settings-section="hud"]');

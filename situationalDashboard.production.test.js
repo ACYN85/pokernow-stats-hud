@@ -5,15 +5,15 @@ var fs = require('fs');
 var dashboard = require('./playerDashboard.js');
 var content = fs.readFileSync('./content.js', 'utf8');
 
-assert.match(content, /function dashboardScopeFilters\(\)[\s\S]*?situation === 'ip'[\s\S]*?situation === 'oop'[\s\S]*?return \{ situation: playerDashboardState\.situation \}/, 'Session queries use the exact situation scope');
+assert.match(content, /function dashboardScopeFilters\(\)[\s\S]*?situation === 'ip'[\s\S]*?situation === 'oop'[\s\S]*?\{ situation: playerDashboardState\.situation \}/, 'Session queries use the exact situation scope');
 assert.match(content, /careerDashboardStats\(playerId, \{[\s\S]*?position: position,[\s\S]*?situation: situation,[\s\S]*?opponentMode: opponentMode/, 'Career requests carry situation in the combined dashboard query');
 assert.match(content, /annotateSessionEventRange\([\s\S]*?showdownReductionResult && showdownReductionResult\.contribution\s*\)/, 'Session events receive certified showdown evidence for exact IP\/OOP annotation');
 assert.match(content, /playerDashboardState\.overallPosition = playerDashboardState\.position;\s*playerDashboardState\.position = null;/, 'entering IP\/OOP preserves and clears the Overall-only position selection');
 assert.match(content, /playerDashboardState\.position = playerDashboardState\.overallPosition \|\| null;\s*playerDashboardState\.overallPosition = null;/, 'returning to Overall restores the prior position selection');
 assert.match(content, /requestSnapshot = \{[^}]*situation: situation/, 'async Career snapshots include situation');
 assert.doesNotMatch(content.slice(content.indexOf('function savePlayerDashboardNote'), content.indexOf('function clearPlayerDashboardNote')), /situation|dashboardScopeFilters/, 'notes remain independent of situation');
-assert.match(content, /playerDashboardState\.profile = playerDashboardProfile\(playerDashboardState\.playerId\)/, 'Session profile remains the overall profile');
-assert.match(content, /playerDashboardState\.profile = result\.profileStats/, 'Career profile remains the cached overall profile projection');
+assert.match(content, /playerDashboardState\.profile = bucket && coreCounters/, 'Session profile uses the selected exact population');
+assert.match(content, /playerDashboardState\.profile = result\.profileStats/, 'Career profile uses the cached selected projection');
 var modeHandler = content.slice(content.indexOf('var modeButton ='), content.indexOf('var opponentButton ='));
 assert.doesNotMatch(modeHandler, /situation\s*=/, 'Session\/Career switching preserves the selected situation');
 

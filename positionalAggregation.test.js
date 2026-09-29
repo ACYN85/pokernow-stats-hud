@@ -15,9 +15,24 @@ var records = [
   record('CO-CBET', 'CO', { flopCBetMade: 1, flopCBetOpportunities: 1 }, 105),
   record('HJ-WTSD', 'HJ', { wtsdMade: 1, wtsdOpportunities: 1 }, 106),
   record('LJ-WSD', 'LJ', { wsdMade: 1, wsdOpportunities: 1 }, 107),
-  record('UTG1-AF', 'UTG+1', { postflopAggressiveActions: 2, postflopCalls: 1 }, 108)
+  record('UTG1-AF', 'UTG+1', { postflopAggressiveActions: 2, postflopCalls: 1 }, 108),
+  record('UTG2-VPIP', 'UTG+2', { vpipMade: 1 }, 109)
 ];
 function by(label) { return filtered.careerStatsFiltered(records, 'subject', { position: label }); }
+var contexts = aggregator.rebuild(records).aggregate.players.subject.contexts.positions;
+aggregator.POSITION_LABELS.forEach(function (position) {
+  assert.deepStrictEqual(contexts[position], by(position).counters, position + ' maintained counters match filtered traversal');
+});
+var sessionEvents = aggregator.POSITION_LABELS.map(function (position, index) {
+  return { handId: 'POSITION-SESSION-' + index, playerId: 'subject', player: 'Player', countsAsHand: true,
+    dealtPosition: position, postflopSituation: null, street: 'preflop', action: 'call' };
+});
+var sessionContexts = filtered.rebuildSessionContexts(sessionEvents);
+aggregator.POSITION_LABELS.forEach(function (position) {
+  assert.deepStrictEqual(sessionContexts.players.subject.positions[position],
+    filtered.sessionStatsFiltered(sessionEvents, 'subject', { position: position }).counters,
+    position + ' Session partition matches the finalized-event projection');
+});
 assert.strictEqual(by('BTN').counters.vpipMade, 1, 'BTN VPIP');
 assert.strictEqual(by('UTG').counters.pfrMade, 1, 'UTG PFR');
 assert.deepStrictEqual([by('SB').counters.threeBetMade, by('SB').counters.threeBetOpportunities], [1, 1], 'SB 3Bet');
@@ -27,11 +42,11 @@ assert.deepStrictEqual([by('BB').counters.foldToFlopCBet, by('BB').counters.fold
 assert.deepStrictEqual([by('HJ').counters.wtsdMade, by('HJ').counters.wtsdOpportunities], [1, 1], 'position WTSD');
 assert.deepStrictEqual([by('LJ').counters.wsdMade, by('LJ').counters.wsdOpportunities], [1, 1], 'position W$SD');
 assert.deepStrictEqual([by('UTG+1').counters.postflopAggressiveActions, by('UTG+1').counters.postflopCalls, by('UTG+1').derived.af], [2, 1, 2], 'position AF components');
-assert.strictEqual(by('BTN').coverage.totalCareerHands, 8);
-assert.strictEqual(by('BTN').coverage.positionTrackedHands, 8);
+assert.strictEqual(by('BTN').coverage.totalCareerHands, 9);
+assert.strictEqual(by('BTN').coverage.positionTrackedHands, 9);
 assert.strictEqual(by('BTN').coverage.matchedPositionHands, 1);
 assert.strictEqual(by('BTN').coverage.earliestPositionTrackedAt, 101);
 var old = JSON.parse(JSON.stringify(records[0])); old.authoritativeHandId = 'OLD'; old.handKey = 'pokernow|pokernow.com|POSITION-STATS|OLD'; old.schemaVersion = 2; old.players.forEach(function (player) { delete player.position; }); old.fingerprint = aggregator.fingerprint(old);
 var boundary = filtered.careerStatsFiltered(records.concat([old]), 'subject', { position: 'BTN' });
-assert.strictEqual(boundary.coverage.totalCareerHands, 9); assert.strictEqual(boundary.coverage.positionTrackedHands, 8); assert.strictEqual(boundary.counters.hands, 1);
-console.log('BTN/UTG/SB/BB/CO/HJ/LJ/UTG+1 exact positional counters and coverage boundary tests passed.');
+assert.strictEqual(boundary.coverage.totalCareerHands, 10); assert.strictEqual(boundary.coverage.positionTrackedHands, 9); assert.strictEqual(boundary.counters.hands, 1);
+console.log('All nine exact positional counters, maintained partitions, and coverage boundary tests passed.');

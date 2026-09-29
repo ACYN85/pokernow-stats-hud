@@ -1,7 +1,7 @@
 {
-  "buildId": "v1.2.0-rc2-20260922-1612",
-  "zip": "pokernow-hud-v1.2.0.zip",
-  "sha256": "65BB245759FA063CD434B7ECD26DE627FFE2F0C72920F29A1CD0D963F6C1D798",
+  "buildId": "v1.3.0-rc4-20260929-0321",
+  "zip": "pokernow-hud-v1.3.0.zip",
+  "sha256": "18966EA9C96C102139E3DAABD0778248847ECFA8F3123D67ABAE47304BC6FD92",
   "files": [
     {
       "path": "actionInference.js",
@@ -13,11 +13,11 @@
     },
     {
       "path": "boardCompanionLayout.js",
-      "sha256": "ef560745438c42dde985ee73f0d4c7af29e61801ecb1ff4fd8abec475296587f"
+      "sha256": "9e6d51dd25992b549dc44bd8016ba13c8e5c659ef3ccd92c1da4ddbce28d32fd"
     },
     {
       "path": "careerBackup.js",
-      "sha256": "0eaec772b3c839dae7ab3392ae4c7b08a6e8e4b83f156ead5427ed8ae4e864c4"
+      "sha256": "6496b45e68e661327319a2efac5d0cae748a552618836ef51afe0ba9acec18a6"
     },
     {
       "path": "careerBackupPolicy.js",
@@ -33,7 +33,7 @@
     },
     {
       "path": "careerIndexedStore.js",
-      "sha256": "399433cc3bf9f4827fb9c6ecf2977d5a5322c86c5342bdfc6f156987ebf4c025"
+      "sha256": "58d7359b8a8e53621cfae6a53d714481839cdefc00501164e6698c37db354e67"
     },
     {
       "path": "careerPortableFile.js",
@@ -41,19 +41,19 @@
     },
     {
       "path": "careerServiceWorker.js",
-      "sha256": "8e47659f97720f24af96fd95d7313187b04b3c6d290e2dff122b9c0628dbf84d"
+      "sha256": "82802c1dcc32e3f5a03e634211ca82820345cff51bb07aadd521757bd796d330"
     },
     {
       "path": "careerStatsAggregator.js",
-      "sha256": "7bb06f98374da7b3d98d22bf41f0deabf57267cda11aa338c0e0144c033a3d34"
+      "sha256": "39bb8659a9923a721b40497aaf8178acd831742cbeaeef216ac17253d68cdfb3"
     },
     {
       "path": "content.js",
-      "sha256": "c006f89ede7b4bfaf6bf2fcd1109940591984d113f9b4b59cef47ec691f1111d"
+      "sha256": "4bac78e4210e931af2a821f8c8ba5ca63923e6fa52ff5fdc5e73744e847ddb57"
     },
     {
       "path": "filteredStats.js",
-      "sha256": "ec68d276f8acf9ee73b1248b2bc5a14634236aa6efeaeb34abf3224d661ddfed"
+      "sha256": "8fa216f11c56ab5bb9cb29ae8c649e7962d12333629227581d1499c5278ebfe6"
     },
     {
       "path": "firstHandLifecycle.js",
@@ -85,7 +85,7 @@
     },
     {
       "path": "hud.css",
-      "sha256": "da76a5374303a56c4e435fc9e9c13dbae68e8cb49d6230e351988ec89b90e5bd"
+      "sha256": "aef9b0dd621c774a5eca541a147b55ad5b129b8917b10cf5b79580c7cf412986"
     },
     {
       "path": "hudDiagnostics.js",
@@ -117,7 +117,7 @@
     },
     {
       "path": "manifest.json",
-      "sha256": "fe8d8806943ee815dd0b63602f0b672028e37383efd43482225238e83b0d1446"
+      "sha256": "d30c67b7d1ada528c9faf8930360af15c93e54281c9de1d96c97bc741535d264"
     },
     {
       "path": "mockData.js",
@@ -148,8 +148,16 @@
       "sha256": "580bd2defd510302c97131b2f3fa9fd295a358b0c4701e43a573ec690a8c8923"
     },
     {
+      "path": "personalLeakAnalysis.js",
+      "sha256": "3b3413bf0f20dffc8e8b2c8e2d76b6325ad8827db372cbc8731a0d6c3b8b74fd"
+    },
+    {
       "path": "playerDashboard.js",
-      "sha256": "f221e34a34cc0181d37833af027987b34f68d4e0aaf8c02157bc370b261162c8"
+      "sha256": "45ff71f11e0a5ebf3e84e6fe3e1047da41808b126f184d2f0e37635a770b0985"
+    },
+    {
+      "path": "playerInsights.js",
+      "sha256": "7902277c93c3b08ac2555f16fe61fa815401f17d65859d60a6e2775822d55f98"
     },
     {
       "path": "playerNotesStore.js",
@@ -193,7 +201,7 @@
     },
     {
       "path": "popup.js",
-      "sha256": "610e5376a50b90e907c0e41263e237b317103149262c813d8782b9978dd1f552"
+      "sha256": "c427d16721735956b082f8bccd1f1a5ec8594eb3b21468871a44ff19210a3afb"
     },
     {
       "path": "positionResolver.js",
@@ -205,7 +213,7 @@
     },
     {
       "path": "potOddsPosition.js",
-      "sha256": "350f814f55e60170b4aebf6ca8a292ccbe44ede4873cd394d1298d68093d6d7d"
+      "sha256": "3fd707a717338e10e217015d401c31c830622af1f4b0e58398ea984a6dd327fa"
     },
     {
       "path": "preflopOpportunityReducer.js",
@@ -217,7 +225,7 @@
     },
     {
       "path": "runtimeScope.js",
-      "sha256": "12dc2998c2e07a84ecd0c97ce145e2d9a8a9b2c4f01b9fbdcdf01e54faff8f8f"
+      "sha256": "f490f78c7bbf4724f0e898a40e356ed6476f5f0975bfbf48f1ea34fe0477007f"
     },
     {
       "path": "seatOverlay.js",
@@ -262,6 +270,10 @@
     {
       "path": "stats.js",
       "sha256": "a9fc993ffc4a33fd110b89a483316f74f69182b94d4ea0bb6294cf024e0dda94"
+    },
+    {
+      "path": "strategicImplications.js",
+      "sha256": "695ceaf2d893f9bb51395e99b4cfd5ca95a99bf7e2022d139c8f2030eefc5dbe"
     },
     {
       "path": "tbTrace.js",

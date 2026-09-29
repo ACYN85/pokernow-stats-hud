@@ -54,6 +54,7 @@
     var initializedAt = Number(old.careerTrackingStartedAt || options && options.initializedAt || Date.now());
     return {
       key: 'career', storageSchemaVersion: STORAGE_SCHEMA_VERSION, databaseVersion: DATABASE_VERSION,
+      aggregateSchemaVersion: Aggregator.AGGREGATE_SCHEMA_VERSION,
       careerTrackingStartedAt: initializedAt,
       careerSchemaInitializedAt: Number(old.careerSchemaInitializedAt || initializedAt),
       initializedByBuildId: String(old.initializedByBuildId || options && options.buildId || ''),
@@ -86,9 +87,13 @@
   }
   function validCache(cache, head) {
     var profile = cache && cache.player && cache.player.profileProjection;
-    if (!cache || !head || cache.playerId !== head.playerId || cache.revision !== head.revision || cache.aggregateSchemaVersion !== Aggregator.AGGREGATE_SCHEMA_VERSION || !cache.player || !cache.player.counters || !cache.player.positionCoverage || !profile || profile.version !== Aggregator.PROFILE_PROJECTION_VERSION || !profile.counters || !profile.profileContext || profile.profileContext.version !== Aggregator.PROFILE_CONTEXT_VERSION || !Number.isInteger(cache.physicalRecordCount)) return false;
+    if (!cache || !head || cache.playerId !== head.playerId || cache.revision !== head.revision || cache.aggregateSchemaVersion !== Aggregator.AGGREGATE_SCHEMA_VERSION || !cache.player || !cache.player.counters || !cache.player.contexts || !cache.player.contexts.situations || !cache.player.contexts.positions || !cache.player.tableSizes || !cache.player.positionCoverage || !Number.isInteger(cache.player.positionCoverage.unsupportedRecords) || !profile || profile.version !== Aggregator.PROFILE_PROJECTION_VERSION || !profile.counters || !profile.profileContext || profile.profileContext.version !== Aggregator.PROFILE_CONTEXT_VERSION || !Number.isInteger(cache.physicalRecordCount)) return false;
     if (!Aggregator.COUNTER_FIELDS.every(function (field) { return Number.isInteger(profile.counters[field]) && profile.counters[field] >= 0; })) return false;
-    return Aggregator.COUNTER_FIELDS.every(function (field) { return Number.isInteger(cache.player.counters[field]) && cache.player.counters[field] >= 0; });
+    function validCounters(counters) { return Aggregator.COUNTER_FIELDS.every(function (field) { return Number.isInteger(counters && counters[field]) && counters[field] >= 0; }); }
+    var contexts = cache.player.contexts;
+    return validCounters(cache.player.counters) &&
+      Object.keys(contexts.situations).every(function (key) { return (key === 'ip' || key === 'oop') && validCounters(contexts.situations[key]); }) &&
+      Object.keys(contexts.positions).every(function (key) { return Aggregator.POSITION_LABELS.indexOf(key) >= 0 && validCounters(contexts.positions[key]); });
   }
   function playerFromRecords(records, playerId) {
     var state = Aggregator.createState(records);
@@ -135,11 +140,49 @@
     });
     return Array.from(revisions.keys()).sort().map(function (id) { return summaryHead(id, revisions.get(id), resolved.aggregate.players[id], Array.from(contexts.get(id) || []).sort()); });
   }
-  function unfilteredResultFromCache(cache) {
+  function tableSelection(player, tableSize) {
+    if (!tableSize) return { counters: player.counters, contexts: player.contexts, recordCount: player.recordCount };
+    var selected = { counters: Aggregator.emptyCounters(), contexts: { situations: {}, positions: {} }, recordCount: 0 };
+    Object.keys(player.tableSizes || {}).forEach(function (key) {
+      if (Aggregator.classifyTableSize(Number(key)) !== tableSize) return;
+      var part = player.tableSizes[key]; selected.recordCount += part.recordCount;
+      Aggregator.COUNTER_FIELDS.forEach(function (field) { selected.counters[field] += part.counters[field]; });
+      ['situations', 'positions'].forEach(function (kind) { Object.keys(part.contexts[kind]).forEach(function (context) {
+        var target = selected.contexts[kind][context] || (selected.contexts[kind][context] = Aggregator.emptyCounters());
+        Aggregator.COUNTER_FIELDS.forEach(function (field) { target[field] += part.contexts[kind][context][field]; });
+      }); });
+    });
+    return selected;
+  }
+  function tableCoverage(player, scope) {
+    var counts = { HU: 0, '3_TO_5': 0, SIX_PLUS: 0 };
+    Object.keys(player.tableSizes || {}).forEach(function (key) { var bucket = Aggregator.classifyTableSize(Number(key)); if (scope && scope.tableSize && bucket !== scope.tableSize) return; var part = player.tableSizes[key]; var counters = scope && scope.position ? part.contexts.positions[scope.position] : scope && scope.situation ? part.contexts.situations[scope.situation] : part.counters; if (counts[bucket] !== undefined) counts[bucket] += Number(counters && counters.hands || 0); });
+    return counts;
+  }
+  function profileStatsFromCache(cache, scope) {
+    if (!cache || !cache.player) return null;
+    var player = cache.player; var counts = tableCoverage(player, scope);
+    var bucket = scope.tableSize || ['HU', '3_TO_5', 'SIX_PLUS'].find(function (key) {
+      var total = scope.position ? player.contexts.positions[scope.position] : scope.situation ? player.contexts.situations[scope.situation] : player.counters;
+      return counts[key] > 0 && counts[key] === Number(total && total.hands || 0);
+    });
+    if (!bucket) return null;
+    var counters = Aggregator.emptyCounters(); var sum = 0; var records = 0;
+    Object.keys(player.tableSizes || {}).forEach(function (key) {
+      if (Aggregator.classifyTableSize(Number(key)) !== bucket) return;
+      var part = player.tableSizes[key]; var slice = scope.position ? part.contexts.positions[scope.position] : scope.situation ? part.contexts.situations[scope.situation] : part.counters;
+      if (!slice) return;
+      Aggregator.COUNTER_FIELDS.forEach(function (field) { counters[field] += slice[field]; });
+      sum += Number(key) * slice.vpipOpportunities; records += part.recordCount;
+    });
+    return { version: Aggregator.PROFILE_PROJECTION_VERSION, playerId: player.playerId, latestDisplayName: player.latestDisplayName, lastSeenAt: player.lastSeenAt, recordCount: records, counters: counters, profileContext: { version: Aggregator.PROFILE_CONTEXT_VERSION, preflopTableSizeSum: sum, preflopTableSizeOpportunities: counters.vpipOpportunities }, tableSize: bucket };
+  }
+  function unfilteredResultFromCache(cache, tableSize) {
     if (!cache || !cache.player) return null;
     var player = cache.player;
-    var counters = clone(player.counters);
-    var tracked = Number(player.positionCoverage && player.positionCoverage.trackedHands || 0);
+    var selected = tableSelection(player, tableSize);
+    var counters = clone(selected.counters);
+    var tracked = tableSize ? Number(Object.values(selected.contexts.positions).reduce(function (sum, counters) { return sum + Number(counters.hands || 0); }, 0)) : Number(player.positionCoverage && player.positionCoverage.trackedHands || 0);
     return {
       schemaVersion: FilteredStats.SCHEMA_VERSION,
       playerId: String(player.playerId),
@@ -151,11 +194,49 @@
         situationTrackedHands: 0, matchedSituationHands: 0, excludedUnsupportedSituationHands: 0,
         relationalSupportedOpportunities: 0, matchedRelationalOpportunities: 0,
         earliestPositionTrackedAt: player.positionCoverage && player.positionCoverage.earliestTrackedAt || null,
-        earliestRelationalTrackedAt: null, activeRecordCount: Number(player.recordCount || 0),
-        physicalRecordCount: Number(cache.physicalRecordCount || 0), excludedUnsupportedPositionRecords: 0,
+        earliestRelationalTrackedAt: null, activeRecordCount: Number(selected.recordCount || 0),
+        physicalRecordCount: Number(cache.physicalRecordCount || 0), tableSizeHands: tableCoverage(player), excludedUnsupportedPositionRecords: 0,
         excludedMissingCounterpartRecords: 0
       }
     };
+  }
+  function contextResultFromCache(cache, scope, playerId) {
+    var player = cache && cache.player || { playerId: String(playerId), counters: Aggregator.emptyCounters(), contexts: { situations: {}, positions: {} }, positionCoverage: { trackedHands: 0, earliestTrackedAt: null, unsupportedRecords: 0 }, recordCount: 0 };
+    var selected = tableSelection(player, scope.tableSize);
+    var position = scope.position; var situation = scope.situation;
+    var partition = position ? selected.contexts.positions[position] : situation ? selected.contexts.situations[situation] : selected.counters;
+    var counters = clone(partition || Aggregator.emptyCounters());
+    var total = Number(selected.counters.hands || 0);
+    var tracked = scope.tableSize ? Number(Object.values(selected.contexts.positions).reduce(function (sum, counters) { return sum + Number(counters.hands || 0); }, 0)) : Number(player.positionCoverage.trackedHands || 0);
+    var situationTracked = Number((selected.contexts.situations.ip && selected.contexts.situations.ip.hands || 0) + (selected.contexts.situations.oop && selected.contexts.situations.oop.hands || 0));
+    return {
+      schemaVersion: FilteredStats.SCHEMA_VERSION, playerId: String(player.playerId), filters: FilteredStats.normalizeFilters(scope),
+      counters: counters, derived: Aggregator.deriveCounters(counters),
+      coverage: {
+        totalCareerHands: total, positionTrackedHands: tracked,
+        matchedPositionHands: position ? Number(counters.hands || 0) : Number(situation ? counters.hands : tracked),
+        situationTrackedHands: situation ? situationTracked : 0, matchedSituationHands: situation ? Number(counters.hands || 0) : 0,
+        excludedUnsupportedSituationHands: situation ? total - situationTracked : 0,
+        relationalSupportedOpportunities: 0, matchedRelationalOpportunities: 0,
+        earliestPositionTrackedAt: player.positionCoverage.earliestTrackedAt,
+        earliestRelationalTrackedAt: null, activeRecordCount: Number(selected.recordCount || 0),
+        physicalRecordCount: Number(cache && cache.physicalRecordCount || 0), tableSizeHands: tableCoverage(player, scope),
+        excludedUnsupportedPositionRecords: position ? player.positionCoverage.unsupportedRecords : 0,
+        excludedMissingCounterpartRecords: 0
+      }
+    };
+  }
+  function comparisonContextsFromCache(cache, revision, playerId, tableSize) {
+    var contexts = cache && cache.player && tableSelection(cache.player, tableSize).contexts;
+    var positions = {};
+    Aggregator.POSITION_LABELS.forEach(function (position) {
+      positions[position] = contexts && contexts.positions[position] ? contextResultFromCache(cache, { position: position, tableSize: tableSize }) : null;
+    });
+    return { playerId: String(playerId), source: 'career', playerRevision: Number(revision || 0),
+      situations: {
+        ip: contexts && contexts.situations.ip ? contextResultFromCache(cache, { situation: 'ip', tableSize: tableSize }) : null,
+        oop: contexts && contexts.situations.oop ? contextResultFromCache(cache, { situation: 'oop', tableSize: tableSize }) : null
+      }, positions: positions };
   }
   function migrationPlan(saved, options) {
     var records = phaseOneRecords(saved);
@@ -200,6 +281,7 @@
     resolved.activeRecords.forEach(function (record) { record.players.forEach(function (entry) { var id = String(entry.playerId); maxRevisionByPlayer[id] = Math.max(maxRevisionByPlayer[id] || 0, sequenceByFingerprint[record.fingerprint]); }); });
     var metadata = {
       key: 'career', storageSchemaVersion: STORAGE_SCHEMA_VERSION, databaseVersion: DATABASE_VERSION,
+      aggregateSchemaVersion: Aggregator.AGGREGATE_SCHEMA_VERSION,
       careerTrackingStartedAt: career.careerTrackingStartedAt,
       careerSchemaInitializedAt: career.careerSchemaInitializedAt,
       initializedByBuildId: String(career.initializedByBuildId || ''),
@@ -227,7 +309,8 @@
       exportSchemaVersion: 1,
       careerStorageSchemaVersion: STORAGE_SCHEMA_VERSION,
       recordSchemaVersion: Aggregator.RECORD_SCHEMA_VERSION,
-      aggregateSchemaVersion: Aggregator.AGGREGATE_SCHEMA_VERSION,
+      // Backup v1 carries immutable records, never the derived aggregate cache.
+      aggregateSchemaVersion: 2,
       metadata: clone(metadata),
       records: records.map(clone).sort(function (left, right) { return left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); })
     };
@@ -355,7 +438,7 @@
   function createMemoryService(saved, options) {
     var plan = migrationPlan(saved || {}, options || {});
     var records = new Map(); var heads = new Map(); var caches = new Map(); var queue = Promise.resolve();
-    var dashboardCache = new Map(); var trendCache = new Map(); var trendPending = new Map(); var trendGeneration = 0; var dashboardDiagnostics = { playerRecordRetrievals: 0, cacheHits: 0, cacheMisses: 0, trendCacheHits: 0, trendCacheMisses: 0 };
+    var dashboardCache = new Map(); var trendCache = new Map(); var trendPending = new Map(); var trendGeneration = 0; var dashboardDiagnostics = { playerRecordRetrievals: 0, aggregateUpgrades: 0, cacheHits: 0, cacheMisses: 0, trendCacheHits: 0, trendCacheMisses: 0 };
     (plan.wrappers || []).forEach(function (wrapper) { records.set(wrapper.record.fingerprint, wrapper); });
     (plan.heads || []).forEach(function (head) { heads.set(head.playerId, head); });
     (plan.caches || []).forEach(function (cache) { caches.set(cache.playerId, cache); });
@@ -385,6 +468,18 @@
       return summaryRows(Array.from(heads.values()));
     }
     function allRecords() { return Array.from(records.values()).map(function (wrapper) { return clone(wrapper.record); }); }
+    function ensureContextAggregates() {
+      if (metadata.aggregateSchemaVersion === Aggregator.AGGREGATE_SCHEMA_VERSION) return;
+      var resolved = Aggregator.rebuild(allRecords());
+      var physicalCounts = physicalRecordCountsByPlayer(resolved.acceptedRecords);
+      caches.clear();
+      heads.forEach(function (head) {
+        var player = resolved.aggregate.players[head.playerId];
+        if (player) caches.set(head.playerId, cacheForPlayer(player, head.revision, physicalCounts[head.playerId] || 0));
+      });
+      metadata.aggregateSchemaVersion = Aggregator.AGGREGATE_SCHEMA_VERSION;
+      dashboardCache.clear(); dashboardDiagnostics.aggregateUpgrades += 1;
+    }
     function recordsForHand(handKey) { return Array.from(records.values()).filter(function (wrapper) { return wrapper.record.handKey === handKey; }).map(function (wrapper) { return clone(wrapper.record); }); }
     function recordsForPlayer(playerId) {
       dashboardDiagnostics.playerRecordRetrievals += 1;
@@ -394,6 +489,7 @@
     function invalidateDashboardPlayers(playerIds) { (playerIds || []).map(String).forEach(function (playerId) { Array.from(dashboardCache.keys()).forEach(function (key) { if (key.indexOf(playerId + '|') === 0) dashboardCache.delete(key); }); Array.from(trendCache.keys()).forEach(function (key) { if (key.indexOf(playerId + '|') === 0) trendCache.delete(key); }); }); }
     async function stats(playerId) {
       await ensurePlayerSummaries();
+      ensureContextAggregates();
       playerId = String(playerId);
       var head = heads.get(playerId); if (!head) return Promise.resolve(null);
       var cache = caches.get(playerId);
@@ -415,12 +511,19 @@
       var operation = queue.then(async function () {
         if (!plan.ok) return { accepted: false, reason: plan.reason, migrationBlocked: true };
         await ensurePlayerSummaries();
+        ensureContextAggregates();
         var state = Aggregator.createState(recordsForHand(record.handKey));
         var result = Aggregator.append(state, record);
         if (!result.accepted) return result;
-        var updatedHeads = record.players.map(function (entry) {
+        var situations = Aggregator.careerSituationMap(record);
+        var updated = record.players.map(function (entry) {
           var id = String(entry.playerId);
-          return summaryHead(id, metadata.nextSequence + 1, playerFromRecords(recordsForPlayer(id).concat([record]), id).player, heads.get(id) && heads.get(id).contextHandKeys);
+          var head = heads.get(id); var cache = caches.get(id);
+          var next = !result.supersession && (!head || validCache(cache, head))
+            ? { player: Aggregator.appendPlayer(cache && cache.player || null, record, entry, situations[id]), physicalRecordCount: cache ? cache.physicalRecordCount + 1 : 1 }
+            : playerFromRecords(recordsForPlayer(id).concat([record]), id);
+          return { head: summaryHead(id, metadata.nextSequence + 1, next.player, head && head.contextHandKeys),
+            cache: next.player ? cacheForPlayer(next.player, metadata.nextSequence + 1, next.physicalRecordCount) : null };
         });
         metadata.nextSequence += 1;
         records.set(record.fingerprint, recordWrapper(record, metadata.nextSequence));
@@ -428,7 +531,7 @@
         if (!result.supersession) metadata.activeRecordCount += 1;
         metadata.latestAcceptedAt = record.finalizedAt;
         if (!metadata.firstAcceptedHandKey) { metadata.firstAcceptedHandKey = record.handKey; metadata.firstAcceptedAt = record.finalizedAt; }
-        updatedHeads.forEach(function (head) { heads.set(head.playerId, head); caches.delete(head.playerId); });
+        updated.forEach(function (entry) { heads.set(entry.head.playerId, entry.head); if (entry.cache) caches.set(entry.head.playerId, entry.cache); else caches.delete(entry.head.playerId); });
         invalidateDashboardPlayers(record.players.map(function (entry) { return entry.playerId; }));
         return result;
       });
@@ -487,13 +590,14 @@
     }
     async function careerDashboardStats(playerId, requested) {
       await ensurePlayerSummaries();
+      ensureContextAggregates();
       playerId = String(playerId); requested = requested || {};
       var head = heads.get(playerId) || null;
-      var scope = FilteredStats.normalizeFilters({ position: requested.position || null, situation: requested.situation || null });
-      var position = scope.position; var situation = scope.situation;
+      var scope = FilteredStats.normalizeFilters({ position: requested.position || null, situation: requested.situation || null, tableSize: requested.tableSize || null });
+      var position = scope.position; var situation = scope.situation; var tableSize = scope.tableSize;
       var opponentMode = requested.opponentMode === 'self' || requested.opponentMode === 'others' ? requested.opponentMode : 'overall';
       var selfPlayerId = requested.selfPlayerId === null || requested.selfPlayerId === undefined ? null : String(requested.selfPlayerId);
-      var cacheKey = playerId + '|' + Number(head && head.revision || 0) + '|' + canonicalJson({ position: position, situation: situation, opponentMode: opponentMode, selfPlayerId: selfPlayerId });
+      var cacheKey = playerId + '|' + Number(head && head.revision || 0) + '|' + canonicalJson({ position: position, situation: situation, tableSize: tableSize, opponentMode: opponentMode, selfPlayerId: selfPlayerId });
       if (dashboardCache.has(cacheKey)) {
         dashboardDiagnostics.cacheHits += 1;
         var cached = cloneDashboard(dashboardCache.get(cacheKey));
@@ -505,26 +609,26 @@
       var retrievalsBefore = dashboardDiagnostics.playerRecordRetrievals;
       var aggregateCache = caches.get(playerId);
       var aggregateCacheUsed = Boolean(validCache(aggregateCache, head));
-      var hasScope = Boolean(position || situation);
-      var needsRecords = Boolean(hasScope || opponentMode !== 'overall' || !aggregateCacheUsed);
+      var hasScope = Boolean(position || situation || tableSize);
+      var needsRecords = Boolean(opponentMode !== 'overall' || !aggregateCacheUsed);
       var playerRecords = needsRecords ? recordsForPlayer(playerId) : null;
       if (!aggregateCacheUsed && playerRecords) {
         var rebuilt = playerFromRecords(playerRecords, playerId);
         if (rebuilt.player && head) { aggregateCache = cacheForPlayer(Object.assign({}, rebuilt.player, { derived: undefined }), head.revision, rebuilt.physicalRecordCount); caches.set(playerId, aggregateCache); }
       }
       var relationalStatIds = opponentMode !== 'overall' ? ['threeBet', 'foldToThreeBet', 'foldToFlopCBet'] : [];
-      var filters = hasScope ? [{ position: position, situation: situation }] : [];
+      var filters = [];
       relationalStatIds.forEach(function (statId) {
-        filters.push({ position: position, situation: situation, statId: statId, counterpartMode: opponentMode, selfPlayerId: selfPlayerId });
+        filters.push({ position: position, situation: situation, tableSize: tableSize, statId: statId, counterpartMode: opponentMode, selfPlayerId: selfPlayerId });
       });
       var filteredResults = FilteredStats.careerStatsFilteredBatch(playerRecords || [], playerId, filters);
-      var core = hasScope ? filteredResults[0] : unfilteredResultFromCache(aggregateCache);
+      var core = hasScope ? contextResultFromCache(aggregateCache, { position: position, situation: situation, tableSize: tableSize }, playerId) : unfilteredResultFromCache(aggregateCache);
       var relational = {};
       relationalStatIds.forEach(function (statId, index) {
-        relational[statId] = filteredResults[index + (hasScope ? 1 : 0)];
+        relational[statId] = filteredResults[index];
       });
       var result = {
-        core: core, relational: relational, profileStats: aggregateCache && clone(aggregateCache.player.profileProjection) || null, careerTrackingStartedAt: metadata.careerTrackingStartedAt,
+        core: core, relational: relational, comparisonContexts: comparisonContextsFromCache(aggregateCache, head && head.revision, playerId, tableSize), profileStats: profileStatsFromCache(aggregateCache, { position: position, situation: situation, tableSize: tableSize }), careerTrackingStartedAt: metadata.careerTrackingStartedAt,
         query: { playerRevision: Number(head && head.revision || 0), aggregateCacheUsed: aggregateCacheUsed, dashboardCacheHit: false, playerRecordRetrievals: dashboardDiagnostics.playerRecordRetrievals - retrievalsBefore }
       };
       dashboardCache.set(cacheKey, cloneDashboard(result));
@@ -685,7 +789,7 @@
     var db = await openDatabase(indexedDB);
     var migration = await initializeDatabase(db, saved || {}, options || {});
     if (!migration.ok) { db.close(); throw new Error(migration.reason); }
-    var summaryWork = null; var summaryError = null; var summaryInitialized = false;
+    var summaryWork = null; var summaryError = null; var summaryInitialized = false; var aggregateWork = null; var aggregateInitialized = false;
     function ensurePlayerSummaries() {
       if (summaryWork) return summaryWork;
       if (summaryInitialized) return Promise.resolve();
@@ -707,6 +811,50 @@
     // Career initialization is already detached from Session frame release.
     // Start here, expose readiness, and retry after errors on the next request.
     ensurePlayerSummaries().catch(function () {});
+    function ensureContextAggregates() {
+      if (aggregateInitialized) return Promise.resolve();
+      if (aggregateWork) return aggregateWork;
+      aggregateWork = (async function () {
+        await ensurePlayerSummaries();
+        for (;;) {
+          var versionRead = db.transaction([STORE_METADATA], 'readonly');
+          var versionMetadata = await requestPromise(versionRead.objectStore(STORE_METADATA).get('career'));
+          await transactionPromise(versionRead);
+          if (versionMetadata.aggregateSchemaVersion === Aggregator.AGGREGATE_SCHEMA_VERSION) { aggregateInitialized = true; return; }
+          var read = db.transaction([STORE_METADATA, STORE_PLAYER_HEADS, STORE_RECORDS], 'readonly');
+          var snapshot = await Promise.all([
+            requestPromise(read.objectStore(STORE_METADATA).get('career')),
+            requestPromise(read.objectStore(STORE_PLAYER_HEADS).getAll()),
+            requestPromise(read.objectStore(STORE_RECORDS).getAll())
+          ]);
+          await transactionPromise(read);
+          var metadata = snapshot[0];
+          if (metadata.aggregateSchemaVersion === Aggregator.AGGREGATE_SCHEMA_VERSION) { aggregateInitialized = true; return; }
+          var resolved = Aggregator.rebuild(snapshot[2].map(function (wrapper) { return wrapper.record; }));
+          var physicalCounts = physicalRecordCountsByPlayer(resolved.acceptedRecords);
+          var committed = await new Promise(function (resolve, reject) {
+            var tx = db.transaction([STORE_METADATA, STORE_AGGREGATES], 'readwrite');
+            var metaStore = tx.objectStore(STORE_METADATA); var currentRequest = metaStore.get('career');
+            var didWrite = false;
+            currentRequest.onsuccess = function () {
+              if (canonicalJson(currentRequest.result) !== canonicalJson(metadata)) return;
+              var cacheStore = tx.objectStore(STORE_AGGREGATES);
+              cacheStore.clear();
+              snapshot[1].forEach(function (head) {
+                var player = resolved.aggregate.players[head.playerId];
+                if (player) cacheStore.put(cacheForPlayer(player, head.revision, physicalCounts[head.playerId] || 0));
+              });
+              metaStore.put(Object.assign({}, metadata, { aggregateSchemaVersion: Aggregator.AGGREGATE_SCHEMA_VERSION }));
+              didWrite = true;
+            };
+            tx.oncomplete = function () { resolve(didWrite); };
+            tx.onerror = tx.onabort = function () { reject(tx.error || new Error('Career aggregate upgrade failed')); };
+          });
+          if (committed) { dashboardCache.clear(); aggregateInitialized = true; return; }
+        }
+      })().finally(function () { aggregateWork = null; });
+      return aggregateWork;
+    }
     async function careerPlayerSummaries() {
       await ensurePlayerSummaries();
       var snapshot = await readSummarySnapshot(db, false);
@@ -730,7 +878,7 @@
     function invalidateDashboardPlayers(playerIds) { (playerIds || []).map(String).forEach(function (playerId) { Array.from(dashboardCache.keys()).forEach(function (key) { if (key.indexOf(playerId + '|') === 0) dashboardCache.delete(key); }); Array.from(trendCache.keys()).forEach(function (key) { if (key.indexOf(playerId + '|') === 0) trendCache.delete(key); }); }); }
     async function append(record) {
       var error = Aggregator.validateRecord(record); if (error) return { accepted: false, duplicate: false, conflict: false, reason: error };
-      await ensurePlayerSummaries();
+      await ensureContextAggregates();
       return new Promise(function (resolve, reject) {
         var tx = db.transaction([STORE_RECORDS, STORE_METADATA, STORE_AGGREGATES, STORE_PLAYER_HEADS], 'readwrite');
         var recordsStore = tx.objectStore(STORE_RECORDS); var metadataStore = tx.objectStore(STORE_METADATA);
@@ -744,6 +892,7 @@
           meta.latestAcceptedAt = record.finalizedAt;
           if (!meta.firstAcceptedHandKey) { meta.firstAcceptedHandKey = record.handKey; meta.firstAcceptedAt = record.finalizedAt; }
           recordsStore.add(recordWrapper(record, meta.nextSequence)); metadataStore.put(meta);
+          var situations = Aggregator.careerSituationMap(record);
           record.players.forEach(function (entry) {
             var id = String(entry.playerId);
             // Queued after add(), so this reads the new physical record too.
@@ -751,12 +900,23 @@
             var headRequest = tx.objectStore(STORE_PLAYER_HEADS).get(id);
             headRequest.onsuccess = function () {
               var head = headRequest.result;
-              readIndexedPlayerHistory(tx, id, head, function (wrappers) {
-                var result = playerFromRecords(wrappers.map(function (wrapper) { return wrapper.record; }), id);
-                tx.objectStore(STORE_PLAYER_HEADS).put(summaryHead(id, meta.nextSequence, result.player, head && head.contextHandKeys));
-              });
+              var cacheRequest = tx.objectStore(STORE_AGGREGATES).get(id);
+              cacheRequest.onsuccess = function () {
+                var cache = cacheRequest.result;
+                if (!planned.supersession && (!head || validCache(cache, head))) {
+                  var nextPlayer = Aggregator.appendPlayer(cache && cache.player || null, record, entry, situations[id]);
+                  tx.objectStore(STORE_PLAYER_HEADS).put(summaryHead(id, meta.nextSequence, nextPlayer, head && head.contextHandKeys));
+                  tx.objectStore(STORE_AGGREGATES).put(cacheForPlayer(nextPlayer, meta.nextSequence, cache ? cache.physicalRecordCount + 1 : 1));
+                  return;
+                }
+                readIndexedPlayerHistory(tx, id, head, function (wrappers) {
+                  var result = playerFromRecords(wrappers.map(function (wrapper) { return wrapper.record; }), id);
+                  tx.objectStore(STORE_PLAYER_HEADS).put(summaryHead(id, meta.nextSequence, result.player, head && head.contextHandKeys));
+                  if (result.player) tx.objectStore(STORE_AGGREGATES).put(cacheForPlayer(result.player, meta.nextSequence, result.physicalRecordCount));
+                  else tx.objectStore(STORE_AGGREGATES).delete(id);
+                });
+              };
             };
-            tx.objectStore(STORE_AGGREGATES).delete(id);
           });
         }
         handRequest.onsuccess = function () { handValues = handRequest.result || []; proceed(); };
@@ -768,7 +928,7 @@
       });
     }
     async function stats(playerId) {
-      await ensurePlayerSummaries();
+      await ensureContextAggregates();
       playerId = String(playerId);
       var tx = db.transaction([STORE_AGGREGATES, STORE_PLAYER_HEADS], 'readonly');
       var pair = await Promise.all([requestPromise(tx.objectStore(STORE_AGGREGATES).get(playerId)), requestPromise(tx.objectStore(STORE_PLAYER_HEADS).get(playerId))]);
@@ -795,7 +955,7 @@
       return { player: await stats(playerId), cacheHit: cacheHit, rebuiltFromPlayerIndex: Boolean(pair[1] && !cacheHit) };
     }
     async function careerHudStats(playerIds) {
-      await ensurePlayerSummaries();
+      await ensureContextAggregates();
       var requestedCount = Array.isArray(playerIds) ? playerIds.length : 0;
       var ids = normalizedPlayerIds(playerIds);
       var read = db.transaction([STORE_AGGREGATES, STORE_PLAYER_HEADS], 'readonly');
@@ -836,10 +996,10 @@
     }
     async function allRecords() { return (await idbGetAll(db, STORE_RECORDS)).map(function (wrapper) { return wrapper.record; }); }
     async function careerDashboardStats(playerId, requested) {
-      await ensurePlayerSummaries();
+      await ensureContextAggregates();
       playerId = String(playerId); requested = requested || {};
-      var scope = FilteredStats.normalizeFilters({ position: requested.position || null, situation: requested.situation || null });
-      var position = scope.position; var situation = scope.situation;
+      var scope = FilteredStats.normalizeFilters({ position: requested.position || null, situation: requested.situation || null, tableSize: requested.tableSize || null });
+      var position = scope.position; var situation = scope.situation; var tableSize = scope.tableSize;
       var opponentMode = requested.opponentMode === 'self' || requested.opponentMode === 'others' ? requested.opponentMode : 'overall';
       var selfPlayerId = requested.selfPlayerId === null || requested.selfPlayerId === undefined ? null : String(requested.selfPlayerId);
       var read = db.transaction([STORE_AGGREGATES, STORE_PLAYER_HEADS, STORE_METADATA], 'readonly');
@@ -850,15 +1010,15 @@
       ]);
       await transactionPromise(read);
       var aggregateCache = values[0]; var head = values[1] || null; var metadata = values[2] || {};
-      var cacheKey = playerId + '|' + Number(head && head.revision || 0) + '|' + canonicalJson({ position: position, situation: situation, opponentMode: opponentMode, selfPlayerId: selfPlayerId });
+      var cacheKey = playerId + '|' + Number(head && head.revision || 0) + '|' + canonicalJson({ position: position, situation: situation, tableSize: tableSize, opponentMode: opponentMode, selfPlayerId: selfPlayerId });
       if (dashboardCache.has(cacheKey)) {
         var cached = cloneDashboard(dashboardCache.get(cacheKey));
         cached.query.dashboardCacheHit = true; cached.query.playerRecordRetrievals = 0;
         return cached;
       }
       var aggregateCacheUsed = Boolean(validCache(aggregateCache, head));
-      var hasScope = Boolean(position || situation);
-      var needsRecords = Boolean(hasScope || opponentMode !== 'overall' || !aggregateCacheUsed);
+      var hasScope = Boolean(position || situation || tableSize);
+      var needsRecords = Boolean(opponentMode !== 'overall' || !aggregateCacheUsed);
       var playerRecords = [];
       var retrievals = 0;
       if (needsRecords) {
@@ -874,17 +1034,17 @@
         }
       }
       var relationalStatIds = opponentMode !== 'overall' ? ['threeBet', 'foldToThreeBet', 'foldToFlopCBet'] : [];
-      var filters = hasScope ? [{ position: position, situation: situation }] : [];
+      var filters = [];
       relationalStatIds.forEach(function (statId) {
-        filters.push({ position: position, situation: situation, statId: statId, counterpartMode: opponentMode, selfPlayerId: selfPlayerId });
+        filters.push({ position: position, situation: situation, tableSize: tableSize, statId: statId, counterpartMode: opponentMode, selfPlayerId: selfPlayerId });
       });
       var filteredResults = FilteredStats.careerStatsFilteredBatch(playerRecords, playerId, filters);
-      var core = hasScope ? filteredResults[0] : unfilteredResultFromCache(aggregateCache);
+      var core = hasScope ? contextResultFromCache(aggregateCache, { position: position, situation: situation, tableSize: tableSize }, playerId) : unfilteredResultFromCache(aggregateCache);
       var relational = {};
       relationalStatIds.forEach(function (statId, index) {
-        relational[statId] = filteredResults[index + (hasScope ? 1 : 0)];
+        relational[statId] = filteredResults[index];
       });
-      var result = { core: core, relational: relational, profileStats: aggregateCache && clone(aggregateCache.player.profileProjection) || null, careerTrackingStartedAt: metadata.careerTrackingStartedAt || null, query: { playerRevision: Number(head && head.revision || 0), aggregateCacheUsed: aggregateCacheUsed, dashboardCacheHit: false, playerRecordRetrievals: retrievals } };
+      var result = { core: core, relational: relational, comparisonContexts: comparisonContextsFromCache(aggregateCache, head && head.revision, playerId, tableSize), profileStats: profileStatsFromCache(aggregateCache, { position: position, situation: situation, tableSize: tableSize }), careerTrackingStartedAt: metadata.careerTrackingStartedAt || null, query: { playerRevision: Number(head && head.revision || 0), aggregateCacheUsed: aggregateCacheUsed, dashboardCacheHit: false, playerRecordRetrievals: retrievals } };
       dashboardCache.set(cacheKey, cloneDashboard(result));
       while (dashboardCache.size > 32) dashboardCache.delete(dashboardCache.keys().next().value);
       return result;

@@ -96,34 +96,34 @@ function buildExplanation(record, options) {
   });
 }
 
-var sidePotRecord = semanticRecord('SYNTHETIC-SIDE-POT', [
-  player('PlayerC', { reachedShowdown: true }),
-  player('PlayerA', { folded: true, reachedShowdown: false }),
-  player('PlayerB', { reachedShowdown: true })
+var moonRecord = semanticRecord('MOON-SIDE-POT', [
+  player('Moon', { reachedShowdown: true }),
+  player('Nalavo', { folded: true, reachedShowdown: false }),
+  player('JP', { reachedShowdown: true })
 ], [
-  action(1, 'preflop', 'PlayerC', 'raise', { isFullRaise: true }),
-  action(2, 'preflop', 'PlayerA', 'call'),
-  action(3, 'preflop', 'PlayerB', 'call'),
-  action(4, 'flop', 'PlayerA', 'check'),
-  action(5, 'flop', 'PlayerB', 'check'),
-  action(6, 'flop', 'PlayerC', 'bet', { isAllIn: true }),
-  action(7, 'flop', 'PlayerA', 'call'),
-  action(8, 'flop', 'PlayerB', 'call'),
-  action(9, 'turn', 'PlayerB', 'bet'),
-  action(10, 'turn', 'PlayerA', 'fold'),
-  action(11, 'river', 'PlayerB', 'check')
+  action(1, 'preflop', 'Moon', 'raise', { isFullRaise: true }),
+  action(2, 'preflop', 'Nalavo', 'call'),
+  action(3, 'preflop', 'JP', 'call'),
+  action(4, 'flop', 'Nalavo', 'check'),
+  action(5, 'flop', 'JP', 'check'),
+  action(6, 'flop', 'Moon', 'bet', { isAllIn: true }),
+  action(7, 'flop', 'Nalavo', 'call'),
+  action(8, 'flop', 'JP', 'call'),
+  action(9, 'turn', 'JP', 'bet'),
+  action(10, 'turn', 'Nalavo', 'fold'),
+  action(11, 'river', 'JP', 'check')
 ], {
-  openingAggressor: 'PlayerC',
-  finalAggressor: 'PlayerC',
-  turnEntrants: ['PlayerC', 'PlayerA', 'PlayerB'],
-  riverEntrants: ['PlayerC', 'PlayerB'],
+  openingAggressor: 'Moon',
+  finalAggressor: 'Moon',
+  turnEntrants: ['Moon', 'Nalavo', 'JP'],
+  riverEntrants: ['Moon', 'JP'],
   showdownDetected: true,
-  showdownParticipants: ['PlayerC', 'PlayerB'],
-  showdownWinners: ['PlayerB'],
-  showdownLosers: ['PlayerC'],
+  showdownParticipants: ['Moon', 'JP'],
+  showdownWinners: ['JP'],
+  showdownLosers: ['Moon'],
   settlement: {
     status: 'known',
-    awards: [{ awardId: 'player-b-award', playerId: 'PlayerB', amount: 500, potId: null, boardIndex: null }],
+    awards: [{ awardId: 'jp-award', playerId: 'JP', amount: 500, potId: null, boardIndex: null }],
     refunds: [],
     totalAwardAmount: 500,
     chopped: false,
@@ -134,23 +134,23 @@ var sidePotRecord = semanticRecord('SYNTHETIC-SIDE-POT', [
   }
 });
 
-var sidePot = buildExplanation(sidePotRecord);
-assert.strictEqual(sidePot.players.PlayerC.flopCBet.semanticContribution, '1/1');
-assert.strictEqual(sidePot.players.PlayerC.flopCBet.counterContribution, '1/1');
-assert.strictEqual(sidePot.players.PlayerC.flopCBet.reasonCode, 'final_preflop_aggressor_bet_flop');
-assert.strictEqual(sidePot.players.PlayerA.foldToFlopCBet.semanticContribution, '0/1');
-assert.strictEqual(sidePot.players.PlayerA.foldToFlopCBet.reasonCode, 'direct_call_to_qualifying_cbet');
-assert.strictEqual(sidePot.players.PlayerB.foldToFlopCBet.semanticContribution, '0/1');
-assert.strictEqual(sidePot.players.PlayerB.foldToFlopCBet.reasonCode, 'direct_call_to_qualifying_cbet');
-assert.deepStrictEqual(sidePot.players.PlayerA.foldToFlopCBet.laterActionsIgnored, [
+var moon = buildExplanation(moonRecord);
+assert.strictEqual(moon.players.Moon.flopCBet.semanticContribution, '1/1');
+assert.strictEqual(moon.players.Moon.flopCBet.counterContribution, '1/1');
+assert.strictEqual(moon.players.Moon.flopCBet.reasonCode, 'final_preflop_aggressor_bet_flop');
+assert.strictEqual(moon.players.Nalavo.foldToFlopCBet.semanticContribution, '0/1');
+assert.strictEqual(moon.players.Nalavo.foldToFlopCBet.reasonCode, 'direct_call_to_qualifying_cbet');
+assert.strictEqual(moon.players.JP.foldToFlopCBet.semanticContribution, '0/1');
+assert.strictEqual(moon.players.JP.foldToFlopCBet.reasonCode, 'direct_call_to_qualifying_cbet');
+assert.deepStrictEqual(moon.players.Nalavo.foldToFlopCBet.laterActionsIgnored, [
   { sequence: 10, street: 'turn', type: 'fold', reasonCode: 'already_responded_to_cbet' }
 ]);
-assert.strictEqual(sidePot.players.PlayerA.wtsd.semanticContribution, '0/1');
-assert.strictEqual(sidePot.players.PlayerA.wsd.semanticContribution, '0/0');
-assert.strictEqual(sidePot.players.PlayerC.wtsd.semanticContribution, '1/1');
-assert.strictEqual(sidePot.players.PlayerC.wsd.semanticContribution, '0/1');
-assert.strictEqual(sidePot.players.PlayerB.wsd.semanticContribution, '1/1');
-assert.strictEqual(sidePot.players.PlayerB.wsd.reasonCode, 'positive_showdown_award');
+assert.strictEqual(moon.players.Nalavo.wtsd.semanticContribution, '0/1');
+assert.strictEqual(moon.players.Nalavo.wsd.semanticContribution, '0/0');
+assert.strictEqual(moon.players.Moon.wtsd.semanticContribution, '1/1');
+assert.strictEqual(moon.players.Moon.wsd.semanticContribution, '0/1');
+assert.strictEqual(moon.players.JP.wsd.semanticContribution, '1/1');
+assert.strictEqual(moon.players.JP.wsd.reasonCode, 'positive_showdown_award');
 
 var squeezeRecord = semanticRecord('F3B-SQUEEZE', [player('A', { sawFlop: false }), player('B', { sawFlop: false }), player('C', { sawFlop: false }), player('D', { sawFlop: false })], [
   action(1, 'preflop', 'A', 'raise', { isFullRaise: true, raiseContext: 'open_raise' }),
@@ -214,16 +214,16 @@ assert.strictEqual(muckedLoser.players.B.wsd.semanticContribution, '0/1');
 assert.strictEqual(muckedLoser.players.B.wsd.reasonCode, 'complete_showdown_no_positive_award');
 
 var state = explanation.createState({ maxHands: 2 });
-assert.strictEqual(explanation.record(state, { semanticRecord: sidePotRecord, basicContributionsByPlayer: basicContributions(sidePotRecord) }).recorded, true);
-assert.strictEqual(explanation.record(state, { semanticRecord: sidePotRecord, basicContributionsByPlayer: basicContributions(sidePotRecord) }).duplicate, true, 'duplicate finalized identity records once');
+assert.strictEqual(explanation.record(state, { semanticRecord: moonRecord, basicContributionsByPlayer: basicContributions(moonRecord) }).recorded, true);
+assert.strictEqual(explanation.record(state, { semanticRecord: moonRecord, basicContributionsByPlayer: basicContributions(moonRecord) }).duplicate, true, 'duplicate finalized identity records once');
 assert.strictEqual(explanation.record(state, { semanticRecord: showdownFixtures.S3, basicContributionsByPlayer: {} }).recorded, true);
 assert.strictEqual(explanation.record(state, { semanticRecord: showdownFixtures.S9, basicContributionsByPlayer: {} }).recorded, true);
 assert.strictEqual(explanation.list(state).length, 2, 'explanation history is FIFO bounded');
 assert.strictEqual(explanation.latest(state).handId, showdownFixtures.S9.handIdentity.handId);
 assert.strictEqual(explanation.get(state, showdownFixtures.S3.handIdentity.lifecycleHandId).handId, showdownFixtures.S3.handIdentity.handId);
-assert.strictEqual(explanation.get(state, sidePotRecord.handIdentity.handId), null, 'oldest explanation is evicted');
+assert.strictEqual(explanation.get(state, moonRecord.handIdentity.handId), null, 'oldest explanation is evicted');
 assert.doesNotThrow(function () { JSON.stringify(explanation.list(state)); }, 'export is JSON-safe');
 assert.strictEqual(JSON.stringify(explanation.list(state)).includes('cards'), false, 'explanations contain no card values');
-assert.ok(explanation.summarize(sidePot).some(function (line) { return line.includes('PlayerA: FCB 0/1'); }));
+assert.ok(explanation.summarize(moon).some(function (line) { return line.includes('Nalavo: FCB 0/1'); }));
 
-console.log('Per-hand statistic explanations: PlayerC multiway, F3B squeeze, SD1-SD5, tri-state, IDs, bounds, dedupe, and JSON safety passed.');
+console.log('Per-hand statistic explanations: Moon multiway, F3B squeeze, SD1-SD5, tri-state, IDs, bounds, dedupe, and JSON safety passed.');

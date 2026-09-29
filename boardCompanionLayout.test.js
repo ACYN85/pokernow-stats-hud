@@ -13,6 +13,12 @@ function slots(left, top, width, height, pitch) {
   });
 }
 
+function scaledEntries(entries, scaleX, scaleY) {
+  return entries.map(function (entry) {
+    return Object.assign({}, entry, { rect: rect(entry.rect.left * scaleX, entry.rect.top * scaleY, entry.rect.width * scaleX, entry.rect.height * scaleY) });
+  });
+}
+
 function cards(count, left, top, width, height, pitch) {
   return slots(left === undefined ? 520 : left, top === undefined ? 260 : top, width || 58, height || 80, pitch || 62).slice(0, count).map(function (entry, index) {
     return { rect: entry.rect, classes: 'card-container board-card-' + (index + 1), element: { isConnected: true } };
@@ -91,26 +97,109 @@ assert.strictEqual(remountWithoutBoardDom.layoutEpochId, epochOne, '11 missing b
 assert.deepStrictEqual(remountWithoutBoardDom.canonicalBoardRect, preflop.canonicalBoardRect, 'missing board DOM retains the immutable model');
 
 var resizedSlots = slots(420, 240, 58, 80, 62);
-var resized = resolve(state, {
+var resizedEvidence = {
   viewport: { width: 1080, height: 620, devicePixelRatio: 1, visualViewportScale: 1 }, tableRect: rect(0, 0, 1080, 620),
   tableTransform: { transform: 'none', transformOrigin: null, scaleX: 1, scaleY: 1, localWidth: 1080, localHeight: 620, layoutMode: 'game-table narrow' },
   slotEntries: resizedSlots,
   wrapperCandidates: [{ key: 'resized-wrapper', element: { isConnected: true }, rect: rect(330, 220, 500, 120), innerRect: rect(330, 220, 500, 120), classes: 'table-cards', justifyContent: 'center', transform: 'none', slotEntries: resizedSlots, cardEntries: [] }]
-}, { trigger: 'genuine viewport resize', street: 'preflop' });
+};
+var resizedTransition = resolve(state, resizedEvidence, { trigger: 'genuine viewport resize', street: 'preflop' });
+var resized = resolve(state, resizedEvidence, { trigger: 'resized board geometry settled', street: 'preflop', geometrySettlementSignal: true });
 assert.notStrictEqual(resized.layoutEpochId, epochOne, '12 genuine viewport/table change creates a new epoch');
-assert.match(resized.info.canonicalGeometryChangeReason, /viewport|table\/stage/);
+assert.strictEqual(resized.layoutEpochId, resizedTransition.layoutEpochId, 'settlement completes the current geometry epoch without another history-dependent epoch');
+assert.match(resizedTransition.info.canonicalGeometryChangeReason, /viewport|table\/stage/);
 assert.strictEqual(resized.canonicalBoardRect.left, 420, 'new epoch establishes current structural model');
 assert.strictEqual(resized.leftCompanionRect.right, resized.canonicalBoardRect.left - 10, 'new LEFT derives from new epoch model');
 assert.strictEqual(resized.rightCompanionRect.left, resized.canonicalBoardRect.right + 10, 'new RIGHT derives from the same model');
 
-var modelState = layout.createState({ tableId: 'first-hand-no-board-dom' });
-var modelPreflop = resolve(modelState, { tableId: 'first-hand-no-board-dom', wrapperCandidates: [], slotEntries: [], cardEntries: [] }, { trigger: 'first hand before any flop', street: 'preflop' });
-assert.deepStrictEqual(modelPreflop.canonicalBoardRect, rect(520, 260, 306, 80), '13 first-hand geometry is available from the table-local production model without prior flop');
-assert.match(modelPreflop.source, /table-local five-card board model/);
-var modelFlop = resolve(modelState, { tableId: 'first-hand-no-board-dom', wrapperCandidates: [], slotEntries: [], cardEntries: cards(3) }, { trigger: 'first flop cards appeared', street: 'flop' });
-assert.deepStrictEqual(modelFlop.canonicalBoardRect, modelPreflop.canonicalBoardRect, '14 actual cards validate but never replace first-hand table-local geometry');
-assert.strictEqual(modelFlop.layoutEpochId, modelPreflop.layoutEpochId);
-assert.strictEqual(modelFlop.verified, true, 'matching first measurement also completes verification');
+var zoomState = layout.createState({ tableId: 'zoom-local-board' });
+var zoomOwner = { isConnected: true };
+var baseSlots = slots(520, 260, 58, 80, 62);
+function resolveZoom(scale, devicePixelRatio, label) {
+  var tableRect = rect(0, 0, 1280 * scale, 665 * scale);
+  var result = resolve(zoomState, {
+    tableId: 'zoom-local-board', tableElement: zoomOwner,
+    viewport: { width: tableRect.width, height: tableRect.height, devicePixelRatio: devicePixelRatio, visualViewportScale: 1 },
+    tableRect: tableRect,
+    tableTransform: { transform: scale === 1 ? 'none' : 'matrix(' + scale + ', 0, 0, ' + scale + ', 0, 0)', transformOrigin: '0px 0px', scaleX: scale, scaleY: scale, localWidth: 1280, localHeight: 665, layoutMode: 'game-table' },
+    slotEntries: scaledEntries(baseSlots, scale, scale), wrapperCandidates: [], cardEntries: []
+  }, { trigger: label, street: 'preflop' });
+  assert.deepStrictEqual(result.info.canonicalBoardLocalRect, rect(520, 260, 306, 80), label + ': canonical board remains table-local');
+  assert.strictEqual(Math.round((result.canonicalBoardRect.left - result.leftCompanionRect.right) * 10) / 10, 10, label + ': LEFT gap is stable');
+  assert.strictEqual(Math.round((result.rightCompanionRect.left - result.canonicalBoardRect.right) * 10) / 10, 10, label + ': RIGHT gap is stable');
+  assert.strictEqual(Math.round(((result.leftCompanionRect.top + result.leftCompanionRect.height / 2) - (result.canonicalBoardRect.top + result.canonicalBoardRect.height / 2)) * 10) / 10, 0, label + ': LEFT stays vertically centered');
+  return result;
+}
+var zoom100 = resolveZoom(1, 1, '100% baseline');
+var zoom125 = resolveZoom(0.8, 1.25, '125% equivalent');
+var zoom100From125 = resolveZoom(1, 1, '100% restored from 125%');
+var zoom80 = resolveZoom(1.25, 0.8, '80% equivalent');
+var zoom100From80 = resolveZoom(1, 1, '100% restored from 80%');
+assert.deepStrictEqual(zoom100From125.canonicalBoardRect, zoom100.canonicalBoardRect, '100 -> 125 -> 100 restores canonical viewport geometry');
+assert.deepStrictEqual(zoom100From80.canonicalBoardRect, zoom100.canonicalBoardRect, '100 -> 80 -> 100 restores canonical viewport geometry');
+assert.notStrictEqual(zoom125.layoutEpochId, zoom100.layoutEpochId, '125% equivalent creates a diagnosed scale epoch');
+assert.notStrictEqual(zoom80.layoutEpochId, zoom100From125.layoutEpochId, '80% equivalent creates a diagnosed scale epoch');
+
+function resolveHistoryConvergence(startScale, label, historyState, owner, tableId) {
+  tableId = tableId || 'zoom-history-' + label;
+  historyState = historyState || layout.createState({ tableId: tableId });
+  owner = owner || { isConnected: true };
+  var startRect = rect(0, 0, 1280 * startScale, 665 * startScale);
+  resolve(historyState, {
+    tableId: tableId, tableElement: owner,
+    viewport: { width: startRect.width, height: startRect.height, devicePixelRatio: 1 / startScale, visualViewportScale: 1 },
+    tableRect: startRect,
+    tableTransform: { transform: 'matrix(' + startScale + ', 0, 0, ' + startScale + ', 0, 0)', transformOrigin: '0px 0px', scaleX: startScale, scaleY: startScale, localWidth: 1280, localHeight: 665, layoutMode: 'game-table' },
+    slotEntries: scaledEntries(baseSlots, startScale, startScale), wrapperCandidates: [], cardEntries: []
+  }, { trigger: label + ' starting zoom', street: 'preflop' });
+
+  // Chrome updates viewport metrics before PokerNow always finishes its own
+  // responsive relayout. The first final-100% observation can therefore carry
+  // slot pixels from the preceding zoom, followed by current slot pixels under
+  // the already-stable 100% table signature.
+  var staleAt100 = resolve(historyState, {
+    tableId: tableId, tableElement: owner,
+    viewport: { width: 1280, height: 665, devicePixelRatio: 1, visualViewportScale: 1 },
+    tableRect: rect(0, 0, 1280, 665),
+    tableTransform: { transform: 'none', transformOrigin: '0px 0px', scaleX: 1, scaleY: 1, localWidth: 1280, localHeight: 665, layoutMode: 'game-table' },
+    slotEntries: scaledEntries(baseSlots, startScale, startScale), wrapperCandidates: [], cardEntries: []
+  }, { trigger: label + ' -> 100 viewport resize before PokerNow relayout', street: 'preflop' });
+  var unrelatedAt100 = resolve(historyState, {
+    tableId: tableId, tableElement: owner,
+    viewport: { width: 1280, height: 665, devicePixelRatio: 1, visualViewportScale: 1 },
+    tableRect: rect(0, 0, 1280, 665),
+    tableTransform: { transform: 'none', transformOrigin: '0px 0px', scaleX: 1, scaleY: 1, localWidth: 1280, localHeight: 665, layoutMode: 'game-table' },
+    slotEntries: scaledEntries(baseSlots, startScale, startScale), wrapperCandidates: [], cardEntries: []
+  }, { trigger: label + ' unrelated table child mutation', street: 'preflop' });
+  var settledAt100 = resolve(historyState, {
+    tableId: tableId, tableElement: owner,
+    viewport: { width: 1280, height: 665, devicePixelRatio: 1, visualViewportScale: 1 },
+    tableRect: rect(0, 0, 1280, 665),
+    tableTransform: { transform: 'none', transformOrigin: '0px 0px', scaleX: 1, scaleY: 1, localWidth: 1280, localHeight: 665, layoutMode: 'game-table' },
+    slotEntries: baseSlots, wrapperCandidates: [], cardEntries: []
+  }, { trigger: label + ' -> 100 bounded geometry remeasure', street: 'preflop' });
+  assert.deepStrictEqual(staleAt100.info.canonicalBoardRect, rect(520 * startScale, 260 * startScale, 306 * startScale, 80 * startScale), label + ': current structural pixels are followed until native reflow moves them');
+  assert.strictEqual(unrelatedAt100.info.awaitingPostTransitionGeometry, false, label + ': no settlement heuristic or prior-epoch coordinate origin');
+  assert.deepStrictEqual(settledAt100.canonicalBoardRect, rect(520, 260, 306, 80), label + ': settled 100% geometry is authoritative');
+  return settledAt100;
+}
+var final100From75 = resolveHistoryConvergence(1.25, '75%');
+var final100From125 = resolveHistoryConvergence(0.8, '125%');
+assert.deepStrictEqual(final100From75.canonicalBoardRect, final100From125.canonicalBoardRect, '75 -> 100 and 125 -> 100 converge to one canonical board');
+assert.deepStrictEqual(final100From75.leftCompanionRect, final100From125.leftCompanionRect, 'same final geometry yields identical LEFT regardless of zoom history');
+assert.deepStrictEqual(final100From75.rightCompanionRect, final100From125.rightCompanionRect, 'same final geometry yields identical RIGHT regardless of zoom history');
+var multiCycleState = layout.createState({ tableId: 'zoom-history-multiple' });
+var multiCycleOwner = { isConnected: true };
+var multiCycle75 = resolveHistoryConvergence(1.25, '100 -> 75 -> 100 cycle', multiCycleState, multiCycleOwner, 'zoom-history-multiple');
+var multiCycle125 = resolveHistoryConvergence(0.8, '100 -> 125 -> 100 cycle', multiCycleState, multiCycleOwner, 'zoom-history-multiple');
+assert.deepStrictEqual(multiCycle75.leftCompanionRect, multiCycle125.leftCompanionRect, 'multiple zoom cycles on one state converge to identical Reset/LEFT geometry');
+assert.strictEqual(multiCycle125.info.awaitingPostTransitionGeometry, false, 'the final structural settlement leaves no history-bearing transition pending');
+
+var modelState = layout.createState({ tableId: 'no-semantic-structure' });
+var modelPreflop = resolve(modelState, { wrapperCandidates: [], slotEntries: [], cardEntries: [] }, { street: 'preflop' });
+assert.strictEqual(modelPreflop.canonicalBoardRect, null, 'body/table dimensions alone cannot invent a semantic board origin');
+assert.strictEqual(modelPreflop.leftCompanionRect, null);
+assert.strictEqual(modelPreflop.rightCompanionRect, null);
 
 var bootstrapState = layout.createState({ tableId: 'layout-unit-table' });
 var initialBootstrap = resolve(bootstrapState, { slotEntries: [], wrapperCandidates: [] });
@@ -129,18 +218,18 @@ assert.strictEqual(measured.info.fallback, null);
 assert.strictEqual(measured.info.cachedGeometryReused, false);
 assert.strictEqual(measured.info.latestIllegalCanonicalGeometryChange, null);
 assert.strictEqual(bootstrapRevisionEvents.length, 1, 'one completion revision schedules production placement');
-assert.match(bootstrapRevisionEvents[0].reason, /bootstrap completed/);
+assert.match(bootstrapRevisionEvents[0].reason, /current semantic board structure updated/);
 var laterShift = resolve(bootstrapState, { slotEntries: [], wrapperCandidates: [], cardEntries: cards(4, 450) });
 assert.deepStrictEqual(laterShift.canonicalBoardRect, measured.canonicalBoardRect, 'verified geometry cannot be recalibrated by later streets');
 assert.strictEqual(bootstrapRevisionEvents.length, 1);
 var translatedOwner = resolve(bootstrapState, { tableElement: { isConnected: true }, tableRect: rect(30, 20, 1280, 665), slotEntries: [], wrapperCandidates: [] });
 assert.notStrictEqual(translatedOwner.layoutEpochId, measured.layoutEpochId, 'table owner remount still creates an epoch');
-assert.deepStrictEqual(translatedOwner.canonicalBoardRect, rect(460, 280, 306, 80), 'verified local model survives owner translation without board DOM');
+assert.strictEqual(translatedOwner.canonicalBoardRect, null, 'owner replacement cannot recover a board from body/table ratios or prior-epoch coordinates');
 var scaledOwner = resolve(bootstrapState, {
   tableElement: bootstrapState.tableElement, tableRect: rect(30, 20, 1024, 532), slotEntries: [], wrapperCandidates: [],
   tableTransform: { transform: 'matrix(0.8, 0, 0, 0.8, 0, 0)', scaleX: 0.8, scaleY: 0.8, localWidth: 1280, localHeight: 665, layoutMode: 'game-table' }
 });
-assert.deepStrictEqual(scaledOwner.canonicalBoardRect, rect(374, 228, 244.8, 64), 'local-to-viewport scaling preserves the measured model');
+assert.strictEqual(scaledOwner.canonicalBoardRect, null, 'scaling a coordinate owner does not supply missing semantic evidence');
 var structuralBootstrap = layout.createState({ tableId: 'layout-unit-table' });
 resolve(structuralBootstrap, { slotEntries: [], wrapperCandidates: [] });
 var lateSlots = resolve(structuralBootstrap, { slotEntries: slots(430, 260, 58, 80, 62), wrapperCandidates: [] });
@@ -171,6 +260,71 @@ assert.strictEqual(observedPreflop.rightCompanionRect.left, observedPreflop.cano
 var snapshot = layout.captureLayoutSnapshot(state);
 assert.strictEqual(snapshot.schemaVersion, 3);
 assert.strictEqual(snapshot.privacy, 'geometry and board-layout identifiers only; no names, card values, or chat');
+
+// Sanitized live preflop capture, 2026-09-25: .table-cards.run-1 exists,
+// has no children and height 0. The lane is a landmark, not a card union.
+var liveLane = rect(393.09375, 185.6041717529297, 488.8958435058594, 0);
+function laneEvidence(scale, owner, count, shift) {
+  var lane = rect(liveLane.left * scale, liveLane.top * scale, liveLane.width * scale, 0);
+  var unit = lane.width / 24.2;
+  return evidence({
+    tableElement: owner, tableRect: rect(78.86458587646484 * scale, 0, 1122.25 * scale, 530.3125 * scale),
+    viewport: { width: 1280 * scale, height: 665 * scale, devicePixelRatio: 1 / scale },
+    slotEntries: [], wrapperCandidates: [{ persistentLane: true, rect: lane, classes: 'table-cards run-1' }],
+    cardEntries: count ? cards(count, lane.left + (shift || 0), lane.top, 4.5 * unit, 5.5 * unit, 4.9 * unit) : []
+  });
+}
+function liveResolve(state, scale, owner, count, shift) {
+  return layout.resolveEvidence(state, laneEvidence(scale, owner, count, shift), { leftSize: { width: 76, height: 56 } });
+}
+var laneState = layout.createState(); var laneOwner = { isConnected: true };
+var beforeFlop = liveResolve(laneState, 1, laneOwner, 0);
+assert.ok(beforeFlop.canonicalBoardRect && beforeFlop.leftCompanionRect && beforeFlop.rightCompanionRect);
+function assertBoardCentered(result, label) {
+  var boardCenter = result.canonicalBoardRect.top + result.canonicalBoardRect.height / 2;
+  assert.ok(Math.abs(result.leftCompanionRect.top + result.leftCompanionRect.height / 2 - boardCenter) < 0.001, label + ': complete 76×56 LEFT panel centers on the five-card envelope');
+  assert.ok(Math.abs(result.rightCompanionRect.top + result.rightCompanionRect.height / 2 - boardCenter) < 0.001, label + ': independent RIGHT uses the same center');
+}
+assert.deepStrictEqual([beforeFlop.leftCompanionRect.width, beforeFlop.leftCompanionRect.height], [76, 56]);
+assertBoardCentered(beforeFlop, 'zero-card virtual preflop board');
+assert.strictEqual(beforeFlop.canonicalBoardRect.left, liveLane.left);
+assert.strictEqual(beforeFlop.canonicalBoardRect.top, liveLane.top);
+assert.strictEqual(beforeFlop.leftCompanionRect.right, liveLane.left - 10);
+assert.strictEqual(beforeFlop.rightCompanionRect.left, beforeFlop.canonicalBoardRect.right + 10);
+assert.match(beforeFlop.source, /persistent PokerNow .*run-1 lane/);
+assert.ok(Math.abs(beforeFlop.info.expectedFirstSlotRect.width - liveLane.width / 24.2 * 4.5) < 0.1, 'preflop first-card diagnostic uses the native card width');
+[3, 4, 5, 0].forEach(function (count) {
+  var result = liveResolve(laneState, 1, laneOwner, count);
+  assert.deepStrictEqual(result.canonicalBoardRect, beforeFlop.canonicalBoardRect, 'card count cannot create a second origin');
+  assert.deepStrictEqual(result.leftCompanionRect, beforeFlop.leftCompanionRect);
+  assertBoardCentered(result, count ? count === 3 ? 'flop' : count === 4 ? 'turn' : 'river' : 'between hands');
+  assert.strictEqual(result.source, beforeFlop.source);
+  if (count) {
+    assert.strictEqual(result.info.virtualModelMismatch, false);
+    Object.values(result.info.virtualToMeasuredDelta).forEach(function (value) { assert.ok(Math.abs(value) < 0.001); });
+  }
+});
+var disagree = liveResolve(laneState, 1, laneOwner, 3, 80);
+assert.strictEqual(disagree.info.virtualModelMismatch, true, 'large measured delta diagnoses an incorrect model, never silently snaps');
+assert.ok(Math.abs(disagree.info.virtualToMeasuredDelta.left - 80) < 0.001);
+assert.deepStrictEqual(disagree.canonicalBoardRect, beforeFlop.canonicalBoardRect);
+[0.75, 1, 1.25, 1, 0.75, 1, 1.25, 1].forEach(function (scale) {
+  var result = liveResolve(laneState, scale, laneOwner, 0);
+  assert.strictEqual(result.source, beforeFlop.source);
+  assert.ok(Math.abs(result.canonicalBoardRect.left - liveLane.left * scale) < 0.001);
+  if (scale === 1) {
+    assert.deepStrictEqual(result.leftCompanionRect, beforeFlop.leftCompanionRect, 'every final 100% Reset target converges');
+    assert.deepStrictEqual(result.rightCompanionRect, beforeFlop.rightCompanionRect);
+  }
+});
+var bodyEvidence = laneEvidence(1, { isConnected: true, tagName: 'BODY' }, 0);
+bodyEvidence.tableRect = rect(0, 0, 2000, 1200);
+bodyEvidence.tableTransform = { scaleX: 1, scaleY: 1, localWidth: 2000, localHeight: 1200 };
+var bodyFrame = layout.resolveEvidence(layout.createState(), bodyEvidence, { leftSize: { width: 76, height: 56 } });
+assert.deepStrictEqual(bodyFrame.canonicalBoardRect, beforeFlop.canonicalBoardRect, 'body is only a projection owner');
+assert.deepStrictEqual(bodyFrame.rightCompanionRect, beforeFlop.rightCompanionRect);
+var independentRight = layout.resolveEvidence(laneState, laneEvidence(1, laneOwner, 0), { leftSize: { width: 188, height: 56 }, context: { persistedOffsetX: 400, persistedOffsetY: 100 } });
+assert.deepStrictEqual(independentRight.rightCompanionRect, beforeFlop.rightCompanionRect, 'LEFT width/offset cannot affect RIGHT');
 ['layoutEpochId', 'tableOwnerSource', 'tableViewportRect', 'tableTransform', 'canonicalBoardLocalRect', 'canonicalBoardViewportRect', 'canonicalLeftCompanionRect', 'canonicalRightCompanionRect', 'featureOffset', 'validationOnlyActualCardRects', 'canonicalGeometryChanged', 'lastAcceptedCanonicalChangeReason', 'observedFirstVisibleCardRect', 'expectedFirstSlotRect', 'boardAlignment'].forEach(function (key) { assert.ok(Object.prototype.hasOwnProperty.call(snapshot, key), 'snapshot exposes ' + key); });
 assert.ok(!JSON.stringify(snapshot).includes('playerA'), 'snapshot contains no player identity');
 assert.ok(state.history.length <= 20, 'resolution history remains bounded');

@@ -1,6 +1,7 @@
 'use strict';
 var assert = require('assert'); var fs = require('fs'); var content = fs.readFileSync('./content.js', 'utf8'); var css = fs.readFileSync('./hud.css', 'utf8');
-assert.match(content, /cachedSessionFilteredStats\(playerDashboardState\.playerId, dashboardScopeFilters\(\)\)/, 'Session position and situation scopes use the revision-keyed certified filtered aggregation cache');
+assert.match(content, /PokerFilteredStats\.sessionContextResult\(sessionContextState, playerDashboardState\.playerId, scope\)/, 'Session position and situation scopes use the maintained finalized-hand context state');
+assert.match(content, /: cachedSessionFilteredStats\(playerDashboardState\.playerId, scope\)/, 'Session Overall retains the revision-keyed certified filtered aggregation cache');
 assert.match(content, /careerIndexedService\.careerDashboardStats\(playerId, \{[\s\S]*?position: position,[\s\S]*?opponentMode: opponentMode/, 'Career Position uses the combined service-worker dashboard query');
 ['threeBet','foldToThreeBet','foldToFlopCBet'].forEach(function (statId) { assert.ok(content.includes("'" + statId + "'")); });
 assert.match(content, /filters\.selfPlayerId = localUserPlayerId/, 'relational UI supplies only canonical runtime self identity');

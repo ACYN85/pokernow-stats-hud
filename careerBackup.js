@@ -135,7 +135,9 @@
     if (payload.backupFormatVersion !== FORMAT_VERSION) fail('unsupported career backup format version');
     if (payload.careerStorageSchemaVersion !== Aggregator.STORAGE_SCHEMA_VERSION) fail('unsupported career storage schema version');
     if (Aggregator.SUPPORTED_RECORD_SCHEMA_VERSIONS.indexOf(payload.recordSchemaVersion) < 0) fail('unsupported career record schema version');
-    if (payload.aggregateSchemaVersion !== Aggregator.AGGREGATE_SCHEMA_VERSION) fail('unsupported career aggregate schema version');
+    // The v1 payload contains records only. Accept its historical marker when
+    // the rebuildable local aggregate cache gains a new schema.
+    if ([2, Aggregator.AGGREGATE_SCHEMA_VERSION].indexOf(payload.aggregateSchemaVersion) < 0) fail('unsupported career aggregate schema version');
     if (canonicalStringify(payload.semanticVersionPolicy) !== canonicalStringify(normalizedPolicy())) fail('unsupported semantic version policy');
     exactKeys(payload.careerMetadata, CAREER_KEYS, 'careerMetadata');
     var metadata = payload.careerMetadata;

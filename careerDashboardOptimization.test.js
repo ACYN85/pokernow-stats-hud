@@ -34,11 +34,11 @@ async function backendChecks(browserMode) {
           var filters = { position: position, opponentMode: mode, selfPlayerId: 'me' };
           var sample = await driver.sample('subject', filters);
           equivalent(sample.result, records, 'subject', filters);
-          var expected = (cold ? 1 : 0) + (position || mode !== 'overall' ? 1 : 0);
+          var expected = (cold ? 1 : 0) + (mode !== 'overall' ? 1 : 0);
           assert.strictEqual(sample.passes, expected, 'aggregate remains separate; all filters share one resolution');
           assert.strictEqual(sample.records, expected * records.length);
           assert.strictEqual(sample.result.query.aggregateCacheUsed, !cold);
-          assert.strictEqual(sample.result.query.playerRecordRetrievals, cold || position || mode !== 'overall' ? 1 : 0);
+          assert.strictEqual(sample.result.query.playerRecordRetrievals, cold || mode !== 'overall' ? 1 : 0);
           var hit = await driver.sample('subject', filters);
           assert.strictEqual(hit.passes, 0); assert.strictEqual(hit.records, 0);
           assert.strictEqual(hit.result.query.dashboardCacheHit, true);
@@ -55,8 +55,8 @@ async function backendChecks(browserMode) {
       var situationRequest = { situation: situation, opponentMode: 'overall', selfPlayerId: 'me' };
       var situationSample = await driver.sample('subject', situationRequest);
       equivalent(situationSample.result, records, 'subject', situationRequest);
-      assert.strictEqual(situationSample.passes, 1, 'each new situation resolves player history once');
-      assert.strictEqual(situationSample.result.query.playerRecordRetrievals, 1);
+      assert.strictEqual(situationSample.passes, 0, 'maintained situations project without resolving player history');
+      assert.strictEqual(situationSample.result.query.playerRecordRetrievals, 0);
       assert.deepStrictEqual(situationSample.result.profileStats, overallProfile, 'situation filters do not change the all-hand cached profile projection');
       var situationHit = await driver.sample('subject', situationRequest);
       assert.strictEqual(situationHit.passes, 0); assert.strictEqual(situationHit.result.query.dashboardCacheHit, true);
@@ -79,7 +79,7 @@ async function backendChecks(browserMode) {
     records.push(appended);
     var changed = await driver.sample('subject', request);
     assert.ok(changed.result.query.playerRevision > initial.result.query.playerRevision);
-    assert.strictEqual(changed.result.query.dashboardCacheHit, false); assert.strictEqual(changed.passes, 2);
+    assert.strictEqual(changed.result.query.dashboardCacheHit, false); assert.strictEqual(changed.passes, 1);
     equivalent(changed.result, records, 'subject', request);
     assert.strictEqual((await driver.call('append', [appended])).duplicate, true);
     assert.strictEqual((await driver.sample('subject', request)).passes, 0, 'duplicate append leaves revision/cache intact');
@@ -142,6 +142,22 @@ async function backendChecks(browserMode) {
     var appended = await service.append(records[index]);
     assert.ok(appended.accepted || appended.duplicate, appended.reason);
   }
+  // Simulate an existing installation whose derived cache predates contexts.
+  service.testHooks.metadata.aggregateSchemaVersion = 2;
+  service.testHooks.caches.forEach(function (cache) { cache.aggregateSchemaVersion = 2; delete cache.player.contexts; });
+  service.testHooks.dashboardCache.clear();
+  var upgraded = await service.careerDashboardStats('stable-alice', { position: 'SB', opponentMode: 'overall' });
+  assert.strictEqual(service.testHooks.dashboardDiagnostics.aggregateUpgrades, 1, 'one canonical upgrade rebuilds all player caches');
+  assert.strictEqual(upgraded.query.playerRecordRetrievals, 0, 'first Dashboard projection uses the upgraded aggregate');
+  assert.deepStrictEqual(upgraded.core.counters, filtered.careerStatsFiltered(records, 'stable-alice', { position: 'SB' }).counters);
+  var secondContext = await service.careerDashboardStats('stable-alice', { situation: 'ip', opponentMode: 'overall' });
+  assert.strictEqual(service.testHooks.dashboardDiagnostics.aggregateUpgrades, 1, 'other contexts do not trigger another rebuild');
+  assert.strictEqual(secondContext.query.playerRecordRetrievals, 0, 'post-upgrade context reads do not retrieve player history');
+  assert.deepStrictEqual(secondContext.core, filtered.careerStatsFiltered(records, 'stable-alice', { situation: 'ip' }),
+    'persisted schema-4 cache projects the same complete coverage result on a later read');
+  assert.deepStrictEqual(secondContext.core.coverage.tableSizeHands, { HU: 0, '3_TO_5': 0, SIX_PLUS: 0 },
+    'unknown historical provenance has stable zero-valued classified buckets');
+  assert.strictEqual(service.testHooks.metadata.aggregateSchemaVersion, aggregator.AGGREGATE_SCHEMA_VERSION);
 
   await service.careerStats('stable-alice');
   var overall = await service.careerDashboardStats('stable-alice', { position: null, opponentMode: 'overall', selfPlayerId: 'stable-bob' });
@@ -163,6 +179,40 @@ async function backendChecks(browserMode) {
   var afterAppend = await service.careerDashboardStats('stable-alice', { position: null, opponentMode: 'self', selfPlayerId: 'stable-bob' });
   assert.strictEqual(afterAppend.query.dashboardCacheHit, false, 'append affecting the player invalidates the read-through cache');
   assert.strictEqual(afterAppend.query.playerRecordRetrievals, 1);
+
+  var comparisonService = indexed.createMemoryService({}, { initializedAt: 1, migratedAt: 2, buildId: 'comparison-fixture' });
+  for (var side of ['ip', 'oop']) for (var hand = 0; hand < 15; hand += 1) {
+    var made = hand < (side === 'ip' ? 12 : 8) ? 1 : 0;
+    var hero = fixtures.player('hero', 'Hero', { vpipMade: side === 'ip' ? 1 : 0,
+      flopCBetMade: made, flopCBetOpportunities: 1, foldToFlopCBet: made, foldToFlopCBetOpportunities: 1,
+      wtsdOpportunities: 1 }, { flopCBet: fixtures.decision(1, made), foldToFlopCBet: fixtures.decision(1, made), wtsd: fixtures.decision(1, 0) });
+    var villain = fixtures.player('villain', 'Villain', { wtsdOpportunities: 1 }, { wtsd: fixtures.decision(1, 0) });
+    var folded = fixtures.player('folded', 'Folded', {}, { wtsd: fixtures.decision(0, 0) });
+    [hero, villain, folded].forEach(function (entry, seat) {
+      entry.position = { schemaVersion: 1, status: 'supported', dealtPosition: side === 'ip' ? ['BTN', 'BB', 'CO'][seat] : ['SB', 'BTN', 'CO'][seat], dealtPlayerCount: 3, unsupportedReason: null };
+    });
+    assert.strictEqual((await comparisonService.append(fixtures.record('COMPARISON', side + '-' + hand, [hero, villain, folded], { finalizedAt: 1000 + hand }))).accepted, true);
+  }
+  var comparison = await comparisonService.careerDashboardStats('hero', { situation: 'ip', opponentMode: 'overall' });
+  assert.strictEqual(comparison.query.playerRecordRetrievals, 0, 'warm exact Career context and comparison bundle use no player history');
+  assert.strictEqual(comparison.comparisonContexts.playerId, 'hero');
+  assert.strictEqual(comparison.comparisonContexts.source, 'career');
+  assert.strictEqual(comparison.comparisonContexts.playerRevision, comparison.query.playerRevision);
+  assert.deepStrictEqual(comparison.core.counters, comparison.comparisonContexts.situations.ip.counters);
+  assert.deepStrictEqual(comparison.comparisonContexts.situations.oop.counters,
+    filtered.careerStatsFiltered(await comparisonService.exportCareer().then(function (value) { return value.records; }), 'hero', { situation: 'oop' }).counters);
+  assert.ok(comparison.comparisonContexts.positions.BTN && comparison.comparisonContexts.positions.SB);
+  assert.strictEqual(comparison.comparisonContexts.positions.UTG, null, 'unsupported position stays explicitly missing');
+  var comparisonHtml = dashboard.render({ open: true, playerId: 'hero', selfPlayerId: 'hero', displayName: 'Hero', mode: 'career',
+    situation: 'ip', opponentMode: 'overall', coreStats: comparison.core, comparisonContexts: comparison.comparisonContexts,
+    careerRevision: comparison.query.playerRevision, careerAnalysisAll3Plus: comparison.profileStats.counters.hands === comparison.core.coverage.totalCareerHands &&
+      comparison.profileStats.recordCount === comparison.core.coverage.activeRecordCount });
+  assert.match(comparisonHtml, /self-situationCBet-IP-OOP/);
+  assert.match(comparisonHtml, /self-situationFoldToCBet-IP-OOP/);
+  comparisonHtml = dashboard.render({ open: true, playerId: 'villain', selfPlayerId: 'hero', displayName: 'Villain', mode: 'career',
+    situation: 'ip', opponentMode: 'overall', coreStats: comparison.core, comparisonContexts: comparison.comparisonContexts,
+    careerRevision: comparison.query.playerRevision });
+  assert.doesNotMatch(comparisonHtml, /pnhud-dashboard-review-signals/, 'opponent never receives comparison signals');
 
   await backendChecks(process.argv.includes('--browser'));
   console.log('Career aggregate-cache, one-retrieval relational query, revision cache, and append invalidation passed.');

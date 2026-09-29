@@ -129,6 +129,9 @@ var profileCalibrationIndex = isolated.js.indexOf('playerProfileCalibration.js')
 var playerNotesIndex = isolated.js.indexOf('playerNotesStore.js');
 var statEvidenceIndex = isolated.js.indexOf('statEvidence.js');
 var playerDashboardIndex = isolated.js.indexOf('playerDashboard.js');
+var playerInsightsIndex = isolated.js.indexOf('playerInsights.js');
+var personalLeakAnalysisIndex = isolated.js.indexOf('personalLeakAnalysis.js');
+var strategicImplicationsIndex = isolated.js.indexOf('strategicImplications.js');
 var trackedPlayersIndex = isolated.js.indexOf('trackedPlayers.js');
 assert.strictEqual(isolated.js[handStatInspectorIndex + 1], 'playerProfileScoreInspector.js', 'profile score inspector follows the existing read-only Hand Stat Inspector');
 assert.strictEqual(isolated.js[profileScoreInspectorIndex + 1], 'playerProfileClassifier.js', 'classifier and profile runtime modules follow the standalone diagnostics presenter');
@@ -138,7 +141,11 @@ assert.strictEqual(isolated.js[profileExplanationIndex + 1], 'playerProfileShado
 assert.strictEqual(isolated.js[profileStoreIndex + 1], 'playerProfileCalibration.js', 'read-only calibration helper follows its shadow-store dependency');
 assert.strictEqual(isolated.js[profileCalibrationIndex + 1], 'playerNotesStore.js', 'mutable notes follow profile calibration without entering profile state');
 assert.strictEqual(isolated.js[playerNotesIndex + 1], 'statEvidence.js', 'evidence policy follows stable-ID notes without entering note ownership');
-assert.strictEqual(isolated.js[statEvidenceIndex + 1], 'playerDashboard.js', 'dashboard presentation follows its evidence dependency');
+assert.strictEqual(isolated.js[statEvidenceIndex + 1], 'playerInsights.js', 'Insights follows its Evidence dependency');
+assert.strictEqual(isolated.js[playerInsightsIndex + 1], 'personalLeakAnalysis.js', 'self analysis follows shared Insights primitives');
+assert.strictEqual(isolated.js[personalLeakAnalysisIndex + 1], 'strategicImplications.js', 'Strategic Implications follows shared observation engines');
+assert.strictEqual(isolated.js[strategicImplicationsIndex + 1], 'playerDashboard.js', 'Dashboard follows all derived presentation engines');
+assert.strictEqual(isolated.js.filter(function (file) { return file === 'personalLeakAnalysis.js'; }).length, 1, 'self analysis is packaged exactly once');
 assert.strictEqual(isolated.js[playerDashboardIndex + 1], 'trackedPlayers.js', 'Tracked Players presentation follows the Dashboard navigation target');
 assert.strictEqual(isolated.js[trackedPlayersIndex + 1], 'overlayStats.js', 'exact production order resumes existing HUD modules after Tracked Players');
 assert.strictEqual(isolated.js.filter(function (file) { return file === 'trackedPlayers.js'; }).length, 1, 'trackedPlayers.js is packaged exactly once');
@@ -156,7 +163,7 @@ assert.strictEqual(fs.readFileSync(path.join(extensionRoot, 'pauseDiagnosticCapt
 assert.ok(!JSON.stringify(manifest).includes('runtimeGuard.js'), 'deleted runtimeGuard.js is absent from the production manifest');
 assert.strictEqual(fs.existsSync(path.join(extensionRoot, 'runtimeGuard.js')), false, 'deleted helper is absent from the production root');
 
-var buildPattern = /(?:v\d+\.\d+\.\d+-public-\d{8}|v\d+\.\d+\.\d+-rc\d+-\d{8}-\d{4}|[a-z][a-z0-9-]+-\d{8}-\d{4})/;
+var buildPattern = /(?:v\d+\.\d+\.\d+-rc\d+|[a-z][a-z0-9-]+)-\d{8}-\d{4}/;
 var runtimeSource = fs.readFileSync(path.join(extensionRoot, 'runtimeScope.js'), 'utf8');
 var contentSource = fs.readFileSync(path.join(extensionRoot, 'content.js'), 'utf8');
 var popupSource = fs.readFileSync(path.join(extensionRoot, 'popup.js'), 'utf8');
@@ -222,7 +229,7 @@ assert.ok(contentSource.includes('explainPlayerProfile: explainPlayerProfile'), 
 assert.strictEqual(JSON.stringify(manifest).includes('playerProfileDebugBridge.js'), false, 'profile data is never bridged into the host page world');
 assert.ok(contentSource.includes("['PokerPreflopOpportunityReducer', globalThis.PokerPreflopOpportunityReducer, 'preflopOpportunityReducer.js']"), 'stage 1.4 requires the shadow opportunity reducer');
 assert.ok(!JSON.stringify(manifest).includes('testSupport') && !JSON.stringify(manifest).includes('rawFixtureFactExtractor'), 'test-only prototype utilities are not packaged');
-assert.ok(!JSON.stringify(manifest).includes('capture-derived-preflop') && !JSON.stringify(manifest).includes('captureDerivedPreflopProductionReplay'), 'sanitized capture-derived fixture assets and replay utilities remain test-only');
+assert.ok(!JSON.stringify(manifest).includes('authoritative-preflop') && !JSON.stringify(manifest).includes('authoritativePreflopProductionReplay'), 'sanitized fixture assets and replay utilities remain test-only');
 assert.strictEqual(JSON.stringify(manifest).toLowerCase().includes('.har'), false, 'raw HAR captures are never packaged');
 
 console.log('Production extension package validated at ' + extensionRoot + ' · build ' + buildIds[0]);

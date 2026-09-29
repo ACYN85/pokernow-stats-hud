@@ -43,12 +43,12 @@ function assertBoardPlacement(harness, expectedSide, expectedPanelLeft, label) {
   });
   closeTo(placement.proposedPanelRect.left, expectedPanelLeft, label + ' proposed panel left');
   closeTo(actual.pillRect.left, expectedPanelLeft, label + ' rendered panel left');
-  closeTo(actual.pillRect.top, 270, label + ' rendered panel top');
-  assert.strictEqual(actual.pillRect.width, 100, label + ': compact vertical width is preserved');
-  assert.strictEqual(actual.pillRect.height, 60, label + ': compact vertical height is preserved');
+  closeTo(actual.pillRect.top, 272, label + ' rendered panel top');
+  assert.strictEqual(actual.pillRect.width, 76, label + ': compact width is preserved');
+  assert.strictEqual(actual.pillRect.height, 56, label + ': compact height is preserved');
   assert.strictEqual(actual.host.style.transform || '', '', label + ': direct left/top placement has no transform');
   assert.strictEqual(actual.host.style.left, expectedPanelLeft + 'px', label + ': direct left coordinate');
-  assert.strictEqual(actual.host.style.top, '270px', label + ': direct top coordinate');
+  assert.strictEqual(actual.host.style.top, '272px', label + ': direct top coordinate');
   assert.strictEqual(placement.collision.card, false, label + ': panel does not overlap the board');
   assert.strictEqual(placement.suppressionReason, null, label + ': placement is not suppressed');
   assert.strictEqual(harness.count('#pnhud-pot-odds-root'), 1);
@@ -66,7 +66,7 @@ dispatchCall80(left, 'left');
 left.runFor(1200, 16);
 var leftDecision = harnessApi.decision(left);
 assert.deepStrictEqual([leftDecision.status, leftDecision.amountToCall, leftDecision.currentEligiblePot, leftDecision.potAfterCall, Math.round(leftDecision.requiredEquity * 1000) / 10], ['supported', 80, 120, 200, 40], 'CALL 80 into 120 arithmetic is unchanged');
-var leftResult = assertBoardPlacement(left, 'left', 410, 'visible flop board-left placement without resize');
+var leftResult = assertBoardPlacement(left, 'left', 434, 'visible flop board-left placement without resize');
 assert.strictEqual(leftResult.placement.heroAnchorDiagnostic.boardCandidateCount, 1);
 assert.strictEqual(leftResult.placement.heroAnchorDiagnostic.selectedBoardCards.length, 3);
 assert.match(leftResult.placement.heroAnchorDiagnostic.boardAcquisitionStrategy, /^explicit five-card slot envelope/);
@@ -78,7 +78,7 @@ var stableHost = left.document.getElementById('pnhud-hero-pot-odds');
 var stableFingerprint = leftResult.placement.currentRenderFingerprint;
 left.fixture.replaceHeroSeat(harnessApi.cardRectsForLayout('live-full'));
 left.runFor(1500, 16);
-var reconciled = assertBoardPlacement(left, 'left', 410, 'ordinary seat/table reconcile');
+var reconciled = assertBoardPlacement(left, 'left', 434, 'ordinary seat/table reconcile');
 assert.strictEqual(left.document.getElementById('pnhud-hero-pot-odds'), stableHost, 'ordinary reconcile reuses the stable host');
 assert.strictEqual(reconciled.placement.currentRenderFingerprint, stableFingerprint, 'ordinary reconcile preserves the semantic decision');
 
@@ -86,10 +86,10 @@ assert.strictEqual(reconciled.placement.currentRenderFingerprint, stableFingerpr
 // RIGHT slot, which is reserved for a future board companion.
 var right = harnessApi.createHarness({ gameId: 'pot-odds-board-right', layout: 'live-full', liveCardDom: true, boardDom: true, persistentBoardSlot: true, viewport: { width: 1280, height: 665 }, initialNow: 5000 });
 assertManifestHarness(right);
-right.fixture.setPotGeometry(harnessApi.rect(410, 270, 100, 60));
+right.fixture.setPotGeometry(harnessApi.rect(434, 272, 76, 56));
 dispatchCall80(right, 'right');
 right.runFor(1200, 16);
-var rightResult = assertBoardPlacement(right, 'left', 410, 'fixed board-left slot when pot overlaps');
+var rightResult = assertBoardPlacement(right, 'left', 434, 'fixed board-left slot when pot overlaps');
 assert.strictEqual(rightResult.placement.collisionInfo.candidates[0].side, 'left');
 assert.strictEqual(rightResult.placement.collisionInfo.candidates[0].safe, true, 'LEFT remains authoritative');
 assert.ok(rightResult.placement.collisionInfo.candidates[0].collision.obstacleIndexes.length > 0, 'overlap is diagnosed');
@@ -113,10 +113,40 @@ assert.strictEqual(waiting.suppressionReason, null);
 assert.strictEqual(waiting.visibilityStats.animationFrameRetries, 0, 'persistent slots require no acquisition burst');
 delayed.fixture.mountCommunityBoard(harnessApi.boardRectsForLayout('live-full'));
 delayed.runFor(800, 16);
-var delayedResult = assertBoardPlacement(delayed, 'left', 410, 'board mutation reacquisition without resize');
+var delayedResult = assertBoardPlacement(delayed, 'left', 434, 'board mutation reacquisition without resize');
 assert.strictEqual(delayedResult.placement.visibilityStats.animationFrameRetries, 0, 'card mount changes no persistent-slot acquisition policy');
 assert.strictEqual(delayedResult.placement.retryState, 'visible-stable', 'board mutation ends in the stable visible state');
 assert.strictEqual(harnessApi.timeline(delayed).events.some(function (event) { return event.eventType === 'viewport-change'; }), false, 'board reacquisition needs no resize');
+
+// Without a supported lane or slots, visibility remains geometry-pending.
+// This unsupported-layout fallback cannot invent a semantic preflop origin.
+var measuredOnly = harnessApi.createHarness({ gameId: 'pot-odds-measured-only', layout: 'live-full', liveCardDom: true, boardDom: false, persistentBoardSlot: false, viewport: { width: 1280, height: 665 }, initialNow: 12000 });
+assertManifestHarness(measuredOnly);
+dispatchCall80(measuredOnly, 'measured-only');
+measuredOnly.runFor(32, 16);
+var provisional = harnessApi.placement(measuredOnly);
+var provisionalDom = harnessApi.actualDomVisibility(measuredOnly);
+var measuredOnlyHost = measuredOnly.document.getElementById('pnhud-hero-pot-odds');
+assert.strictEqual(harnessApi.decision(measuredOnly).status, 'supported', 'decision semantics exist while geometry is provisional');
+assert.strictEqual(provisional.heroAnchorDiagnostic.canonicalBoardVerified, false, 'missing semantic geometry remains explicitly unverified');
+assert.strictEqual(provisionalDom.visible, true, 'existing geometry-pending visibility behavior stays painted');
+assert.strictEqual(measuredOnlyHost.style.visibility, 'visible', 'preflop panel is not paint-hidden until the flop');
+assert.strictEqual(provisional.canonicalBoardSource, null, 'no semantic structure means no invented canonical board');
+assert.strictEqual(provisional.canonicalGeometryPending, true);
+assert.ok(provisionalDom.pillRect.width > 0, 'existing visibility fallback remains painted');
+assert.strictEqual(provisional.rightCompanionRect, null, 'no semantic frame means RIGHT is also pending');
+
+var measuredBoard = [harnessApi.rect(430, 260, 58, 80), harnessApi.rect(492, 260, 58, 80), harnessApi.rect(554, 260, 58, 80)];
+measuredOnly.fixture.mountCommunityBoard(measuredBoard);
+measuredOnly.runFor(800, 16);
+var measuredPlacement = harnessApi.placement(measuredOnly);
+var measuredDom = harnessApi.actualDomVisibility(measuredOnly);
+assert.strictEqual(measuredPlacement.heroAnchorDiagnostic.canonicalBoardVerified, true, 'credible flop measurement establishes authoritative geometry');
+assert.deepStrictEqual(measuredPlacement.canonicalBoardRect, { left: 430, top: 260, width: 306, height: 80, right: 736, bottom: 340 });
+assert.strictEqual(measuredDom.visible, true, 'panel remains visible when authoritative geometry arrives');
+assert.deepStrictEqual([measuredDom.pillRect.left, measuredDom.pillRect.top], [344, 272], 'measured flop refines placement to canonical LEFT');
+assert.strictEqual(measuredOnly.document.getElementById('pnhud-hero-pot-odds'), measuredOnlyHost, 'preflop-to-flop refinement does not remount the panel');
+assert.strictEqual(measuredPlacement.rightCompanionRect.left, 746, 'reserved RIGHT companion remains untouched');
 
 var stableStats = harnessApi.clone(reconciled.placement.visibilityStats);
 var stableTimeline = harnessApi.timeline(left).events.length;
@@ -132,5 +162,7 @@ console.log('Community-board pot-odds placement production regression passed:', 
   boardLeft: leftResult.actual.pillRect,
   fixedBoardLeftDuringCollision: rightResult.actual.pillRect,
   delayedBoardFrames: delayedResult.placement.visibilityStats.animationFrameRetries,
+  measuredOnlyPreflop: provisionalDom.pillRect,
+  measuredOnlyFlop: measuredDom.pillRect,
   stableThirtySeconds: { placementAttempts: stableAfter.visibilityStats.placementAttempts, domWrites: stableAfter.visibilityStats.domWrites, timerRetries: stableAfter.visibilityStats.timerRetries }
 }));

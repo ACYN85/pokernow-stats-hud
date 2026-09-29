@@ -75,15 +75,15 @@ assert.deepStrictEqual(calibration.resolveHistoricalIdentity(undefined, { author
 assert.deepStrictEqual(calibration.resolveHistoricalIdentity('null', { stablePlayerId: 'P1', authoritativePlayerId: 'P2' }), { playerId: null, resolved: false, conflict: true }, 'conflicting exact aliases fail closed');
 
 var sessionConfigs = [
-  { sessionKey: 'www.pokernow.com:synthetic-session-a', eventCount: 353, hands: 349, complete: true, gamePlayerAlias: true },
-  { sessionKey: 'www.pokernow.com:synthetic-session-d', hands: 201, complete: false, nullAlias: true },
-  { sessionKey: 'www.pokernow.com:synthetic-session-b', eventCount: 168, hands: 166, complete: false, gamePlayerAlias: true },
-  { sessionKey: 'www.pokernow.com:synthetic-session-c', hands: 89, complete: true, nullAlias: true }
+  { sessionKey: 'www.pokernow.com:pglFEy_8D_XraQ083Wr4Jsgyq', eventCount: 353, hands: 349, complete: true, gamePlayerAlias: true },
+  { sessionKey: 'www.pokernow.com:pglm6s8wkNTWJB5ustu1f_Hyw', hands: 201, complete: false, nullAlias: true },
+  { sessionKey: 'www.pokernow.com:pglIavXnGLkJSz5-emqhLJQA4', eventCount: 168, hands: 166, complete: false, gamePlayerAlias: true },
+  { sessionKey: 'www.pokernow.com:pglLAM2d_P3fUZJ12t9g3IyqB', hands: 89, complete: true, nullAlias: true }
 ];
 var storageSnapshot = {};
 var installed = {};
 sessionConfigs.forEach(function (config, index) {
-  installed[config.sessionKey] = installSession(storageSnapshot, config.sessionKey, index === 0 || index === 2 ? 'P1' : 'VALID-P' + (index + 1), 'Historical Player ' + (index + 1), config.hands, {
+  installed[config.sessionKey] = installSession(storageSnapshot, config.sessionKey, index === 0 || index === 2 ? 'Lwy-ervQBl' : 'VALID-P' + (index + 1), 'Historical Player ' + (index + 1), config.hands, {
     completeFeatures: config.complete,
     nullAlias: config.nullAlias,
     gamePlayerAlias: config.gamePlayerAlias,
@@ -93,7 +93,7 @@ sessionConfigs.forEach(function (config, index) {
 
 var storageBefore = JSON.stringify(storageSnapshot);
 sessionConfigs.forEach(function (config, index) {
-  var validPlayerId = index === 0 || index === 2 ? 'P1' : 'VALID-P' + (index + 1);
+  var validPlayerId = index === 0 || index === 2 ? 'Lwy-ervQBl' : 'VALID-P' + (index + 1);
   var playerName = 'Historical Player ' + (index + 1);
   var result = calibration.rebuildSession(storageSnapshot, config.sessionKey, { statsApi: PokerStats, storeApi: store, classifier: classifier });
   assert.strictEqual(result.error, null);

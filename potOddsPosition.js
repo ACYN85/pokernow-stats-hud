@@ -18,24 +18,34 @@
     return { x: rounded(offset.x), y: rounded(offset.y) };
   }
 
+  function normalizeCoordinateScale(scale) {
+    scale = scale || {};
+    var x = finite(scale.x === undefined ? scale.scaleX : scale.x, 1);
+    var y = finite(scale.y === undefined ? scale.scaleY : scale.y, 1);
+    return { x: x > 0 ? x : 1, y: y > 0 ? y : 1 };
+  }
+
   function rect(left, top, width, height) {
     left = finite(left, 0); top = finite(top, 0); width = Math.max(0, finite(width, 0)); height = Math.max(0, finite(height, 0));
     return { left: left, top: top, width: width, height: height, right: left + width, bottom: top + height };
   }
 
-  function offsetFromDrag(startOffset, startPointer, currentPointer) {
+  function offsetFromDrag(startOffset, startPointer, currentPointer, coordinateScale) {
     var start = normalizeOffset(startOffset);
+    var scale = normalizeCoordinateScale(coordinateScale);
     return normalizeOffset({
-      x: start.x + finite(currentPointer && currentPointer.x, 0) - finite(startPointer && startPointer.x, 0),
-      y: start.y + finite(currentPointer && currentPointer.y, 0) - finite(startPointer && startPointer.y, 0)
+      x: start.x + (finite(currentPointer && currentPointer.x, 0) - finite(startPointer && startPointer.x, 0)) / scale.x,
+      y: start.y + (finite(currentPointer && currentPointer.y, 0) - finite(startPointer && startPointer.y, 0)) / scale.y
     });
   }
 
-  function place(canonicalLeftCompanionRect, persistedOffset, viewport, margin) {
+  function place(canonicalLeftCompanionRect, persistedOffset, viewport, margin, coordinateScale) {
     if (!canonicalLeftCompanionRect) return null;
     var canonical = rect(canonicalLeftCompanionRect.left, canonicalLeftCompanionRect.top, canonicalLeftCompanionRect.width, canonicalLeftCompanionRect.height);
     var offset = normalizeOffset(persistedOffset);
-    var unclamped = rect(canonical.left + offset.x, canonical.top + offset.y, canonical.width, canonical.height);
+    var scale = normalizeCoordinateScale(coordinateScale);
+    var viewportOffset = { x: offset.x * scale.x, y: offset.y * scale.y };
+    var unclamped = rect(canonical.left + viewportOffset.x, canonical.top + viewportOffset.y, canonical.width, canonical.height);
     viewport = viewport || {};
     var viewportWidth = Math.max(0, finite(viewport.width, 0));
     var viewportHeight = Math.max(0, finite(viewport.height, 0));
@@ -51,6 +61,10 @@
       canonicalLeftCompanionRect: canonical,
       persistedOffsetX: offset.x,
       persistedOffsetY: offset.y,
+      coordinateScaleX: scale.x,
+      coordinateScaleY: scale.y,
+      viewportOffsetX: viewportOffset.x,
+      viewportOffsetY: viewportOffset.y,
       unclampedActualRect: unclamped,
       actualPanelRect: actual,
       viewportClampApplied: actual.left !== unclamped.left || actual.top !== unclamped.top
@@ -73,46 +87,27 @@
     return placement;
   }
 
-  function createBoardResetState(snapshot) {
+  function createPositionPreferenceState(snapshot) {
     snapshot = snapshot || {};
-    return {
-      handId: snapshot.handId === null || snapshot.handId === undefined ? null : String(snapshot.handId),
-      applied: snapshot.applied === true,
-      sequence: Math.max(0, Math.floor(finite(snapshot.sequence, 0)))
-    };
+    // The legacy hand ID and first-flop latch are not part of user placement.
+    return { manualOverride: snapshot.manualOverride === true };
   }
 
-  function observeAuthoritativeBoard(state, observation) {
-    observation = observation || {};
-    var handId = observation.handId === null || observation.handId === undefined || observation.handId === '<D>'
-      ? null
-      : String(observation.handId);
-    if (!state || !handId) return { reset: false, reason: !state ? 'reset state unavailable' : 'authoritative hand ID unavailable' };
-    var newHand = state.handId !== handId;
-    if (newHand) {
-      state.handId = handId;
-      state.applied = false;
-    }
-    var measuredBoardCardCount = Math.max(0, Math.floor(finite(observation.measuredBoardCardCount, 0)));
-    var authoritativeStreet = String(observation.authoritativeStreet || '').toLowerCase();
-    var postflopStreetVerified = /^(?:flop|turn|river)$/.test(authoritativeStreet);
-    if (state.applied) return { reset: false, handId: handId, newHand: newHand, reason: 'canonical reset already applied for this hand' };
-    if (!postflopStreetVerified || observation.canonicalBoardVerified !== true || measuredBoardCardCount < 3) {
-      return { reset: false, handId: handId, newHand: newHand, reason: 'waiting for first authoritative measured postflop board', measuredBoardCardCount: measuredBoardCardCount, authoritativeStreet: authoritativeStreet || null };
-    }
-    state.applied = true;
-    state.sequence += 1;
-    return { reset: true, handId: handId, newHand: newHand, reason: 'first authoritative measured postflop board for hand', measuredBoardCardCount: measuredBoardCardCount, authoritativeStreet: authoritativeStreet, sequence: state.sequence };
+  function setManualPlacementCustomized(state, enabled) {
+    if (!state) return state;
+    state.manualOverride = enabled === true;
+    return state;
   }
 
   var api = Object.freeze({
     VIEWPORT_MARGIN: VIEWPORT_MARGIN,
     normalizeOffset: normalizeOffset,
+    normalizeCoordinateScale: normalizeCoordinateScale,
     offsetFromDrag: offsetFromDrag,
     place: place,
     deterministicFallback: deterministicFallback,
-    createBoardResetState: createBoardResetState,
-    observeAuthoritativeBoard: observeAuthoritativeBoard
+    createPositionPreferenceState: createPositionPreferenceState,
+    setManualPlacementCustomized: setManualPlacementCustomized
   });
   root.PokerPotOddsPosition = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

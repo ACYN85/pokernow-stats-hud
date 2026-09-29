@@ -11,10 +11,13 @@ var backupPolicy = require('./careerBackupPolicy.js');
   var writes = [];
   var appended = [];
   var replacements = [];
+  var merges = [];
+  var removals = [];
   var exportCareerCalls = 0;
   var ledgerInfo = { ready: true, backend: 'indexeddb', physicalRecordCount: 1, activeRecordCount: 1 };
   var databaseToken = { owner: 'extension-service-worker' };
   var pendingRecord = { fingerprint: 'pending-fingerprint' };
+  var outboxVisible = true;
   var service = {
     append: async function (record) { appended.push(record); return { accepted: true }; },
     careerLedgerInfo: async function () { return Object.assign({}, ledgerInfo); },
@@ -25,14 +28,18 @@ var backupPolicy = require('./careerBackupPolicy.js');
     careerPlayerSummaries: async function () { return [{ playerId: 'P1', latestDisplayName: 'Alice', hands: 1, lastSeenAt: 10, revision: 1, summaryVersion: 1 }]; },
     recentCareerRecords: async function () { return [{ fingerprint: 'recent' }]; },
     exportCareer: async function () { exportCareerCalls += 1; return { records: [{ fingerprint: 'formal-record' }] }; },
-    replaceCareerRecords: async function (records, metadata, options) { replacements.push({ records: records, metadata: metadata, options: options }); return { replaced: true }; }
+    replaceCareerRecords: async function (records, metadata, options) { replacements.push({ records: records, metadata: metadata, options: options }); return { replaced: true }; },
+    mergeCareerRecords: async function (records, metadata, options) { merges.push({ records: records, metadata: metadata, options: options }); return { merged: true }; },
+    removeCareerHandKeys: async function (handKeys) { removals.push(handKeys); return { removed: true, logicalHandCount: handKeys.length, physicalRecordCount: handKeys.length, affectedPlayerIds: ['P1'] }; }
   };
   var backupModule = {
-    createBackup: async function () { return { backupFormatVersion: 1, careerMetadata: { careerTrackingStartedAt: 50 }, integrity: { payloadDigest: 'current-digest-456', physicalRecordCount: 1, activeRecordCount: 1, playerCount: 1 } }; },
+    digestCareerExport: async function () { return 'current-removal-digest-789'; },
+    createBackup: async function () { return { backupFormatVersion: 1, records: [{ fingerprint: 'formal-record' }], careerMetadata: { careerTrackingStartedAt: 50 }, integrity: { payloadDigest: 'current-digest-456', physicalRecordCount: 1, activeRecordCount: 1, playerCount: 1 } }; },
     validateBackup: async function (value) {
       if (value && value.invalid) throw new Error('invalid backup fixture');
-      return { records: [{ fingerprint: 'restore-record' }], careerMetadata: { careerTrackingStartedAt: 50 }, summary: { backupFormatVersion: 1, payloadDigest: 'digest-123', physicalRecordCount: 1 } };
-    }
+      return { records: [{ fingerprint: 'restore-record' }], careerMetadata: { careerTrackingStartedAt: 50 }, activeRecords: [{ fingerprint: 'restore-record' }], summary: { backupFormatVersion: 1, payloadDigest: 'digest-123', physicalRecordCount: 1 } };
+    },
+    mergeValidatedBackups: function () { return { ok: true, records: [{ fingerprint: 'formal-record' }, { fingerprint: 'restore-record' }], careerMetadata: { careerTrackingStartedAt: 50 }, activeRecords: [{}, {}], summary: { importedLogicalHandCount: 1, alreadyPresentLogicalHandCount: 0, newLogicalHandCount: 1, conflictedLogicalHandCount: 0, affectedPlayerCount: 1, mergedLogicalHandCount: 2, mergedPhysicalRecordCount: 2 } }; }
   };
   var indexedModule = {
     MESSAGE_TYPE: 'PNHUD_CAREER_INDEXED_REQUEST',
@@ -41,6 +48,7 @@ var backupPolicy = require('./careerBackupPolicy.js');
     OUTBOX_PREFIX: 'outbox:',
     hasCompleteDatabase: async function (database) { assert.strictEqual(database, databaseToken); return true; },
     outboxRecords: function () { return [{ key: 'outbox:pending', record: pendingRecord }]; },
+    sessionRemovalPlan: function (_records, request) { return { namespace: request.namespace, sessionHandIds: request.sessionHandIds, sessionHandCount: request.sessionHandIds.length, matchedSessionHandIds: request.sessionHandIds, unmatchedSessionHandIds: [], logicalHandKeys: ['pokernow|pokernow.com|G|H'], logicalHandCount: 1, physicalRecordCount: 1, physicalFingerprints: ['formal-record'], affectedPlayerIds: ['P1'] }; },
     createIndexedService: async function (database, saved) {
       assert.strictEqual(database, databaseToken, 'the worker passes its extension-origin IndexedDB global to the backend');
       assert.ok(saved['outbox:pending']);
@@ -62,8 +70,8 @@ var backupPolicy = require('./careerBackupPolicy.js');
           if (Array.isArray(keys) && keys[0] === 'outbox:pending') return { 'outbox:pending': pendingRecord };
           return {};
         },
-        getKeys: async function () { return ['unrelated', 'outbox:pending']; },
-        remove: async function (key) { removed.push(key); },
+        getKeys: async function () { return outboxVisible ? ['unrelated', 'outbox:pending'] : ['unrelated']; },
+        remove: async function (key) { removed.push(key); if (key === 'outbox:pending') outboxVisible = false; },
         set: async function (value) { writes.push(value); }
       } },
       runtime: {
@@ -107,12 +115,26 @@ var backupPolicy = require('./careerBackupPolicy.js');
   assert.strictEqual(dashboardStats.ok, true);
   assert.strictEqual(dashboardStats.value.combined, true, 'service worker routes the combined Career dashboard query');
   assert.strictEqual(dashboardStats.value.options.position, 'BTN');
+  outboxVisible = true;
   var exportedBackup = await request('exportCareerBackup');
   assert.strictEqual(exportedBackup.ok, true);
   assert.strictEqual(exportedBackup.value.integrity.payloadDigest, 'current-digest-456');
+  assert.deepStrictEqual(appended, [pendingRecord, pendingRecord], 'export replays a newly durable outbox record before taking the portable snapshot');
   var validatedBackup = await request('validateCareerBackup', [{ candidate: true }]);
   assert.strictEqual(validatedBackup.ok, true);
   assert.strictEqual(validatedBackup.value.physicalRecordCount, 1);
+  outboxVisible = true;
+  var importPreview = await request('prepareCareerImport', [{ candidate: true }]);
+  assert.strictEqual(importPreview.ok, true);
+  assert.strictEqual(importPreview.value.canImport, true);
+  assert.strictEqual(importPreview.value.summary.newLogicalHandCount, 1);
+  assert.deepStrictEqual(appended, [pendingRecord, pendingRecord, pendingRecord], 'import preview replays a newly durable outbox record before its digest-bound merge plan');
+  assert.strictEqual((await request('mergeCareerBackup', [{ candidate: true }, { mode: 'merge', confirmed: true, expectedPayloadDigest: 'digest-123', expectedCurrentPayloadDigest: 'stale-current' }])).ok, false, 'merge rejects stale current Career confirmation');
+  assert.strictEqual(merges.length, 0);
+  var mergedBackup = await request('mergeCareerBackup', [{ candidate: true }, { mode: 'merge', confirmed: true, expectedPayloadDigest: 'digest-123', expectedCurrentPayloadDigest: 'current-digest-456' }]);
+  assert.strictEqual(mergedBackup.ok, true);
+  assert.strictEqual(merges.length, 1);
+  assert.strictEqual(merges[0].records.length, 2);
   var preview = await request('prepareCareerRestore', [{ candidate: true }]);
   assert.strictEqual(preview.ok, true);
   assert.strictEqual(preview.value.candidate.payloadDigest, 'digest-123');
@@ -127,6 +149,18 @@ var backupPolicy = require('./careerBackupPolicy.js');
   assert.strictEqual(replacements[0].metadata.careerTrackingStartedAt, 50);
   assert.strictEqual((await request('replaceCareerBackup', [{ invalid: true }, { mode: 'replace', confirmed: true, expectedPayloadDigest: 'digest-123', expectedCurrentPayloadDigest: 'current-digest-456' }])).ok, false);
   assert.strictEqual(replacements.length, 1, 'validation failure occurs before the replacement method is entered');
+  var removalRequest = { namespace: { provider: 'pokernow', host: 'pokernow.com', gameId: 'G' }, sessionHandIds: ['H'] };
+  outboxVisible = true;
+  var removalPreview = await request('prepareCareerSessionRemoval', [removalRequest]);
+  assert.strictEqual(removalPreview.ok, true);
+  assert.deepStrictEqual(appended, [pendingRecord, pendingRecord, pendingRecord, pendingRecord], 'removal preview replays a newly pending durable outbox before taking its digest-bound snapshot');
+  assert.deepStrictEqual(removed, ['outbox:pending', 'outbox:pending', 'outbox:pending', 'outbox:pending']);
+  assert.deepStrictEqual([removalPreview.value.logicalHandCount, removalPreview.value.affectedPlayerCount], [1, 1]);
+  assert.strictEqual((await request('removeCareerSession', [removalRequest, { mode: 'remove-current-session', confirmed: true, expectedCurrentDigest: 'current-removal-digest-789', expectedConfirmationToken: 'wrong' }])).ok, false, 'Session removal rejects a stale/tampered preview token');
+  assert.strictEqual(removals.length, 0);
+  var removedSession = await request('removeCareerSession', [removalRequest, { mode: 'remove-current-session', confirmed: true, expectedCurrentDigest: removalPreview.value.currentDigest, expectedConfirmationToken: removalPreview.value.confirmationToken }]);
+  assert.strictEqual(removedSession.ok, true);
+  assert.deepStrictEqual(removals, [['pokernow|pokernow.com|G|H']]);
   var timings = await request('careerRuntimeTimings', ['P1']);
   assert.strictEqual(timings.ok, true);
   assert.strictEqual(timings.value.environment, 'actual-extension-runtime');

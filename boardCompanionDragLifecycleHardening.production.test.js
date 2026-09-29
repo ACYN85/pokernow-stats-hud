@@ -48,6 +48,7 @@ function click(harness, selector) {
 var defaults = settings.merge(settings.DEFAULTS, { selectedSettingsSection: 'hud' });
 
 // Preferences and first production frame can arrive before the asynchronous storage callback.
+// A saved user offset has no hand ownership and survives delayed hydration.
 var delayedPreferences = harnessApi.createHarness({
   gameId: 'hardening-delayed-preferences', layout: 'live-full', liveCardDom: true, persistentBoardSlot: true,
   viewport: { width: 1280, height: 665 }, initialNow: 1000, storageGetDelay: 100,
@@ -57,7 +58,8 @@ frame(delayedPreferences, 'registered', { currentPlayer: { id: 'playerA', name: 
 assert.strictEqual(harnessApi.actualDomVisibility(delayedPreferences).visible, false, 'startup frame remains held before preference hydration');
 delayedPreferences.runFor(360, 16);
 var hydrated = visible(delayedPreferences, '1 delayed preferences hydrate and replay the first hand');
-assert.deepStrictEqual([hydrated.placement.persistedOffsetX, hydrated.placement.persistedOffsetY], [35, 30]);
+assert.deepStrictEqual([hydrated.placement.persistedOffsetX, hydrated.placement.persistedOffsetY], [35, 30], 'delayed hydration retains the persistent user offset');
+assert.strictEqual(JSON.parse(delayedPreferences.evaluate('JSON.stringify(PokerNowHUDBoardCompanion.layoutInfo().manualOverride)')), false);
 assert.strictEqual(delayedPreferences.document.getElementById('pnhud-settings-panel').hidden, true, 'first hand appears while Settings is never opened');
 
 // A stale hidden presentation used to survive ordinary seat readiness because reconcile only repainted it.
@@ -78,15 +80,58 @@ var delayedGeometry = harnessApi.createHarness({
   viewport: { width: 1280, height: 665 }, initialNow: 5000, initialStorage: { hudUiPreferences: defaults }
 });
 frame(delayedGeometry, 'registered', { currentPlayer: { id: 'playerA', name: 'playerA', stack: 420 }, gameState: activeState('GEOMETRY-FIRST') }, 'geometry-not-ready', 260);
-var fallback = visible(delayedGeometry, '3 geometry-not-ready deterministic fallback');
+var fallback = { actual: harnessApi.actualDomVisibility(delayedGeometry), placement: harnessApi.placement(delayedGeometry) };
+assert.strictEqual(fallback.actual.visible, true, '3 supported Pot Odds stays painted when canonical geometry is not ready');
 assert.strictEqual(fallback.placement.canonicalGeometryPending, true);
-assert.match(fallback.placement.placementStrategy, /fallback|retain/);
-delayedGeometry.fixture.setTableGeometry(harnessApi.rect(0, 0, 1280, 665), false);
+assert.ok(fallback.placement.chosenPanelRect && fallback.placement.chosenPanelRect.width > 0 && fallback.placement.chosenPanelRect.height > 0, '3 fallback has nonzero geometry');
+assert.match(fallback.placement.placementStrategy, /(?:deterministic-initial-companion-fallback|retain-last-visible-panel)/, '3 V1.2 visible fallback remains active across reconciliation');
+assert.ok(fallback.actual.pillRect.left >= 0 && fallback.actual.pillRect.right <= 1280 && fallback.actual.pillRect.top >= 0 && fallback.actual.pillRect.bottom <= 665, '3 fallback is visibly inside the viewport');
+delayedGeometry.setViewport(200, 150, false);
+delayedGeometry.fixture.setTableGeometry(harnessApi.rect(0, 0, 0, 0), false);
+delayedGeometry.dispatchWindowEvent('resize');
+delayedGeometry.runFor(320, 16);
+var resizedFallback = visible(delayedGeometry, '3 unavailable geometry remains visible after a drastic resize');
+  assert.deepStrictEqual([resizedFallback.actual.pillRect.left, resizedFallback.actual.pillRect.top], [116, 86], '3 retained V1.2 fallback receives the ordinary viewport safety clamp');
+assert.ok(resizedFallback.actual.pillRect.left >= 0 && resizedFallback.actual.pillRect.right <= 200 && resizedFallback.actual.pillRect.top >= 0 && resizedFallback.actual.pillRect.bottom <= 150, '3 retained fallback cannot remain offscreen');
+delayedGeometry.setViewport(1280, 665, false);
 delayedGeometry.triggerResizeObserver(delayedGeometry.fixture.table);
 delayedGeometry.runFor(320, 16);
-var geometryReady = visible(delayedGeometry, '3 geometry readiness signal automatically applies canonical placement');
+delayedGeometry.fixture.restoreBoardSlotOwner();
+delayedGeometry.runFor(320, 16);
+var tableRelative = visible(delayedGeometry, '3 semantic empty slots restore preflop placement before board cards');
+assert.strictEqual(tableRelative.placement.heroAnchorDiagnostic.canonicalBoardVerified, true, '3 real semantic slots are required for canonical preflop placement');
+assert.match(tableRelative.placement.placementStrategy, /canonical-left-board-companion/);
+  assert.deepStrictEqual([tableRelative.actual.pillRect.left, tableRelative.actual.pillRect.top], [434, 272]);
+delayedGeometry.fixture.mountCommunityBoard(harnessApi.boardRectsForLayout('live-full'));
+delayedGeometry.runFor(320, 16);
+var geometryReady = visible(delayedGeometry, '3 measured board signal automatically applies canonical placement');
 assert.strictEqual(geometryReady.placement.canonicalGeometryPending, false);
 assert.ok(geometryReady.placement.canonicalLeftCompanionRect);
+
+// Real PokerNow does not expose the synthetic fixture's main.game-table owner.
+// Preserve the released V1.2 body-owned fallback so the supported panel cannot
+// remain paint-hidden merely because those fixture-only selectors do not match.
+var bodyOnlyGeometry = harnessApi.createHarness({
+  gameId: 'hardening-body-only-geometry', layout: 'live-full', liveCardDom: true, persistentBoardSlot: false,
+  viewport: { width: 1280, height: 665 }, initialNow: 6500, initialStorage: { hudUiPreferences: defaults }
+});
+bodyOnlyGeometry.document.body.appendChild(bodyOnlyGeometry.fixture.hero.seat);
+bodyOnlyGeometry.document.body.appendChild(bodyOnlyGeometry.fixture.opponent.seat);
+bodyOnlyGeometry.document.body.appendChild(bodyOnlyGeometry.fixture.action);
+bodyOnlyGeometry.document.body.appendChild(bodyOnlyGeometry.fixture.pot);
+var bodySlots = bodyOnlyGeometry.fixture.restoreBoardSlotOwner(false);
+bodyOnlyGeometry.document.body.appendChild(bodySlots);
+bodyOnlyGeometry.fixture.table.remove();
+bodyOnlyGeometry.document.body.setRect(harnessApi.rect(0, 0, 1280, 665));
+frame(bodyOnlyGeometry, 'registered', { currentPlayer: { id: 'playerA', name: 'playerA', stack: 420 }, gameState: activeState('BODY-ONLY') }, 'body-is-not-table-geometry', 320);
+var bodyOnly = { actual: harnessApi.actualDomVisibility(bodyOnlyGeometry), placement: harnessApi.placement(bodyOnlyGeometry) };
+assert.strictEqual(bodyOnly.actual.visible, true, '3 selector-mismatched PokerNow structure still paints Pot Odds');
+assert.ok(bodyOnly.actual.hostRect.width > 0 && bodyOnly.actual.hostRect.height > 0 && bodyOnly.actual.pillRect.width > 0 && bodyOnly.actual.pillRect.height > 0, '3 body-owner fallback has nonzero host and pill geometry');
+assert.ok(bodyOnly.actual.effectivePaint.ancestors.every(function (entry) { return entry.paintVisible; }), '3 host, portal, body, and document ancestors are effectively painted');
+assert.match(bodyOnly.placement.heroAnchorDiagnostic.tableOwnerSource, /body projection-only coordinate owner/);
+  assert.deepStrictEqual([bodyOnly.actual.pillRect.left, bodyOnly.actual.pillRect.top], [434, 272], '3 body-owned projection uses independent semantic slot evidence');
+assert.ok(bodyOnly.placement.tableRect && bodyOnly.actual.pillRect.left >= bodyOnly.placement.tableRect.left && bodyOnly.actual.pillRect.right <= bodyOnly.placement.tableRect.right && bodyOnly.actual.pillRect.top >= bodyOnly.placement.tableRect.top && bodyOnly.actual.pillRect.bottom <= bodyOnly.placement.tableRect.bottom, '3 body-owned placement is valid inside its coordinate owner');
+assert.strictEqual(bodyOnly.placement.rightCompanionRect.left, 836, '3 RIGHT remains independently reserved');
 
 var harness = harnessApi.createHarness({
   gameId: 'hardening-drag-settings-reset', layout: 'live-full', liveCardDom: true, persistentBoardSlot: true,
@@ -155,7 +200,7 @@ drag(harness, 5000, 5000, 83);
 var extreme = visible(harness, '11 extreme offset');
 assert.strictEqual(extreme.placement.viewportClampApplied, true);
 assert.deepStrictEqual([extreme.placement.persistedOffsetX, extreme.placement.persistedOffsetY], [5000, 5000]);
-assert.deepStrictEqual([extreme.actual.pillRect.left, extreme.actual.pillRect.top], [1172, 597]);
+  assert.deepStrictEqual([extreme.actual.pillRect.left, extreme.actual.pillRect.top], [1196, 601]);
 
 // Root ownership and its own stacking context keep the panel above PokerNow paint.
 var root = harness.document.getElementById('pnhud-pot-odds-root');
@@ -182,5 +227,5 @@ assert.strictEqual(history.capacity, 160);
 assert.strictEqual(history.count, 160, '13 meaningful history is bounded');
 assert.strictEqual(history.events.length, 160);
 
-assert.deepStrictEqual(delayedPreferences.evaluationErrors.concat(delayedHero.evaluationErrors, delayedGeometry.evaluationErrors, harness.evaluationErrors), []);
+assert.deepStrictEqual(delayedPreferences.evaluationErrors.concat(delayedHero.evaluationErrors, delayedGeometry.evaluationErrors, bodyOnlyGeometry.evaluationErrors, harness.evaluationErrors), []);
 console.log('BoardCompanion drag/render lifecycle hardening production regressions passed.');

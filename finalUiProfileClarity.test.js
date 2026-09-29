@@ -55,8 +55,14 @@ assert.ok(result.evidence.some(function (item) { return item.sample === '6 / 40'
 assert.strictEqual(result.tableSize.applied, true, 'existing table-size adjustment remains visible');
 assert.strictEqual(result.tableSize.effectiveTableSize, 6);
 
+var dashboardCore = { schemaVersion: 1, playerId: 'supplied-player', filters: {},
+  counters: { hands: suppliedStats.handsPlayed, vpipMade: suppliedStats.vpipHands,
+    vpipOpportunities: suppliedStats.vpipOpportunities, pfrMade: suppliedStats.pfrHands,
+    pfrOpportunities: suppliedStats.pfrOpportunities },
+  coverage: { totalSessionHands: suppliedStats.handsPlayed,
+    tableSizeHands: { HU: 0, '3_TO_5': 0, SIX_PLUS: suppliedStats.handsPlayed } } };
 var dashboardHtml = dashboard.render({
-  playerId: 'supplied-player', displayName: 'Supplied example', mode: 'session', sessionStats: suppliedStats, coreStats: suppliedStats,
+  playerId: 'supplied-player', displayName: 'Supplied example', mode: 'session', sessionStats: suppliedStats, coreStats: dashboardCore,
   profile: { displayedArchetype: null, rawArchetype: 'Unknown / Uncertain', rawScores: supplied.record.primary.scores, explanation: result }, note: ''
 });
 assert.ok(dashboardHtml.includes('<dt>Top candidate</dt><dd>Loose Passive 29.9%</dd>'));

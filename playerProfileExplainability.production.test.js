@@ -32,13 +32,22 @@ assert.ok(content.includes("['PokerPlayerProfileExplanation', globalThis.PokerPl
 assert.ok(content.includes('explainPlayerProfile: explainPlayerProfile'), 'isolated diagnostics expose explainPlayerProfile');
 assert.ok(content.includes('PokerPlayerProfileExplanation.explain({'), 'production explanation calls the single adapter');
 assert.ok(content.includes('decomposition: PokerPlayerProfileShadowStore.scoreDecomposition'), 'production passes current classifier decomposition');
-assert.ok(content.includes('explanation: explainPlayerProfile(playerId)'), 'dashboard receives the exact same diagnostic explanation object');
-assert.ok(content.indexOf('playerDashboardState.profile = playerDashboardProfile') > content.indexOf('cachedSessionFilteredStats'), 'filtered dashboard stats and unfiltered Session profile remain separately owned');
+var sessionRefresh = content.slice(content.indexOf('function refreshPlayerDashboardSession('),
+  content.indexOf('function refreshOpenPlayerDashboardSessionAfterCommit('));
+assert.ok(sessionRefresh.includes('playerDashboardState.coreStats = scope.position || scope.situation || scope.tableSize'),
+  'Session Dashboard core uses the selected context');
+assert.ok(sessionRefresh.includes('coverage.tableSizeHands') && sessionRefresh.includes('counts[key] === coreCounters.hands'),
+  'All-profile support requires every hand in one classified table-size bucket');
+assert.ok(sessionRefresh.includes('playerDashboardState.profile = bucket && coreCounters ? PokerPlayerDashboard.careerProfile'),
+  'Session Dashboard profile uses the selected exact-counter population');
 
 assert.ok(dashboard.includes('Why this profile?') && dashboard.includes('Profile Guide') && dashboard.includes('Advanced details'));
 assert.ok(dashboard.includes('<details class="pnhud-dashboard-profile-explanation">'), 'explanation is compact and collapsed by default');
 assert.ok(dashboard.includes('Why no profile is shown'), 'hidden profiles retain an explanation path');
-assert.ok(require('./playerDashboard.js').render({ mode: 'session', profile: {} }).includes('Current profile is not recalculated by dashboard filters.'), 'existing profile/filter ownership text remains visible');
+var supportedCore = { counters: { hands: 1 }, coverage: { tableSizeHands: { HU: 1, '3_TO_5': 0, SIX_PLUS: 0 } } };
+assert.ok(require('./playerDashboard.js').render({ mode: 'session', coreStats: supportedCore, profile: {} })
+  .includes('Profile uses the selected table-size and context population.'),
+  'supported profile explains its selected table-size and context population');
 assert.ok(seatOverlay.includes('profileExplanation.DEFINITIONS[archetype].description'), 'seat tooltip and dashboard guide share one archetype-description source');
 assert.ok(css.includes('.pnhud-dashboard-profile-explanation') && css.includes('.pnhud-dashboard-profile-guide') && css.includes('.pnhud-dashboard-profile-advanced'));
 

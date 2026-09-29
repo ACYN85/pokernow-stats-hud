@@ -21,10 +21,10 @@ function fakeDocument() {
 }
 
 var exactLocation = {
-  href: 'https://pokernow.com/games/synthetic-game-route',
+  href: 'https://pokernow.com/games/pglC7CkrwmskDJfKrkFuSc2JF',
   protocol: 'https:',
   hostname: 'pokernow.com',
-  pathname: '/games/synthetic-game-route',
+  pathname: '/games/pglC7CkrwmskDJfKrkFuSc2JF',
   origin: 'https://pokernow.com'
 };
 var calls = [];

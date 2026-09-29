@@ -62,11 +62,22 @@ assert.ok(content.includes("updateHudUiPreferences({ showPotOdds: event.target.c
 
 assert.match(css, /#pnhud-pot-odds-root \{ position: fixed; z-index: 2147483644/);
 assert.match(css, /#pnhud-pot-odds-root \.pnhud-hero-pot-odds \{ position: fixed/);
-assert.match(css, /width: 100px; min-height: 60px/);
+assert.match(css, /grid-template-columns: max-content minmax\(0, 1fr\);[^}]*width: 76px; min-height: 56px/, 'Pot Odds keeps a compact stable width and constrains even long values inside the right column');
+assert.match(css, /pnhud-pot-odds strong[^\n]*min-width: 0; width: 100%; overflow: hidden;[^\n]*text-align: right;[^\n]*text-overflow: ellipsis; white-space: nowrap/, 'every Pot Odds value shares the right edge without wrapping or escaping the panel');
+assert.match(css, /pnhud-pot-odds-title[^\n]*white-space: nowrap/, 'Pot Odds title does not wrap');
+assert.match(css, /pnhud-pot-odds-label[^\n]*white-space: nowrap/, 'Pot Odds labels do not wrap');
+var longValueWidget = require('./potOdds.js').widgetHtml({ status: 'supported', amountToCall: 1000000,
+  requiredEquity: 0.143, currentEligiblePot: 6000000, potAfterCall: 7000000 });
+assert.match(longValueWidget, /aria-label="Pot odds\. Call 1000000 · Need 14\.3%"/,
+  'a visually clipped exceptional amount stays complete in the accessible label');
+assert.match(longValueWidget, /Call amount: 1000000 chips/,
+  'the full exceptional amount stays available in the tooltip');
 assert.doesNotMatch(css, /pnhud-has-pot-odds/, 'seat HUD height remains independent');
 assert.match(content, /function potOddsPlacementObstacles/);
 assert.match(content, /collisionReason: placement\.collisionReason/, 'collisions are diagnosed without side switching');
 assert.match(content, /side: 'right-reserved'/, 'future RIGHT slot is exposed but unused');
+assert.match(content, /rightSize: \{ width: 100, height: 60 \}/, 'future RIGHT sizing is independent of compact Pot Odds LEFT');
+assert.match(content, /offsetFromDrag\([\s\S]*drag\.coordinateScale/, 'drag deltas are converted into table-local offset units');
 assert.match(content, /selectedSide: proposedLeft \? 'left' : null/, 'pot odds cannot select RIGHT');
 assert.match(content, /ensureHeroPotOddsVisibility\('window or table viewport resized'\)/, 'viewport remains a legitimate reconcile signal');
 assert.doesNotMatch(content, /slow supported visibility reconciliation|heroPotOddsVisibilityTimer|timerRetries % 25/, 'no permanent visibility polling');

@@ -77,29 +77,29 @@ function summary(id, name, hands, lastSeenAt, revision) { return { playerId: id,
   var rows = [
     summary('id-recent', 'Same Name', 8, 300, 1),
     summary('id-unseated', 'Same Name', 40, null, 1),
-    summary('target-ABC-999', 'Zulu Target', 12, 200, 1)
+    summary('dragon-ABC-999', 'xxDragon69', 12, 200, 1)
   ];
   call(harness, 'careerInvalidate(["id-recent"], "accepted Career append")');
   assert.strictEqual(summaryRequests.length, 2);
   summaryRequests[1].callback({ ok: true, value: rows }); await flush();
   var loaded = state(harness);
-  assert.ok(loaded.html.indexOf('id-recent') < loaded.html.indexOf('target-ABC-999'));
-  assert.ok(loaded.html.indexOf('target-ABC-999') < loaded.html.indexOf('id-unseated'), 'default ordering is recent-first and unavailable dates follow');
+  assert.ok(loaded.html.indexOf('id-recent') < loaded.html.indexOf('dragon-ABC-999'));
+  assert.ok(loaded.html.indexOf('dragon-ABC-999') < loaded.html.indexOf('id-unseated'), 'default ordering is recent-first and unavailable dates follow');
   assert.strictEqual((loaded.html.match(/Same Name/g) || []).length >= 2, true, 'same display names retain separate rows');
-  assert.ok(loaded.html.includes('40 hands') && loaded.html.includes('Last seen unavailable') && loaded.html.includes('target\u2026-999'));
+  assert.ok(loaded.html.includes('40 hands') && loaded.html.includes('Last seen unavailable') && loaded.html.includes('dragon\u2026-999'));
 
   var backendCount = summaryRequests.length;
-  call(harness, 'search("TAR")');
-  assert.ok(state(harness).html.includes('Zulu Target') && !state(harness).html.includes('Same Name'));
+  call(harness, 'search("DRA")');
+  assert.ok(state(harness).html.includes('xxDragon69') && !state(harness).html.includes('Same Name'));
   call(harness, 'search("abc-9")');
-  assert.ok(state(harness).html.includes('Zulu Target'), 'partial stable ID matches locally');
-  call(harness, 'search("target-ABC-999")');
-  assert.ok(state(harness).html.includes('Zulu Target'), 'full stable ID matches locally');
+  assert.ok(state(harness).html.includes('xxDragon69'), 'partial stable ID matches locally');
+  call(harness, 'search("dragon-ABC-999")');
+  assert.ok(state(harness).html.includes('xxDragon69'), 'full stable ID matches locally');
   call(harness, 'search("nothing")');
   assert.ok(state(harness).html.includes('No matching players'));
   call(harness, 'search("")');
   call(harness, 'sort("hands")');
-  assert.ok(state(harness).html.indexOf('id-unseated') < state(harness).html.indexOf('target-ABC-999'));
+  assert.ok(state(harness).html.indexOf('id-unseated') < state(harness).html.indexOf('dragon-ABC-999'));
   call(harness, 'sort("name")');
   assert.ok(state(harness).html.indexOf('id-recent') < state(harness).html.indexOf('id-unseated'), 'name ties end with stable ID');
   assert.strictEqual(summaryRequests.length, backendCount, 'search keystrokes and sort changes issue zero Career requests');
@@ -111,6 +111,11 @@ function summary(id, name, hands, lastSeenAt, revision) { return { playerId: id,
   stale.callback({ ok: true, value: rows }); await flush();
   assert.strictEqual(state(harness).summaries.length, 1);
   assert.strictEqual(state(harness).summaries[0].latestDisplayName, 'Renamed Player', 'late refresh cannot overwrite the newer name/count/date snapshot');
+  call(harness, 'careerInvalidate(null, "Career backup restored", true)'); var restoredSummaries = summaryRequests.at(-1);
+  assert.strictEqual(state(harness).summaries.length, 0, 'SAFE REPLACE hard-clears settled pre-restore summaries while the restored snapshot loads');
+  assert.ok(!state(harness).html.includes('Renamed Player'), 'pre-restore Tracked Players rows do not survive hard invalidation');
+  restoredSummaries.callback({ ok: true, value: [summary('id-unseated', 'Restored Player', 7, 450, 4)] }); await flush();
+  assert.strictEqual(state(harness).summaries[0].latestDisplayName, 'Restored Player');
 
   call(harness, 'click("id-unseated", "Renamed Player")');
   var summariesBeforeSelection = summaryRequests.length;

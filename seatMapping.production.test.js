@@ -18,11 +18,11 @@ var assignment = overlays.assignPlayersToSeats(players, seats);
 assert.strictEqual(assignment.assignments.length, 2, 'two visible players receive two assignments');
 assert.strictEqual(new Set(assignment.assignments.map(function (item) { return item.seat.elementId; })).size, 2, 'each player receives a unique DOM seat');
 assert.deepStrictEqual(assignment.assignments.map(function (item) { return item.player.playerId + ':' + item.seat.elementId; }).sort(), ['socket-playerA:dom-playerA', 'socket-playerB:dom-playerB']);
-var syntheticPokerNowPlayers = [player('synthetic-player-1', 'PlayerC', 312, 2, 0), player('P1', 'playerA', 280, 6, 1)];
-var syntheticPokerNowSeats = [seat('table-player-2', 'PlayerC', 312, ['synthetic-player-1'], 2, 0), seat('table-player-6', 'playerA', 280, ['P1'], 6, 1)];
-syntheticPokerNowSeats[0].inactive = true;
-var capturedAssignment = overlays.assignPlayersToSeats(syntheticPokerNowPlayers, syntheticPokerNowSeats);
-assert.deepStrictEqual(capturedAssignment.assignments.map(function (item) { return item.player.playerId + ':' + item.seat.elementId; }).sort(), ['P1:table-player-6', 'synthetic-player-1:table-player-2'], 'synthetic PokerNow profile-link IDs assign each player to their own occupied seat');
+var capturedPokerNowPlayers = [player('5sUmsw4kpC', 'ial', 312, 2, 0), player('Lwy-ervQBl', 'playerA', 280, 6, 1)];
+var capturedPokerNowSeats = [seat('table-player-2', 'ial', 312, ['5sUmsw4kpC'], 2, 0), seat('table-player-6', 'playerA', 280, ['Lwy-ervQBl'], 6, 1)];
+capturedPokerNowSeats[0].inactive = true;
+var capturedAssignment = overlays.assignPlayersToSeats(capturedPokerNowPlayers, capturedPokerNowSeats);
+assert.deepStrictEqual(capturedAssignment.assignments.map(function (item) { return item.player.playerId + ':' + item.seat.elementId; }).sort(), ['5sUmsw4kpC:table-player-2', 'Lwy-ervQBl:table-player-6'], 'captured PokerNow profile-link IDs assign ial and playerA to their own occupied seats');
 var inactiveSeat = seat('dom-away', 'Away Player', 50, ['socket-away'], 3, 2);
 inactiveSeat.occupied = false;
 assert.strictEqual(overlays.assignPlayersToSeats([player('socket-away', 'Away Player', 50, 3, 2)], [inactiveSeat]).assignments.length, 0, 'sitting-out or offline seats cannot steal an occupied-player assignment');
@@ -32,16 +32,16 @@ var conflictSeats = [seat('seat-a', 'PlayerA', 100, ['p2'], 1, 0), seat('seat-b'
 var globalResult = overlays.assignPlayersToSeats(conflictPlayers, conflictSeats);
 assert.deepStrictEqual(globalResult.assignments.map(function (item) { return item.player.playerId + ':' + item.seat.elementId; }).sort(), ['p1:seat-b', 'p2:seat-a'], 'global matching avoids the greedy name-match conflict and preserves the direct-ID seat');
 
-assert.strictEqual(overlays.exactNameMatch('Player', 'playerA'), false, 'a truncated substring is never an exact normalized name match');
-var truncatedOnly = overlays.assignPlayersToSeats([player('partial', 'playerA', null, null, null)], [seat('partial-seat', 'Player', null, [], null, null)]);
+assert.strictEqual(overlays.exactNameMatch('ial', 'playerA'), false, 'a truncated substring is never an exact normalized name match');
+var truncatedOnly = overlays.assignPlayersToSeats([player('partial', 'playerA', null, null, null)], [seat('partial-seat', 'ial', null, [], null, null)]);
 assert.strictEqual(truncatedOnly.assignments.length, 0, 'a truncated name cannot create a seat assignment without corroboration');
 var uniqueStackOnly = overlays.assignPlayersToSeats([player('stack-only', null, 77, null, null)], [seat('stack-only-seat', 'Someone', 77, [], null, null)]);
 assert.strictEqual(uniqueStackOnly.assignments.length, 0, 'a unique stack without agreeing seat order remains withheld');
 var corroboratedNoName = overlays.assignPlayersToSeats([player('ordered', null, 77, 4, null)], [seat('ordered-seat', 'Someone', 77, [], 4, null)]);
 assert.strictEqual(corroboratedNoName.assignments.length, 1, 'seat order plus unique stack can confirm a non-name assignment');
-var offlineOwnSeat = seat('offline-seat', 'PlayerC', 312, ['synthetic-player-1'], 2, 0);
+var offlineOwnSeat = seat('offline-seat', 'ial', 312, ['5sUmsw4kpC'], 2, 0);
 offlineOwnSeat.inactive = true;
-assert.strictEqual(overlays.assignPlayersToSeats([player('synthetic-player-1', 'PlayerC', 312, 2, 0)], [offlineOwnSeat]).assignments.length, 1, 'an occupied offline seat can retain its own direct-ID assignment without stealing another seat');
+assert.strictEqual(overlays.assignPlayersToSeats([player('5sUmsw4kpC', 'ial', 312, 2, 0)], [offlineOwnSeat]).assignments.length, 1, 'an occupied offline seat can retain its own direct-ID assignment without stealing another seat');
 
 var anchor = overlays.chooseAnchorCandidate([
   { kind: 'blind-or-bet-marker', isBlindOrBetMarker: true, rect: { left: 400, top: 200, width: 24, height: 16 }, reference: 'blind' },
@@ -51,7 +51,7 @@ var anchor = overlays.chooseAnchorCandidate([
 ]);
 assert.strictEqual(anchor.selected.kind, 'name-stack-block', 'the name/stack block wins over blind, bet, and broad seat markers');
 assert.ok(anchor.ranked.filter(function (candidate) { return candidate.isBlindOrBetMarker || candidate.isSeatNumber; }).every(function (candidate) { return candidate.score < 0; }), 'blind, bet, and seat-number elements are ineligible anchors');
-assert.strictEqual(overlays.identityLabel('playerA', 'synthetic-long-id'), 'playerA [synt]', 'temporary overlay label exposes the full name and short socket ID');
+assert.strictEqual(overlays.identityLabel('playerA', '5sUm-long-id'), 'playerA [5sUm]', 'temporary overlay label exposes the full name and short socket ID');
 
 var placement = overlays.placeOverlay(anchor.selected.rect, { width: 140, height: 20 }, { width: 1000, height: 700 }, 6);
 assert.strictEqual(placement.left, 310, 'overlay is horizontally centered on the name/stack block');

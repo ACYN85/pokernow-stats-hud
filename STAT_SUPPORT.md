@@ -2,6 +2,8 @@
 
 Normative release summary of the frozen implementation, not a new semantic specification. Opportunity statistics count only supported evidence. Unknown is not a failed opportunity; missing denominators can display an unavailable/zero-history placeholder rather than a meaningful 0%. Filters aggregate existing exact counters; they do not reinterpret actions.
 
+V1.3 Dashboard Evidence labels consume these exact denominators and support populations without changing them. The labels measure sample support only; they are not probabilities or guarantees that a tendency is real. Evidence thresholds, AF's action-support basis, and filtered-context behavior remain covered by the release tests.
+
 | Stat | Opportunity / denominator | Result / numerator | Important boundaries |
 | --- | --- | --- | --- |
 | Hands | Unique finalized player-hand event identities | One accepted participation per hand, including a qualified walk | Unfinished hand excluded; no lifetime/backfilled count |
@@ -33,6 +35,4 @@ The reducer has synthetic coverage for explicit pot/board identities and rich wi
 - Showdown: `showdownStatsReducer.js`, `semanticHandLedger.js`; [showdown design](SHOWDOWN_STATS_DESIGN.md).
 - Per-hand explanations: `statExplanation.js`; authoritative reducers remain the source of truth.
 
-Statistical Evidence presents the exact support count for the displayed statistic and slice. Weak, Moderate and Strong labels describe sample support; low-support values show the count without a visible “Insufficient” suffix. Evidence does not alter counters, denominators, or the supported-opportunity rules above, and is not a prediction or proof of player tendency.
-
-The public V1.2 freeze gate requires all 70 production hashes to match the accepted package baseline. V1.2 adds Career transfer and Evidence presentation without changing the established counter definitions.
+The release freeze gate reverses only the documented metadata/text edits and requires all 67 production hashes to match the signed-off baseline. No counter definitions or semantic schemas changed for RC1.

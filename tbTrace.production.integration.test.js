@@ -4,14 +4,14 @@ var assert = require('assert');
 var trace = require('./tbTrace.js');
 var production = require('./liveActionPipeline.js');
 
-var SMALL = 'P1';
-var BIG = 'P3';
+var SMALL = 'Lwy-ervQBl';
+var BIG = 'mg0Q4lJNje';
 var handId = 'decode-merge-normalize-live-hand';
 var frames = [
-  '42["gC",{"players":{"P1":{"stack":99},"P3":{"stack":98}},"external":{"$":{"tB":{"P1":1,"P3":2},"cPI":"P1","pITT":"P1","cRPI":[],"sBPI":"P1","bBPI":"P3"}}}]',
-  '42["gC",{"external":{"$":{"tB":{"P1":"6"},"cPI":"P1","cRPI":["P1"]}}}]',
+  '42["gC",{"players":{"Lwy-ervQBl":{"stack":99},"mg0Q4lJNje":{"stack":98}},"external":{"$":{"tB":{"Lwy-ervQBl":1,"mg0Q4lJNje":2},"cPI":"Lwy-ervQBl","pITT":"Lwy-ervQBl","cRPI":[],"sBPI":"Lwy-ervQBl","bBPI":"mg0Q4lJNje"}}}]',
+  '42["gC",{"external":{"$":{"tB":{"Lwy-ervQBl":"6"},"cPI":"Lwy-ervQBl","cRPI":["Lwy-ervQBl"]}}}]',
   '42["gC",{"now":1150,"pre":1100}]',
-  '42["gC",{"external":{"$":{"tB":{"P3":"6"},"cPI":"P3","cRPI":["P1","P3"]}}}]'
+  '42["gC",{"external":{"$":{"tB":{"mg0Q4lJNje":"6"},"cPI":"mg0Q4lJNje","cRPI":["Lwy-ervQBl","mg0Q4lJNje"]}}}]'
 ];
 
 var traceState = trace.createState();

@@ -10,7 +10,7 @@ var lifecycleSignal = require('./pokerNowLifecycleSignal.js');
 var runtime = require('./hudRuntimeStatus.js');
 var stats = require('./stats.js');
 
-var ids = ['P1', 'y65AIpIFzL'];
+var ids = ['Lwy-ervQBl', 'y65AIpIFzL'];
 var handId = 'table:socket:owned-live-hand';
 var fingerprint = recovery.fingerprint({
   explicitHandId: null,
@@ -77,7 +77,7 @@ var bootstrapPatch = {
   cPI: ids[1],
   pITT: ids[1],
   pot: 120,
-  tB: { 'P1': 60, 'y65AIpIFzL': 60 }
+  tB: { 'Lwy-ervQBl': 60, 'y65AIpIFzL': 60 }
 };
 var normalizedStatus = lifecycleSignal.normalize({
   currentPatch: bootstrapPatch,
@@ -213,7 +213,7 @@ var unknownOutgoing = hostTrace.record(traceState, {
   direction: 'outgoing',
   eventName: 'action',
   namespace: '/',
-  payload: { type: 'UP', token: 'must-not-appear', cards: ['SYNTHETIC_CARD_1', 'SYNTHETIC_CARD_2'], email: 'synthetic-email' },
+  payload: { type: 'UP', token: 'must-not-appear', cards: ['As', 'Kh'], email: 'hidden@example.com' },
   localUserPlayerId: 'owner-1',
   tableOwnerPlayerId: 'owner-1'
 });
@@ -221,7 +221,7 @@ assert.strictEqual(unknownOutgoing.knownPokerAction, false);
 assert.strictEqual(unknownOutgoing.appearsTableControl, true);
 assert.strictEqual(unknownOutgoing.recognizedCommand, 'pause');
 assert.strictEqual(JSON.stringify(unknownOutgoing).includes('must-not-appear'), false);
-assert.strictEqual(JSON.stringify(unknownOutgoing).includes('synthetic-email'), false);
+assert.strictEqual(JSON.stringify(unknownOutgoing).includes('hidden@example.com'), false);
 var semanticPause = hostTrace.record(traceState, {
   frameId: 'semantic-only-fixture',
   direction: 'outgoing',

@@ -65,6 +65,7 @@ assert.deepStrictEqual(assertBoardCompanionPanel(harness, 520, 'opponent-card mu
 
 harness.fixture.setLayout('live-narrow');
 harness.setViewport(900, 665, true);
+harness.triggerResizeObserver(harness.fixture.boardSlot);
 harness.runFor(500, 16);
 var narrowed = assertBoardCompanionPanel(harness, 370, 'responsive board layout');
 assert.strictEqual(harness.document.getElementById('pnhud-hero-pot-odds'), stableHost, 'responsive layout reuses the host');

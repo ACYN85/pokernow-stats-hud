@@ -68,7 +68,8 @@ function syntheticRecords(count, prefix) {
   assert.strictEqual((await target.careerStats('stable-alice')).counters.hands, aggregator.rebuild(complex).aggregate.players['stable-alice'].counters.hands);
   assert.notDeepStrictEqual(await target.careerStats('stable-name-duplicate-1'), await target.careerStats('stable-name-duplicate-2'), 'same display name never merges stable identities');
   assert.ok((await target.careerPlayerSummaries()).some(function (summary) { return summary.playerId === 'stable-alice' && summary.hands > 0; }), 'tracked-player summaries rebuild with the merged history');
-  assert.ok((await target.careerDashboardStats('stable-alice', {})).profileStats, 'profile projection rebuilds from accepted merged records');
+  assert.ok((await target.rebuildCareerStats()).players['stable-alice'].profileProjection, 'derived profile projection rebuilds from accepted merged records');
+  assert.strictEqual((await target.careerDashboardStats('stable-alice', {})).profileStats, null, 'unknown table-size history cannot publish a calibrated All profile');
   assert.ok((await target.careerTrendStats('stable-alice')).windows, 'Career trends rebuild against the merged player revision');
 
   var afterFirst = await validated((await target.exportCareer()).records, 'round-trip');

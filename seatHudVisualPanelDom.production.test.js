@@ -43,7 +43,7 @@ function textNode(el, text, box) { el.textNodes = [{ nodeValue:text, parentEleme
     var y=index%3===2?630:80+index*8;
     var seat=element('',rect(10,y-40,480,340),'broad-fold-action-wrapper');
     var panel=element('',rect(100,y,240,110),'table-player-panel '+(kind==='folded'?'folded':'active'),seat);
-    var label=kind==='long-name'?'A rather long player name':'PlayerC',width=kind==='long-name'?170:44;
+    var label=kind==='long-name'?'A rather long player name':'Moon',width=kind==='long-name'?170:44;
     var name=element(label,rect(100,y+10,230,30),'table-player-name',panel);textNode(name,label,rect(112,y+14,width,16));
     var stack=element('1000',rect(100,y+40,240,45),'table-player-stack',panel);textNode(stack,'1000',rect(240,y+43,40,16));
     var card=element('',rect(90,y-20,180,kind==='avatar'?220:kind==='cards'?190:45),kind==='avatar'?'custom-avatar':'table-player-cards',panel);

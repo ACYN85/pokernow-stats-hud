@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PokerNow Stats HUD",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Live PokerNow HUD with Session and Career statistics, player profiles, dashboards, and local data backups.",
   "permissions": [
     "storage",
@@ -84,6 +84,9 @@
         "playerProfileCalibration.js",
         "playerNotesStore.js",
         "statEvidence.js",
+        "playerInsights.js",
+        "personalLeakAnalysis.js",
+        "strategicImplications.js",
         "playerDashboard.js",
         "trackedPlayers.js",
         "overlayStats.js",

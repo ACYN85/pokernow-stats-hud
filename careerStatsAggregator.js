@@ -11,7 +11,7 @@
   var STORAGE_SCHEMA_VERSION = 2;
   var RECORD_SCHEMA_VERSION = 3;
   var SUPPORTED_RECORD_SCHEMA_VERSIONS = Object.freeze([1, 2, 3]);
-  var AGGREGATE_SCHEMA_VERSION = 2;
+  var AGGREGATE_SCHEMA_VERSION = 4;
   var PROFILE_CONTEXT_VERSION = 2;
   var PROFILE_PROJECTION_VERSION = 1;
   var COUNTER_FIELDS = Object.freeze([
@@ -25,6 +25,7 @@
   var CURRENT_SEMANTIC_VERSIONS = Object.freeze({ core: 1, preflop: 2, flopCBet: 1, showdown: 1, sourceLedger: 1 });
   var POSITION_SCHEMA_VERSION = 1;
   var POSITION_LABELS = Object.freeze(['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'UTG+2', 'LJ', 'HJ', 'CO']);
+  var POSTFLOP_POSITION_ORDER = Object.freeze(['SB', 'BB', 'UTG', 'UTG+1', 'UTG+2', 'LJ', 'HJ', 'CO', 'BTN']);
   /* Exact-delta records from these versions can coexist. Unknown versions remain quarantined. */
   var SUPPORTED_SEMANTIC_VERSIONS = Object.freeze({
     core: Object.freeze([1, 2]), preflop: Object.freeze([1, 2, 3]), flopCBet: Object.freeze([1, 2]),
@@ -35,6 +36,16 @@
   function object(value) { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
   function integer(value) { return Number.isInteger(value) && value >= 0; }
   function emptyCounters() { return COUNTER_FIELDS.reduce(function (result, field) { result[field] = 0; return result; }, {}); }
+  function classifyTableSize(count) {
+    return Number.isInteger(count) && count >= 2 && count <= 9 ? count === 2 ? 'HU' : count <= 5 ? '3_TO_5' : 'SIX_PLUS' : 'UNKNOWN';
+  }
+  function resolveDealtPlayerCount(record) {
+    if (!record || record.schemaVersion < 3 || !Array.isArray(record.players) || !record.players.length) return null;
+    var counts = record.players.map(function (entry) { return entry && entry.position && entry.position.schemaVersion === 1 ? entry.position.dealtPlayerCount : null; });
+    var count = counts[0];
+    return classifyTableSize(count) !== 'UNKNOWN' && counts.every(function (value) { return value === count; }) ? count : null;
+  }
+  function emptyTablePartition() { return { counters: emptyCounters(), contexts: { situations: {}, positions: {} }, recordCount: 0 }; }
   function canonical(value) {
     if (Array.isArray(value)) return value.map(canonical);
     if (!object(value)) return value;
@@ -211,15 +222,48 @@
     };
   }
   function emptyAggregate() { return { schemaVersion: AGGREGATE_SCHEMA_VERSION, ledgerRecordCount: 0, physicalRecordCount: 0, quarantinedHandCount: 0, players: {}, semanticVersionCoverage: {} }; }
-  function addRecord(aggregate, record) {
-    record.players.forEach(function (entry) {
-      var playerId = String(entry.playerId);
-      var player = aggregate.players[playerId];
-      if (!player) player = aggregate.players[playerId] = { playerId: playerId, latestDisplayName: '', lastSeenAt: 0, recordCount: 0, counters: emptyCounters(), positionCoverage: { trackedHands: 0, earliestTrackedAt: null }, profileProjection: emptyProfileProjection(playerId) };
+  function exactPostflopSituationMap(rows) {
+    if (!Array.isArray(rows) || !rows.length) return {};
+    if (rows.some(function (row) { return row && (row.sawFlop === true || row.sawFlop === 1) && (!row.position || row.position.status !== 'supported'); })) return {};
+    var dealt = rows.filter(function (row) { return row && row.playerId && row.position && row.position.schemaVersion === 1 && row.position.status === 'supported' && POSTFLOP_POSITION_ORDER.indexOf(row.position.dealtPosition) >= 0 && Number.isInteger(row.position.dealtPlayerCount); });
+    if (!dealt.length || dealt.some(function (row) { return row.position.dealtPlayerCount !== dealt.length || (row.sawFlop !== false && row.sawFlop !== true && row.sawFlop !== 0 && row.sawFlop !== 1); })) return {};
+    var entrants = dealt.filter(function (row) { return row.sawFlop === true || row.sawFlop === 1; });
+    if (entrants.length !== 2) return {};
+    var first = POSTFLOP_POSITION_ORDER.indexOf(entrants[0].position.dealtPosition);
+    var second = POSTFLOP_POSITION_ORDER.indexOf(entrants[1].position.dealtPosition);
+    if (first === second) return {};
+    var result = {};
+    result[String(entrants[0].playerId)] = first > second ? 'ip' : 'oop';
+    result[String(entrants[1].playerId)] = second > first ? 'ip' : 'oop';
+    return result;
+  }
+  function careerSituationMap(record) {
+    if (!record || record.schemaVersion < 3) return {};
+    return exactPostflopSituationMap((record.players || []).map(function (entry) {
+      return { playerId: String(entry.playerId), position: entry.position, sawFlop: entry.decisions && entry.decisions.wtsd && entry.decisions.wtsd.opportunity };
+    }));
+  }
+  function addContextCounters(contexts, kind, key, counters) {
+    if (!contexts[kind][key]) contexts[kind][key] = emptyCounters();
+    COUNTER_FIELDS.forEach(function (field) { contexts[kind][key][field] += counters[field]; });
+  }
+  function emptyPlayer(playerId) {
+    return { playerId: playerId, latestDisplayName: '', lastSeenAt: 0, recordCount: 0, counters: emptyCounters(), contexts: { situations: {}, positions: {} }, tableSizes: {}, positionCoverage: { trackedHands: 0, earliestTrackedAt: null, unsupportedRecords: 0 }, profileProjection: emptyProfileProjection(playerId) };
+  }
+  function addPlayerEntry(player, entry, record, situation, dealtCount) {
       if (entry.displayName && Number(record.finalizedAt || 0) >= player.lastSeenAt) player.latestDisplayName = String(entry.displayName);
       player.lastSeenAt = Math.max(player.lastSeenAt, Number(record.finalizedAt || 0));
       player.recordCount += 1;
       COUNTER_FIELDS.forEach(function (field) { player.counters[field] += entry.counters[field]; });
+      if (situation) addContextCounters(player.contexts, 'situations', situation, entry.counters);
+      if (entry.position && entry.position.status === 'supported' && entry.position.dealtPosition) addContextCounters(player.contexts, 'positions', entry.position.dealtPosition, entry.counters);
+      if (dealtCount !== null && Number(entry.counters.hands || 0) > 0) {
+        var partition = player.tableSizes[dealtCount] || (player.tableSizes[dealtCount] = emptyTablePartition());
+        partition.recordCount += 1;
+        COUNTER_FIELDS.forEach(function (field) { partition.counters[field] += entry.counters[field]; });
+        if (situation) addContextCounters(partition.contexts, 'situations', situation, entry.counters);
+        if (entry.position && entry.position.status === 'supported' && entry.position.dealtPosition) addContextCounters(partition.contexts, 'positions', entry.position.dealtPosition, entry.counters);
+      }
       // Career archetypes use a detached, rebuildable projection whose counters and
       // table context come from the same authoritative 3+ handed contribution set.
       // Schema-v3 exact counts remain usable when position naming is unsupported;
@@ -238,11 +282,26 @@
         player.positionCoverage.earliestTrackedAt = player.positionCoverage.earliestTrackedAt === null
           ? Number(record.finalizedAt || 0)
           : Math.min(player.positionCoverage.earliestTrackedAt, Number(record.finalizedAt || 0));
-      }
+      } else player.positionCoverage.unsupportedRecords += 1;
+  }
+  function addRecord(aggregate, record) {
+    var situations = careerSituationMap(record);
+    var dealtCount = resolveDealtPlayerCount(record);
+    record.players.forEach(function (entry) {
+      var playerId = String(entry.playerId);
+      var player = aggregate.players[playerId];
+      if (!player) player = aggregate.players[playerId] = emptyPlayer(playerId);
+      addPlayerEntry(player, entry, record, situations[playerId], dealtCount);
     });
     aggregate.ledgerRecordCount += 1;
     var key = versionKey(record);
     aggregate.semanticVersionCoverage[key] = (aggregate.semanticVersionCoverage[key] || 0) + 1;
+  }
+  function appendPlayer(player, record, entry, situation) {
+    var playerId = String(entry.playerId);
+    var next = player ? clone(player) : emptyPlayer(playerId);
+    addPlayerEntry(next, entry, record, situation, resolveDealtPlayerCount(record));
+    return next;
   }
   function rebuild(records) {
     var resolved = resolveActiveRecords(records || []);
@@ -327,9 +386,11 @@
     STORAGE_SCHEMA_VERSION: STORAGE_SCHEMA_VERSION, RECORD_SCHEMA_VERSION: RECORD_SCHEMA_VERSION, SUPPORTED_RECORD_SCHEMA_VERSIONS: SUPPORTED_RECORD_SCHEMA_VERSIONS, AGGREGATE_SCHEMA_VERSION: AGGREGATE_SCHEMA_VERSION, PROFILE_CONTEXT_VERSION: PROFILE_CONTEXT_VERSION, PROFILE_PROJECTION_VERSION: PROFILE_PROJECTION_VERSION,
     CURRENT_SEMANTIC_VERSIONS: CURRENT_SEMANTIC_VERSIONS, SUPPORTED_SEMANTIC_VERSIONS: SUPPORTED_SEMANTIC_VERSIONS,
     POSITION_SCHEMA_VERSION: POSITION_SCHEMA_VERSION, POSITION_LABELS: POSITION_LABELS,
+    classifyTableSize: classifyTableSize, resolveDealtPlayerCount: resolveDealtPlayerCount,
     SEMANTIC_VERSION_FIELDS: SEMANTIC_VERSION_FIELDS, COUNTER_FIELDS: COUNTER_FIELDS, emptyCounters: emptyCounters,
     fingerprint: fingerprint, validateRecord: validateRecord, validateTransition: validateTransition, resolveActiveRecords: resolveActiveRecords,
     rebuild: rebuild, rebuildCooperatively: rebuildCooperatively, aggregateActiveRecords: aggregateActiveRecords, createState: createState, append: append, exactAggregate: exactAggregate, records: records, activeRecords: activeRecords,
-    deriveCounters: deriveCounters, derivePlayer: derivePlayer, playerStats: playerStats, playerList: playerList
+    deriveCounters: deriveCounters, derivePlayer: derivePlayer, playerStats: playerStats, playerList: playerList,
+    exactPostflopSituationMap: exactPostflopSituationMap, careerSituationMap: careerSituationMap, appendPlayer: appendPlayer
   });
 });

@@ -5,10 +5,10 @@ var fs = require('fs');
 var vm = require('vm');
 
 var exactLocation = {
-  href: 'https://pokernow.com/games/synthetic-game-route',
+  href: 'https://pokernow.com/games/pglC7CkrwmskDJfKrkFuSc2JF',
   protocol: 'https:',
   hostname: 'pokernow.com',
-  pathname: '/games/synthetic-game-route',
+  pathname: '/games/pglC7CkrwmskDJfKrkFuSc2JF',
   origin: 'https://pokernow.com',
   search: '',
   hash: ''
@@ -58,6 +58,7 @@ var careerAggregatorIndex = isolatedEntry.js.indexOf('careerStatsAggregator.js')
   var careerStoreIndex = isolatedEntry.js.indexOf('careerContributionStore.js');
   var careerIndexedStoreIndex = isolatedEntry.js.indexOf('careerIndexedStore.js');
   var careerBackupPolicyIndex = isolatedEntry.js.indexOf('careerBackupPolicy.js');
+  var careerPortableFileIndex = isolatedEntry.js.indexOf('careerPortableFile.js');
   var careerDataSettingsIndex = isolatedEntry.js.indexOf('careerDataSettings.js');
 var handStatInspectorIndex = isolatedEntry.js.indexOf('handStatInspector.js');
 var profileScoreInspectorIndex = isolatedEntry.js.indexOf('playerProfileScoreInspector.js');
@@ -67,6 +68,10 @@ var profileExplanationIndex = isolatedEntry.js.indexOf('playerProfileExplanation
 var profileStoreIndex = isolatedEntry.js.indexOf('playerProfileShadowStore.js');
 var profileCalibrationIndex = isolatedEntry.js.indexOf('playerProfileCalibration.js');
 var playerNotesIndex = isolatedEntry.js.indexOf('playerNotesStore.js');
+var statEvidenceIndex = isolatedEntry.js.indexOf('statEvidence.js');
+var playerInsightsIndex = isolatedEntry.js.indexOf('playerInsights.js');
+var personalLeakAnalysisIndex = isolatedEntry.js.indexOf('personalLeakAnalysis.js');
+var strategicImplicationsIndex = isolatedEntry.js.indexOf('strategicImplications.js');
 var playerDashboardIndex = isolatedEntry.js.indexOf('playerDashboard.js');
 assert.strictEqual(isolatedEntry.js[showdownReducerIndex + 1], 'careerStatsAggregator.js', 'career aggregation follows all finalized statistics reducers');
 assert.strictEqual(isolatedEntry.js[careerAggregatorIndex + 1], 'filteredStats.js', 'filtered aggregation follows its exact-counter dependency');
@@ -76,7 +81,8 @@ assert.strictEqual(isolatedEntry.js[sessionRuntimeIndex + 1], 'runtimeBounds.js'
 assert.strictEqual(isolatedEntry.js[runtimeBoundsIndex + 1], 'careerContributionStore.js', 'career contribution storage follows the runtime performance contracts');
   assert.strictEqual(isolatedEntry.js[careerStoreIndex + 1], 'careerIndexedStore.js', 'indexed career persistence follows the Phase 1 migration reader');
   assert.strictEqual(isolatedEntry.js[careerIndexedStoreIndex + 1], 'careerBackupPolicy.js', 'Career Backup size policy follows the service-worker proxy');
-  assert.strictEqual(isolatedEntry.js[careerBackupPolicyIndex + 1], 'careerDataSettings.js', 'Career Data presentation follows the shared backup policy');
+  assert.strictEqual(isolatedEntry.js[careerBackupPolicyIndex + 1], 'careerPortableFile.js', 'portable Career transport follows the shared backup policy');
+  assert.strictEqual(isolatedEntry.js[careerPortableFileIndex + 1], 'careerDataSettings.js', 'Career Data presentation follows the portable transport');
   assert.strictEqual(isolatedEntry.js[careerDataSettingsIndex + 1], 'statExplanation.js', 'stat explanations follow the additive career UI presenter');
 assert.strictEqual(isolatedEntry.js[statExplanationIndex + 1], 'handStatInspector.js', 'Hand Stat Inspector follows its read-only explanation source');
 assert.strictEqual(isolatedEntry.js[handStatInspectorIndex + 1], 'playerProfileScoreInspector.js', 'profile score diagnostics follow the existing read-only Hand Stat Inspector');
@@ -86,14 +92,21 @@ assert.strictEqual(isolatedEntry.js[profilePresentationIndex + 1], 'playerProfil
 assert.strictEqual(isolatedEntry.js[profileExplanationIndex + 1], 'playerProfileShadowStore.js', 'profile store follows the classifier, presentation, and explanation dependencies');
 assert.strictEqual(isolatedEntry.js[profileStoreIndex + 1], 'playerProfileCalibration.js', 'calibration helper follows the profile store');
 assert.strictEqual(isolatedEntry.js[profileCalibrationIndex + 1], 'playerNotesStore.js', 'stable-ID mutable notes follow profile calibration');
-assert.strictEqual(isolatedEntry.js[playerNotesIndex + 1], 'playerDashboard.js', 'dashboard presenter follows notes');
+assert.strictEqual(isolatedEntry.js[playerNotesIndex + 1], 'statEvidence.js', 'evidence policy follows stable-ID notes without entering note ownership');
+assert.strictEqual(isolatedEntry.js[statEvidenceIndex + 1], 'playerInsights.js', 'Insights follows its Evidence dependency');
+assert.strictEqual(isolatedEntry.js[playerInsightsIndex + 1], 'personalLeakAnalysis.js', 'self analysis follows shared Insights primitives');
+assert.strictEqual(isolatedEntry.js[personalLeakAnalysisIndex + 1], 'strategicImplications.js', 'Strategic Implications follows shared observation engines');
+assert.strictEqual(isolatedEntry.js[strategicImplicationsIndex + 1], 'playerDashboard.js', 'Dashboard follows all derived presentation engines');
 assert.strictEqual(isolatedEntry.js[playerDashboardIndex + 1], 'trackedPlayers.js', 'Tracked Players presentation follows its Dashboard navigation target');
 assert.strictEqual(isolatedEntry.js[isolatedEntry.js.indexOf('trackedPlayers.js') + 1], 'overlayStats.js', 'HUD modules resume after Tracked Players presentation');
-assert.ok(semanticLedgerIndex < reducerIndex && reducerIndex < flopReducerIndex && flopReducerIndex < showdownReducerIndex && showdownReducerIndex < careerAggregatorIndex && careerAggregatorIndex < sessionStatsCacheIndex && sessionStatsCacheIndex < sessionRuntimeIndex && sessionRuntimeIndex < runtimeBoundsIndex && runtimeBoundsIndex < careerStoreIndex && careerStoreIndex < careerIndexedStoreIndex && careerIndexedStoreIndex < careerBackupPolicyIndex && careerBackupPolicyIndex < careerDataSettingsIndex && careerDataSettingsIndex < statExplanationIndex && statExplanationIndex < handStatInspectorIndex && handStatInspectorIndex < profileScoreInspectorIndex && profileScoreInspectorIndex < profileClassifierIndex && profileClassifierIndex < profilePresentationIndex && profilePresentationIndex < profileExplanationIndex && profileExplanationIndex < profileStoreIndex && profileStoreIndex < profileCalibrationIndex && profileCalibrationIndex < isolatedEntry.js.indexOf('content.js'), 'ledger, reducers, performance runtime, career persistence, backup policy and UI, explanations, inspectors, and profile modules register before content startup validation');
+assert.ok(semanticLedgerIndex < reducerIndex && reducerIndex < flopReducerIndex && flopReducerIndex < showdownReducerIndex && showdownReducerIndex < careerAggregatorIndex && careerAggregatorIndex < sessionStatsCacheIndex && sessionStatsCacheIndex < sessionRuntimeIndex && sessionRuntimeIndex < runtimeBoundsIndex && runtimeBoundsIndex < careerStoreIndex && careerStoreIndex < careerIndexedStoreIndex && careerIndexedStoreIndex < careerBackupPolicyIndex && careerBackupPolicyIndex < careerPortableFileIndex && careerPortableFileIndex < careerDataSettingsIndex && careerDataSettingsIndex < statExplanationIndex && statExplanationIndex < handStatInspectorIndex && handStatInspectorIndex < profileScoreInspectorIndex && profileScoreInspectorIndex < profileClassifierIndex && profileClassifierIndex < profilePresentationIndex && profilePresentationIndex < profileExplanationIndex && profileExplanationIndex < profileStoreIndex && profileStoreIndex < profileCalibrationIndex && profileCalibrationIndex < isolatedEntry.js.indexOf('content.js'), 'ledger, reducers, performance runtime, career persistence, backup policy and UI, explanations, inspectors, and profile modules register before content startup validation');
 
 function fakeDocument() {
   var elements = new Map();
   var body = { appendChild: function (element) { element.parentElement = body; element.isConnected = true; elements.set(element.id, element); return element; } };
+  var attributes = {};
+  body.setAttribute = function (name, value) { attributes[name] = String(value); };
+  body.getAttribute = function (name) { return attributes[name] || null; };
   return {
     body: body,
     documentElement: body,
@@ -106,6 +119,7 @@ function fakeDocument() {
 
 var isolatedLogs = [];
 var isolated = {
+  Event: function (type) { this.type = type; },
   location: exactLocation,
   document: fakeDocument(),
   console: {
@@ -190,6 +204,7 @@ assert.ok(
 
 var fallbackLogs = [];
 var fallback = {
+  Event: function (type) { this.type = type; },
   location: exactLocation,
   document: fakeDocument(),
   console: {

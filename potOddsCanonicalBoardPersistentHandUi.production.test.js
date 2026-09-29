@@ -27,8 +27,8 @@ function assertCanonicalPosition(result, expectedUnion, label) {
   assert.deepStrictEqual(placement.canonicalBoardRect, { left: 520, top: 260, width: 306, height: 80, right: 826, bottom: 340 }, label + ': stable five-card slot');
   assert.deepStrictEqual(placement.emptyBoardContainerRect, placement.canonicalBoardRect, label + ': persistent empty owner');
   assert.deepStrictEqual(placement.actualBoardCardUnion, expectedUnion, label + ': actual card union diagnostic');
-  assert.deepStrictEqual([placement.chosenPanelRect.left, placement.chosenPanelRect.top], [410, 270], label + ': chosen panel rect');
-  assert.deepStrictEqual([result.actual.pillRect.left, result.actual.pillRect.top], [410, 270], label + ': rendered coordinates');
+  assert.deepStrictEqual([placement.chosenPanelRect.left, placement.chosenPanelRect.top], [434, 272], label + ': chosen compact panel rect');
+  assert.deepStrictEqual([result.actual.pillRect.left, result.actual.pillRect.top], [434, 272], label + ': rendered coordinates');
   assert.strictEqual(placement.horizontalGap, 10, label + ': exact horizontal contract');
   assert.strictEqual(placement.verticalCenterDelta, 0, label + ': exact vertical-center contract');
   assert.strictEqual(placement.selectedSide, 'left', label + ': preferred side');

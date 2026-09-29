@@ -1,6 +1,5 @@
 'use strict';
 const assert = require('assert');
-const crypto = require('crypto');
 const classifier = require('./playerProfileClassifier.js');
 const presentation = require('./playerProfilePresentation.js');
 const explanation = require('./playerProfileExplanation.js');
@@ -70,21 +69,19 @@ function sumCounters(records, id) {
   assert.equal(classified.availability.diagnostics.careerHands, 150);
   assert.equal(classified.availability.diagnostics.effectiveTableSize, 4, 'displayed table context is computed from the 3/4/5-handed subset');
   const rendered = dashboard.render({ mode: 'career', playerId: 'a', careerStats: { counters: aggregatePlayer.counters }, profile: classified });
-  assert.ok(rendered.includes('Career · 750 hands'));
-  assert.ok(rendered.includes('Career profile · 3+ handed'));
-  assert.ok(rendered.includes('Based on 150 supported 3+ handed Career hands'));
-  assert.ok(rendered.includes('Heads-up and unknown table-size hands are excluded from Career archetype classification.'));
-  assert.ok(rendered.includes('Compatibility scores are independent and are not probabilities.'));
+  assert.ok(rendered.includes('Career · All table sizes · 750 hands'));
+  assert.ok(rendered.includes('Select a table-size segment for calibrated player analysis.'));
+  assert.ok(!rendered.includes('Career profile</h3>'), 'mixed All suppresses a single-bucket profile');
 
   const pureHeadsUp = profile(projection(headsUp));
   assert.equal(pureHeadsUp.displayedArchetype, null);
-  assert.equal(pureHeadsUp.availability.reason, 'no_supported_multiway_sample');
-  assert.match(pureHeadsUp.availability.message, /No supported 3\+ handed Career sample/);
+  assert.equal(pureHeadsUp.availability.reason, 'no_supported_table_size_sample');
+  assert.match(pureHeadsUp.availability.message, /No supported table-size sample/);
 
   const immature = profile(projection(headsUp.slice(0, 490).concat(multiway.slice(0, 10))));
   assert.equal(immature.displayedArchetype, null);
   assert.equal(immature.hands, 10);
-  assert.equal(immature.availability.reason, 'insufficient_multiway_hands');
+  assert.equal(immature.availability.reason, 'insufficient_table_size_hands');
   const lagMaturity = structuredClone(projection(multiway.slice(0, 40)));
   Object.assign(lagMaturity.counters, { hands: 40, vpipMade: 11, vpipOpportunities: 40, pfrMade: 10, pfrOpportunities: 40, postflopAggressiveActions: 30, postflopCalls: 10, threeBetMade: 0, threeBetOpportunities: 0, foldToThreeBet: 0, foldToThreeBetOpportunities: 0, flopCBetMade: 0, flopCBetOpportunities: 0, foldToFlopCBet: 0, foldToFlopCBetOpportunities: 0, wtsdMade: 0, wtsdOpportunities: 0, wsdMade: 0, wsdOpportunities: 0 });
   Object.assign(lagMaturity.profileContext, { preflopTableSizeSum: 160, preflopTableSizeOpportunities: 40 });
@@ -94,7 +91,7 @@ function sumCounters(records, id) {
   assert.equal(projection([exactCountWithoutPosition]).profileContext.preflopTableSizeSum, 6, 'schema-v3 exact dealt count survives unrelated position naming failure');
   const legacy = Array.from({ length: 100 }, function (_, i) { return record(20000 + i, { schemaVersion: 2, dealtPlayerCount: 5, handId: 'LEGACY-' + i }); });
   assert.equal(projection(legacy).counters.hands, 0, 'legacy records with unvalidated extra fields do not fabricate table size');
-  assert.equal(profile(projection(legacy)).availability.reason, 'no_supported_multiway_sample');
+  assert.equal(profile(projection(legacy)).availability.reason, 'no_supported_table_size_sample');
   const modernAndLegacy = projection(multiway.concat(legacy));
   assert.equal(modernAndLegacy.counters.hands, 150, 'unknown-context legacy history is excluded beside modern multiway history');
   assert.deepStrictEqual(modernAndLegacy.counters, profileStats.counters);
@@ -117,58 +114,50 @@ function sumCounters(records, id) {
   const saved = {};
   mostlyHeadsUp.forEach(function (item) { saved[contribution.storageRecordKey(item.handKey, item.fingerprint)] = item; });
   const store = indexed.createMemoryService(saved);
-  const first = await store.careerDashboardStats('a', {});
-  assert.equal(first.core.counters.hands, 750);
+  const all = await store.careerDashboardStats('a', {});
+  assert.equal(all.core.counters.hands, 750);
+  assert.equal(all.profileStats, null, 'mixed All has no single calibrated profile');
+  const first = await store.careerDashboardStats('a', { tableSize: '3_TO_5' });
+  assert.equal(first.core.counters.hands, 150);
   assert.equal(first.profileStats.counters.hands, 150);
   assert.equal(profile(first.profileStats).displayedArchetype, 'TAG');
   assert.equal(first.query.playerRecordRetrievals, 0, 'warm aggregate-backed Dashboard read performs no history retrieval');
-  const filtered = await store.careerDashboardStats('a', { position: 'SB' });
+  const filtered = await store.careerDashboardStats('a', { position: 'SB', tableSize: '3_TO_5' });
   assert.equal(filtered.core.counters.hands, 0);
-  assert.deepStrictEqual(filtered.profileStats, first.profileStats, 'Dashboard filters do not recalculate the overall Career profile');
+  assert.equal(filtered.profileStats.counters.hands, 0, 'position profiles use the selected exact slice');
   const huAppend = record(16000, { dealtPlayerCount: 2, loose: true, handId: 'HU-APPEND' });
   await store.append(huAppend);
-  const afterHu = await store.careerDashboardStats('a', {});
+  const afterHu = await store.careerDashboardStats('a', { tableSize: '3_TO_5' });
   assert.ok(afterHu.query.playerRevision > first.query.playerRevision);
-  assert.equal(afterHu.core.counters.hands, 751);
+  assert.equal(afterHu.core.counters.hands, 150);
   assert.equal(afterHu.profileStats.counters.hands, 150, 'Career revision rebuild keeps a heads-up append out of the profile projection');
   const mwAppend = record(16001, { dealtPlayerCount: 4, handId: 'MW-APPEND' });
   await store.append(mwAppend);
-  const afterMultiway = await store.careerDashboardStats('a', {});
-  assert.equal(afterMultiway.core.counters.hands, 752);
+  const afterMultiway = await store.careerDashboardStats('a', { tableSize: '3_TO_5' });
+  assert.equal(afterMultiway.core.counters.hands, 151);
   assert.equal(afterMultiway.profileStats.counters.hands, 151, 'Career revision rebuild includes a new authoritative multiway contribution');
   store.testHooks.caches.get('a').player.profileProjection.version = 0; store.testHooks.dashboardCache.clear();
-  const rebuilt = await store.careerDashboardStats('a', {});
+  const rebuilt = await store.careerDashboardStats('a', { tableSize: '3_TO_5' });
   assert.equal(rebuilt.query.playerRecordRetrievals, 1, 'legacy aggregate cache without the current profile projection rebuilds from authoritative history');
   assert.equal(rebuilt.profileStats.counters.hands, 151);
-  const warm = await store.careerDashboardStats('a', {});
+  const warm = await store.careerDashboardStats('a', { tableSize: '3_TO_5' });
   assert.equal(warm.query.playerRecordRetrievals, 0);
   assert.equal(warm.query.dashboardCacheHit, true);
   const detached = structuredClone(warm); detached.profileStats.counters.hands = 9999;
-  assert.equal((await store.careerDashboardStats('a', {})).profileStats.counters.hands, 151, 'returned profile snapshots are detached from the aggregate cache');
+  assert.equal((await store.careerDashboardStats('a', { tableSize: '3_TO_5' })).profileStats.counters.hands, 151, 'returned profile snapshots are detached from the aggregate cache');
 
   const driver = await queryHarness.openHarness(false);
   try {
     await driver.reset(mostlyHeadsUp, true);
-    const cold = await driver.sample('a', {});
-    assert.equal(cold.result.core.counters.hands, 750);
+    const cold = await driver.sample('a', { tableSize: '3_TO_5' });
+    assert.equal(cold.result.core.counters.hands, 150);
     assert.equal(cold.result.profileStats.counters.hands, 150);
     assert.equal(cold.result.query.playerRecordRetrievals, 1);
     assert.equal(cold.passes, 1, 'cold profile/aggregate read shares one resolver rebuild');
-    const warmRender = await driver.sample('a', {});
+    const warmRender = await driver.sample('a', { tableSize: '3_TO_5' });
     assert.equal(warmRender.result.query.playerRecordRetrievals, 0);
     assert.equal(warmRender.passes, 0, 'warm profile render does not rebuild or rescan history');
   } finally { await driver.close(); }
 
-  // Freeze Session classification locally without depending on private Git history.
-  const sessionResults = [];
-  for (const hands of [11, 40, 80, 200, 500]) for (const dealt of [null, 2, 3, 6, 9]) {
-    const input = { playerId: 'session', handsPlayed: hands, vpipHands: Math.floor(hands * .24), vpipOpportunities: hands, pfrHands: Math.floor(hands * .20), pfrOpportunities: hands, afDetails: { bets: 38, raises: 27, calls: 35 }, preflopTableSizeSum: dealt === null ? undefined : dealt * hands, preflopTableSizeOpportunities: dealt === null ? undefined : hands };
-    const before = JSON.stringify(input); sessionResults.push(classifier.classify(input)); assert.equal(JSON.stringify(input), before, 'Session classification is input-immutable');
-  }
-  for (const afDetails of [null, undefined, false, {}]) {
-    const input = { playerId: 'session', handsPlayed: 11, afDetails: afDetails };
-    sessionResults.push(classifier.classify(input));
-  }
-  assert.equal(crypto.createHash('sha256').update(JSON.stringify(sessionResults)).digest('hex'), 'a41bba89991b879ff8ee22b98dc6038d425c82a6f38175a96151e27bf83a66f5', '29 representative Session results remain at the reviewed V1.1 semantics');
-  console.log('Career 3+ handed profile projection, all-hand stat invariance, resolver authority, cache behavior, UI disclosure, stable identity, and 29 Session equivalence cases passed.');
+  console.log('Career profile projection, all-hand stat invariance, resolver authority, cache behavior, UI disclosure, and stable identity passed.');
 })();

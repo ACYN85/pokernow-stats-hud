@@ -8,8 +8,8 @@ assert.strictEqual(Object.isFrozen(guard), true, 'runtime scope namespace is imm
 assert.strictEqual(guard.isSupportedLocation, guard.isPokerNowGamePage, 'legacy semantic alias points to the one standardized function');
 
 assert.strictEqual(guard.isSupportedLocation({ protocol: 'https:', hostname: 'www.pokernow.com', pathname: '/games/table-123' }), true);
-assert.strictEqual(guard.isPokerNowGamePage('https://pokernow.com/games/synthetic-game-route'), true, 'exact captured non-www production URL must pass');
-assert.strictEqual(guard.isPokerNowGamePage('https://www.pokernow.com/games/synthetic-game-route'), true, 'exact captured production path also passes on www');
+assert.strictEqual(guard.isPokerNowGamePage('https://pokernow.com/games/pglC7CkrwmskDJfKrkFuSc2JF'), true, 'exact captured non-www production URL must pass');
+assert.strictEqual(guard.isPokerNowGamePage('https://www.pokernow.com/games/pglC7CkrwmskDJfKrkFuSc2JF'), true, 'exact captured production path also passes on www');
 assert.strictEqual(guard.isPokerNowGamePage('https://www.pokernow.com/games/table-123/?view=table#seat-2'), true, 'exact game URL with trailing slash, query, and hash must pass');
 assert.strictEqual(guard.isPokerNowGamePage({ protocol: 'https:', hostname: 'pokernow.com', pathname: '/games/table-123/' }), true, 'bare production hostname is accepted');
 assert.strictEqual(guard.isPokerNowGamePage({ protocol: 'https:', hostname: 'www.pokernow.com', pathname: '/games/' }), false, 'empty game ID is rejected');

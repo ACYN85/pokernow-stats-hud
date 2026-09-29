@@ -60,6 +60,7 @@ var revisionBeforeResize = stableAfter.placement.currentDecisionRevision;
 var fingerprintBeforeResize = stableAfter.placement.currentRenderFingerprint;
 visibility.fixture.setLayout('narrow');
 visibility.setViewport(1160, 900, true);
+visibility.triggerResizeObserver(visibility.fixture.boardSlot);
 visibility.runFor(500, 16);
 var narrowed = assertSingleVisiblePill(visibility, 430, 'explicit viewport resize');
 assert.strictEqual(narrowed.placement.currentDecisionRevision, revisionBeforeResize, 'resize does not create a semantic revision');
