@@ -2,6 +2,8 @@
 
 PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into a real-time, configurable player-statistics overlay with persistent Session and Career history.
 
+This extension analyzes information visible during games and stores derived statistics locally. It does not automate gameplay, access hidden cards, use solver-based recommendations, or tell you what action to take. It simply organizes and summarizes information from hands you can already see.
+
 **Version 1.4.0** · Release Build `v1.4.0-rc2-20260930-2250`
 
 ## Demo
