@@ -25,8 +25,8 @@ function create(width, open, storage) {
     viewport: { width: 1280, height: 665 }, initialStorage: storage || {
       hudUiPreferences: settings.merge(settings.DEFAULTS, { settingsOpen: true, selectedSettingsSection: 'hud', hudSize: 'small', leaderboardEnabled: open, potOddsOffsetX: 37, potOddsOffsetY: -14 }),
       leaderboardHudPosition: { version: 1, x: 190, y: 230, locked: false },
-      'pokerNowHudManualOverlayPositions:game:leaderboard-reset': { playerA: { offsetX: 22, offsetY: 33 } },
-      'pokerNowHudManualOverlayPositions:game:other-table': { playerB: { offsetX: 44, offsetY: 55 } }
+      'pokerNowHudManualOverlayPositions:game:leaderboard-reset': { liam: { offsetX: 22, offsetY: 33 } },
+      'pokerNowHudManualOverlayPositions:game:other-table': { mail: { offsetX: 44, offsetY: 55 } }
     } });
   var element = h.document.getElementById('pokernow-stats-hud-root');
   assert.ok(element);
@@ -44,6 +44,7 @@ function create(width, open, storage) {
   Object.defineProperty(element, 'offsetWidth', { get: function () { return displayed() ? width : 0; } });
   Object.defineProperty(element, 'offsetHeight', { get: function () { return displayed() ? 150 : 0; } });
   h.panel = element;
+  h.setViewport(1280, 665);
   h.runFor(240, 16);
   return h;
 }
@@ -91,8 +92,8 @@ function drag(h, x, y, finish) {
   assertDefault(open, width, 'a late pointerup cannot resurrect pre-reset drag state');
   var reloaded = create(width, true, JSON.parse(JSON.stringify(open.storage)));
   assertDefault(reloaded, width, 'reset default survives storage hydration/reload');
-  assert.deepStrictEqual(open.storage['pokerNowHudManualOverlayPositions:game:leaderboard-reset'], { playerA: { offsetX: 22, offsetY: 33 } });
-  assert.deepStrictEqual(open.storage['pokerNowHudManualOverlayPositions:game:other-table'], { playerB: { offsetX: 44, offsetY: 55 } });
+  assert.deepStrictEqual(open.storage['pokerNowHudManualOverlayPositions:game:leaderboard-reset'], { liam: { offsetX: 22, offsetY: 33 } });
+  assert.deepStrictEqual(open.storage['pokerNowHudManualOverlayPositions:game:other-table'], { mail: { offsetX: 44, offsetY: 55 } });
   assert.deepStrictEqual([open.storage.hudUiPreferences.potOddsOffsetX, open.storage.hudUiPreferences.potOddsOffsetY], [37, -14]);
   assert.deepStrictEqual(open.evaluationErrors.concat(closed.evaluationErrors, reloaded.evaluationErrors), []);
 

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  var PNHUD_BUILD_ID = 'v1.3.0-rc4-20260929-0321';
+  var PNHUD_BUILD_ID = globalThis.PokerNowRuntimeScope && globalThis.PokerNowRuntimeScope.buildId || 'unavailable';
   var PNHUD_EXTENSION_ID = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id || 'unavailable';
   console.log('[HUD BUILD] popup ' + PNHUD_BUILD_ID, { extensionId: PNHUD_EXTENSION_ID });
   var buildElement = document.getElementById ? document.getElementById('pnhud-popup-build-id') : null;

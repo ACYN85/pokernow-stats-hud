@@ -1,3 +1,13 @@
+# 1.4.0
+
+Final V1.4.0 promotes the exact accepted RC2 archive byte-for-byte. Build ID `v1.4.0-rc2-20260930-2250` is retained. The accepted ZIP contains 73 files, is 2,377,285 bytes, and has SHA-256 `E1F804E1FF9E47A937E857A2F65201B36CEB07C99620E633E3739DC0236AB8BB`.
+
+- Browse Session History and historical Session detail, including supported table, situation, and position filters.
+- Compare Recent player Sessions or hands with Career totals and inspect Session Trends. Open history views refresh after finalized hands and Career updates.
+- Delete one exact historical Session globally from Career for every affected player; the current live Session remains intact.
+- New hands carry explicit Session provenance. Older Career records without it remain valid Career data and are not fabricated into historical Sessions. Backup format remains v1.
+- RC2 corrects Dashboard open/closed restoration across reload, Recent/Trend selector styling, and the small unset Leaderboard size. The selected Dashboard mode still returns to Session after reload; mode restoration is deferred to V1.4.1.
+
 # 1.3.0
 
 Final V1.3.0 promotes the exact accepted RC4 archive byte-for-byte. Build ID `v1.3.0-rc4-20260929-0321` is retained; RC1, RC2, RC3, and RC4 remain immutable. Signed-in RC4 smoke was accepted before promotion.

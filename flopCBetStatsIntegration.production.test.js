@@ -141,6 +141,6 @@ var visibleRegistrySource = fs.readFileSync('overlayStats.js', 'utf8');
 COUNTERS.forEach(function (field) {
   assert.strictEqual(visibleRegistrySource.includes(field), true, 'the shared visible registry maps authoritative ' + field);
 });
-assert.strictEqual(fs.readFileSync('content.js', 'utf8').includes(require('./release/config.json').buildId), true, 'the release candidate uses the synchronized Build ID while preserving certified stats');
+assert.strictEqual(fs.readFileSync('content.js', 'utf8').includes('globalThis.PokerNowRuntimeScope.buildId'), true, 'the content script consumes the canonical runtime Build ID while preserving certified stats');
 
 console.log('Authoritative Flop CBet counter ingestion P1-P10 and P15-P18 tests passed.');

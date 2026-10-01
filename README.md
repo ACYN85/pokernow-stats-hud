@@ -2,7 +2,7 @@
 
 PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into a real-time, configurable player-statistics overlay with persistent Session and Career history.
 
-**Version 1.3.0** · Release Build `v1.3.0-rc4-20260929-0321`
+**Version 1.4.0** · Release Build `v1.4.0-rc2-20260930-2250`
 
 ## Demo
 
@@ -26,6 +26,8 @@ PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into
 
 - Real-time player statistics calculated from finalized hands, including VPIP, PFR, aggression factor, 3Bet/F3B, flop CBet/FCB, WTSD, and W$SD.
 - Separate Session history and persistent local Career history for cross-session tracking.
+- Browse exact historical Sessions, open Session detail, compare Recent Career windows with Career totals, and inspect Session Trends. Filters use recorded table, situation, and position provenance where supported; visible history refreshes after finalized hands.
+- Delete a selected historical Session from Career for every affected player while preserving the current live Session. Older Career records without exact Session provenance remain in Career and are never inferred into historical Sessions. Portable Backup format remains v1.
 - Career Data controls for exact current-Session removal, gzip-compressed portable export, Import (Merge), and Restore (Replace). Import and restore also accept legacy JSON backups.
 - A successful Career Restore resets Session; a failed restore leaves Session intact. Export and Import do not reset Session.
 - Session/Career Leaderboard sources plus a Settings → Players browser for every tracked Career player.
@@ -64,7 +66,7 @@ Session and Career persistence remain separate, and no extension-controlled exte
 
 ### Install from a release ZIP
 
-Extract the exact `pokernow-hud-v1.3.0.zip` release archive and load the extracted directory through **Load unpacked**.
+Extract the exact `pokernow-hud-v1.4.0.zip` release archive and load the extracted directory through **Load unpacked**.
 
 Chrome does not load the ZIP directly.
 
@@ -72,7 +74,7 @@ Keep only one copy of the extension enabled at a time. Export a Career backup be
 
 ## Testing
 
-The public source includes behavioral tests and a separate release-integrity gate covering hand inference, statistics, Career portability, dashboards, overlays, Pot Odds, and package boundaries. The final ZIP is byte-identical to the accepted RC4 package (SHA-256 `18966EA9C96C102139E3DAABD0778248847ECFA8F3123D67ABAE47304BC6FD92`).
+The public source includes behavioral tests and a separate release-integrity gate covering hand inference, statistics, Career portability, dashboards, overlays, Pot Odds, and package boundaries. The final ZIP is byte-identical to the accepted V1.4 RC2 package (SHA-256 `E1F804E1FF9E47A937E857A2F65201B36CEB07C99620E633E3739DC0236AB8BB`).
 
 ```powershell
 node runTests.js full

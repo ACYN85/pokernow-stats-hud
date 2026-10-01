@@ -240,6 +240,7 @@ assert.deepStrictEqual(storageKeyNames, [
   'hostControl',
   'potOddsBoardReset',
   'sessionMeta',
+  'playerDashboard',
   'mode',
   'displayMode',
   'showOverlayBoxes',
@@ -255,9 +256,9 @@ assert.deepStrictEqual(storageKeyNames, [
   'diagnosticsLevel',
   'pauseLifecycleCaptureEnabled',
   'playerNotes'
-], 'the storage registry adds only authoritative runtime metadata and the separate mutable player-notes key, with no shadow-stat persistence key');
+], 'the storage registry contains the per-game Dashboard state but no shadow-stat persistence key');
 assert.doesNotMatch(storageBlockMatch[0], /preflop|three.?bet|fold.?to/i);
-assert.strictEqual(count(contentSource, /chrome\.storage\.local\.set\s*\(/g), 24, 'storage write sites remain bounded after the Leaderboard source preference move and the per-hand Pot Odds reset latch');
+assert.strictEqual(count(contentSource, /chrome\.storage\.local\.set\s*\(/g), 25, 'storage write sites remain bounded with the Dashboard visibility preference');
 assert.strictEqual(count(contentSource, /queueAuthoritativeStorageSnapshot\s*\(/g), 3, 'one queue definition plus revision-aware hand-accounting persistence and explicit reset share the ordered authoritative snapshot path');
 assert.match(contentSource, /function reconcileSocketHandId[\s\S]*?persistHandAccounting\(null, 'authoritative hand identity correction'\);/, 'hand-ID reconciliation now enters the same revision-aware persistence planner');
 assert.strictEqual(count(contentSource, /chrome\.storage\.local\.get\s*\(/g), 4, 'ordinary startup reads remain bounded; the only additional full-key read is the explicit user-triggered Reset Seat HUD Positions action');

@@ -27,6 +27,7 @@ function record(gameId, handId, players, options) {
     namespace: { provider: 'pokernow', host: 'pokernow.com', gameId: gameId },
     authoritativeHandId: handId,
     lifecycleHandIds: ['lifecycle:' + handId],
+    session: { schemaVersion: 1, sessionId: options.historicalSessionId || null },
     finalizedAt: options.finalizedAt || 1000,
     semanticVersions: Object.assign({}, aggregator.CURRENT_SEMANTIC_VERSIONS, options.semanticVersions || {}),
     players: players,
@@ -73,4 +74,19 @@ function complexRecords() {
   return records.concat([correctionA, correctionB, correctionC]);
 }
 
-module.exports = Object.freeze({ decision: decision, player: player, record: record, complexRecords: complexRecords });
+function liamMailDataset() {
+  return Array.from({ length: 30 }, function (_, index) {
+    return record('TRANSFER-ROUNDTRIP', 'A-' + index, ['L', 'M', 'C'].map(function (id, seat) {
+      var made = (index + seat) % 2;
+      var contribution = player(id, ['Liam', 'Mail', 'Casey'][seat], {
+        vpipMade: made, pfrMade: made, postflopAggressiveActions: made + 1, postflopCalls: 1,
+        threeBetMade: made, threeBetOpportunities: 1, foldToThreeBet: made, foldToThreeBetOpportunities: 1,
+        flopCBetMade: made, flopCBetOpportunities: 1, foldToFlopCBet: made, foldToFlopCBetOpportunities: 1,
+        wtsdMade: made, wtsdOpportunities: 1, wsdMade: made, wsdOpportunities: 1
+      }, Object.fromEntries(['threeBet', 'foldToThreeBet', 'flopCBet', 'foldToFlopCBet', 'wtsd', 'wsd'].map(function (key) { return [key, decision(1, made, null)]; })));
+      contribution.position = { schemaVersion: 1, status: 'supported', dealtPosition: ['BTN', 'SB', 'BB'][seat], dealtPlayerCount: 3, unsupportedReason: null };
+      return contribution;
+    }), { finalizedAt: 10000 + index });
+  });
+}
+module.exports = Object.freeze({ decision: decision, player: player, record: record, complexRecords: complexRecords, liamMailDataset: liamMailDataset });

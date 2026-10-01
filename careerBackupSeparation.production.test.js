@@ -10,14 +10,15 @@ var backup = fs.readFileSync('./careerBackup.js', 'utf8');
 var manifest = JSON.parse(fs.readFileSync('./manifest.json', 'utf8'));
 
 assert.strictEqual(manifest.background.service_worker, 'careerServiceWorker.js');
-assert.match(worker, /importScripts\('stats\.js', 'careerStatsAggregator\.js', 'filteredStats\.js', 'careerContributionStore\.js', 'careerIndexedStore\.js', 'careerBackupPolicy\.js', 'careerBackup\.js'\)/, 'formal backup validator, size policy, and filtered query layer load in the extension service worker');
+assert.match(worker, /importScripts\('stats\.js', 'careerStatsAggregator\.js', 'filteredStats\.js', 'statEvidence\.js', 'careerContributionStore\.js', 'careerIndexedStore\.js', 'careerBackupPolicy\.js', 'careerBackup\.js'\)/, 'formal backup validator, size policy, Evidence, and filtered query layer load in the extension service worker');
 assert.match(worker, /PokerCareerBackup\.validateBackup[\s\S]*replaceCareerRecords/, 'worker validates the complete candidate before entering replacement');
 assert.match(worker, /expectedPayloadDigest !== plan\.summary\.payloadDigest[\s\S]*expectedCurrentPayloadDigest !== currentBackup\.integrity\.payloadDigest/, 'destructive replacement confirmation is bound to both validated backup and current-career SHA-256 values');
 assert.match(indexed, /db\.transaction\(\[STORE_RECORDS, STORE_METADATA, STORE_AGGREGATES, STORE_PLAYER_HEADS\], 'readwrite'\)/, 'career replacement uses one transaction over exactly the four career stores');
 assert.match(indexed, /recordStore\.clear\(\); metadataStore\.clear\(\); aggregateStore\.clear\(\); headStore\.clear\(\)/, 'replace clears old career state only inside its atomic transaction');
 assert.match(indexed, /tx\.abort\(\)/, 'in-transaction verification can abort replacement');
 assert.doesNotMatch(backup, /PokerPlayerProfile|hudUi|overlay|leaderboard|sessionStorage|pokerNowHudSession/, 'backup format contains no profile, HUD, or session state');
-assert.doesNotMatch(worker, /PokerPlayerProfile|resetCurrentSession|STORAGE_KEYS\.session|pokerNowHudSession/, 'worker restore cannot reach session/profile state');
+assert.match(worker, /chrome\.storage\.local\.get\(keys\)/, 'historical deletion may read trusted Session metadata');
+assert.doesNotMatch(worker, /PokerPlayerProfile|resetCurrentSession|STORAGE_KEYS\.session|pokerNowHudSession(?!Meta)/, 'worker restore cannot reach session/profile state');
 
 var debugStart = content.indexOf('function createCareerDebugApi'); var debugEnd = content.indexOf('function installCareerDebugApi', debugStart);
 var debugApi = content.slice(debugStart, debugEnd);

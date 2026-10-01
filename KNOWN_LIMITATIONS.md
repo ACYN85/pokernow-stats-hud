@@ -1,6 +1,9 @@
-# Known limitations — V1.3 release candidate
+# Known limitations — V1.4
 
-No known release-blocking defect was reported for the feature-frozen V1.3 development build; RC1 live smoke remains pending. The following are deliberate support boundaries, not claims that every rare case was manually observed:
+The accepted V1.4 RC2 package has no reported release-blocking defect. The following are deliberate support boundaries, not claims that every rare case was manually observed:
+
+- Dashboard open/closed state survives reload, but a Dashboard left on History, Recent, Career, or History Trends reopens on Session. Restoring the prior valid source/submode is deferred to V1.4.1.
+- Older Career records without explicit Session provenance remain in Career statistics but cannot be reconstructed into historical Sessions. Historical Session deletion removes the selected canonical Session for all affected players; the current live Session uses its separate removal/reset flow.
 
 - Career starts with newly tracked finalized contributions. There is no lifetime PokerNow history retrieval, Full Log backfill, missed-hand importer, cloud sync or merge restore.
 - Tracking while disconnected or attaching mid-hand cannot reconstruct unobserved actions. Exact saved reload checkpoints preserve supported continuity; incomplete/recovered evidence remains conservative.

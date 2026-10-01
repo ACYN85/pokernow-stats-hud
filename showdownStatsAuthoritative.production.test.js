@@ -247,6 +247,6 @@ var uiSource = ['overlayStats.js', 'leaderboardStats.js', 'seatOverlay.js', 'set
 assert.match(uiSource, /\bWTSD\b/);
 assert.match(uiSource, /W\$SD/);
 assert.ok(contentSource.includes("var LIVE_SCHEMA_VERSION = 4;"), 'missing numeric fields normalize without a persistence schema migration');
-assert.ok(contentSource.includes("v1.3.0-rc4-20260929-0321"), 'promoted V1.3 Build ID is synchronized');
+assert.ok(contentSource.includes('globalThis.PokerNowRuntimeScope.buildId'), 'content consumes the shared V1.4 Build ID');
 
 console.log('Authoritative showdown A1-A21 ingestion, persistence, exact identity, reset, legacy, and aggregation tests passed.');

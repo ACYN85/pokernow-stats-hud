@@ -6,6 +6,7 @@ var Indexed = require('./careerIndexedStore.js');
 var Portable = require('./careerPortableFile.js');
 var Policy = require('./careerBackupPolicy.js');
 var Fixtures = require('./testSupport/careerBackupFixtures.js');
+var Aggregator = require('./careerStatsAggregator.js');
 
 function namedBlob(name, parts, type) {
   var blob = new Blob(parts, { type: type || '' });
@@ -16,7 +17,7 @@ function namedBlob(name, parts, type) {
 (async function () {
   var records = Fixtures.complexRecords();
   var source = {
-    careerStorageSchemaVersion: 2, recordSchemaVersion: 3, aggregateSchemaVersion: 2,
+    careerStorageSchemaVersion: 2, recordSchemaVersion: Aggregator.RECORD_SCHEMA_VERSION, aggregateSchemaVersion: 2,
     metadata: { careerTrackingStartedAt: 1, careerSchemaInitializedAt: 1, initializedByBuildId: 'portable-test', firstAcceptedHandKey: records[0].handKey, firstAcceptedAt: 1001, latestAcceptedAt: 1008 },
     records: records
   };

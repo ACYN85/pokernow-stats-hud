@@ -37,7 +37,8 @@ const moved=geometry();run('open("b","Player B")');assert.deepStrictEqual(geomet
 let resize=panel.querySelector('.pnhud-dashboard-resize');assert.ok(resize);down(resize,1080,800);move(900,650);up();assert.equal(geometry().width,380);assert.equal(geometry().height,530);
 down(panel.querySelector('.pnhud-dashboard-resize'),900,650);move(-2000,-2000);up();assert.equal(geometry().width,320);assert.equal(geometry().height,240);
 const sized=geometry();run('close()');run('open("c","Player C")');assert.deepStrictEqual(geometry(),sized);assert.equal(h.count('#pnhud-player-dashboard'),1);
-assert.equal(h.seatDiscoveryQueryCount(),beforeQueries,'pointer movement performs no Seat HUD discovery');assert.equal(h.storageWrites.length,beforeWrites,'geometry never persists');
+assert.equal(h.seatDiscoveryQueryCount(),beforeQueries,'pointer movement performs no Seat HUD discovery');
+assert.ok(h.storageWrites.slice(beforeWrites).every(update=>Object.keys(update).every(key=>key.startsWith('pokerNowHudPlayerDashboard:'))),'geometry never persists; only Dashboard visibility may be written');
 run('close()');
 const settingsLauncher=h.document.getElementById('pnhud-settings-launcher');
 pointer.bubble(h,settingsLauncher,pointer.pointerEvent('click',settingsLauncher));

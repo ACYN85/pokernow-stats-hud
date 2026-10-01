@@ -15,6 +15,7 @@
   var TOP_LEVEL_KEYS = ['aggregateSchemaVersion', 'backupFormat', 'backupFormatVersion', 'careerMetadata', 'careerStorageSchemaVersion', 'integrity', 'recordSchemaVersion', 'records', 'semanticVersionPolicy'];
   var CAREER_KEYS = ['careerSchemaInitializedAt', 'careerTrackingStartedAt', 'firstAcceptedAt', 'firstAcceptedHandKey', 'initializedByBuildId', 'latestAcceptedAt'];
   var RECORD_KEYS = ['authoritativeHandId', 'finalizedAt', 'fingerprint', 'handKey', 'lifecycleHandIds', 'namespace', 'players', 'recordType', 'schemaVersion', 'semanticVersions', 'supersedesFingerprint'];
+  var RECORD_KEYS_V4 = RECORD_KEYS.concat(['session']);
   var PLAYER_KEYS = ['counters', 'decisions', 'displayName', 'playerId', 'sourceContributionIds'];
   var PLAYER_KEYS_V2 = PLAYER_KEYS.concat(['relational']);
   var PLAYER_KEYS_V3 = PLAYER_KEYS_V2.concat(['position']);
@@ -70,10 +71,11 @@
   }
   function validateCompleteRecord(record, index) {
     var label = 'records[' + index + ']';
-    exactKeys(record, RECORD_KEYS, label);
+    exactKeys(record, record.schemaVersion >= 4 ? RECORD_KEYS_V4 : RECORD_KEYS, label);
     exactKeys(record.namespace, ['gameId', 'host', 'provider'], label + '.namespace');
     exactKeys(record.semanticVersions, Aggregator.SEMANTIC_VERSION_FIELDS, label + '.semanticVersions');
     var error = Aggregator.validateRecord(record); if (error) fail(label + ': ' + error);
+    if (record.schemaVersion >= 4) exactKeys(record.session, ['schemaVersion', 'sessionId'], label + '.session');
     if (typeof record.authoritativeHandId !== 'string' || !record.authoritativeHandId) fail(label + ' authoritativeHandId must be a string');
     var expectedHandKey = ['pokernow', record.namespace.host, record.namespace.gameId, record.authoritativeHandId].join('|');
     if (record.handKey !== expectedHandKey) fail(label + ' logical hand key does not match its namespace');
@@ -155,6 +157,7 @@
     payload.records.forEach(function (record) { if (fingerprints.has(record.fingerprint)) fail('duplicate physical fingerprint'); fingerprints.add(record.fingerprint); });
     var resolution = Aggregator.rebuild(payload.records);
     if (resolution.rejectedRecords.length || resolution.acceptedRecords.length !== payload.records.length || resolution.quarantinedHandKeys.length) fail('backup supersession graph is invalid: ' + (resolution.rejectedRecords[0] && resolution.rejectedRecords[0].reason || 'record rejection'));
+    try { Aggregator.historicalSessionCatalog(payload.records); } catch (error) { fail(error.message); }
     if (payload.records.length) {
       if (!metadata.firstAcceptedHandKey || !resolution.acceptedRecords.some(function (record) { return record.handKey === metadata.firstAcceptedHandKey; })) fail('firstAcceptedHandKey is missing from the career history');
       if (metadata.firstAcceptedAt === null || metadata.latestAcceptedAt === null) fail('accepted career timestamps are required');
@@ -240,6 +243,10 @@
     union.sort(function (left, right) { return left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); });
     var resolved = fingerprintConflicts.length ? null : Aggregator.rebuild(union);
     var rejected = resolved ? resolved.rejectedRecords.slice() : [];
+    var sessionCollision = false;
+    if (resolved && !rejected.length && !resolved.quarantinedHandKeys.length) {
+      try { Aggregator.historicalSessionCatalog(union); } catch (_error) { sessionCollision = true; }
+    }
     var conflictKeys = new Set(fingerprintConflicts.map(function (fingerprint) { return 'fingerprint:' + fingerprint; }));
     if (resolved) {
       resolved.quarantinedHandKeys.forEach(function (handKey) { conflictKeys.add(String(handKey)); });
@@ -263,8 +270,8 @@
       mergedPhysicalRecordCount: union.length,
       sessionAffected: false
     };
-    if (fingerprintConflicts.length || !resolved || rejected.length || resolved.acceptedRecords.length !== union.length || resolved.quarantinedHandKeys.length) {
-      return { ok: false, reason: 'Career import conflicts with the current authoritative record graph and cannot be merged safely', summary: summary, rejectedRecords: rejected, quarantinedHandKeys: resolved ? resolved.quarantinedHandKeys.slice() : [], fingerprintConflicts: fingerprintConflicts.slice() };
+    if (fingerprintConflicts.length || !resolved || rejected.length || resolved.acceptedRecords.length !== union.length || resolved.quarantinedHandKeys.length || sessionCollision) {
+      return { ok: false, reason: sessionCollision ? 'Career import contains a historical Session ID collision across game namespaces' : 'Career import conflicts with the current authoritative record graph and cannot be merged safely', summary: summary, rejectedRecords: rejected, quarantinedHandKeys: resolved ? resolved.quarantinedHandKeys.slice() : [], fingerprintConflicts: fingerprintConflicts.slice() };
     }
     return {
       ok: true,

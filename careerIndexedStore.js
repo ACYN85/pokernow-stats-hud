@@ -87,13 +87,30 @@
   }
   function validCache(cache, head) {
     var profile = cache && cache.player && cache.player.profileProjection;
-    if (!cache || !head || cache.playerId !== head.playerId || cache.revision !== head.revision || cache.aggregateSchemaVersion !== Aggregator.AGGREGATE_SCHEMA_VERSION || !cache.player || !cache.player.counters || !cache.player.contexts || !cache.player.contexts.situations || !cache.player.contexts.positions || !cache.player.tableSizes || !cache.player.positionCoverage || !Number.isInteger(cache.player.positionCoverage.unsupportedRecords) || !profile || profile.version !== Aggregator.PROFILE_PROJECTION_VERSION || !profile.counters || !profile.profileContext || profile.profileContext.version !== Aggregator.PROFILE_CONTEXT_VERSION || !Number.isInteger(cache.physicalRecordCount)) return false;
-    if (!Aggregator.COUNTER_FIELDS.every(function (field) { return Number.isInteger(profile.counters[field]) && profile.counters[field] >= 0; })) return false;
     function validCounters(counters) { return Aggregator.COUNTER_FIELDS.every(function (field) { return Number.isInteger(counters && counters[field]) && counters[field] >= 0; }); }
-    var contexts = cache.player.contexts;
-    return validCounters(cache.player.counters) &&
-      Object.keys(contexts.situations).every(function (key) { return (key === 'ip' || key === 'oop') && validCounters(contexts.situations[key]); }) &&
-      Object.keys(contexts.positions).every(function (key) { return Aggregator.POSITION_LABELS.indexOf(key) >= 0 && validCounters(contexts.positions[key]); });
+    function validContexts(contexts) {
+      return contexts && typeof contexts === 'object' && !Array.isArray(contexts) &&
+        contexts.situations && typeof contexts.situations === 'object' && !Array.isArray(contexts.situations) &&
+        contexts.positions && typeof contexts.positions === 'object' && !Array.isArray(contexts.positions) &&
+        Object.keys(contexts.situations).every(function (key) { return (key === 'ip' || key === 'oop') && validCounters(contexts.situations[key]); }) &&
+        Object.keys(contexts.positions).every(function (key) { return Aggregator.POSITION_LABELS.indexOf(key) >= 0 && validCounters(contexts.positions[key]); });
+    }
+    if (!cache || !head || cache.playerId !== head.playerId || cache.revision !== head.revision || cache.aggregateSchemaVersion !== Aggregator.AGGREGATE_SCHEMA_VERSION ||
+      !cache.player || !validCounters(cache.player.counters) || !validContexts(cache.player.contexts) ||
+      !cache.player.tableSizes || typeof cache.player.tableSizes !== 'object' || Array.isArray(cache.player.tableSizes) ||
+      !Object.keys(cache.player.tableSizes).every(function (key) {
+        var part = cache.player.tableSizes[key];
+        return /^[2-9]$/.test(key) && part && validCounters(part.counters) && validContexts(part.contexts) &&
+          Number.isInteger(part.recordCount) && part.recordCount >= 0 &&
+          (part.earliestPositionTrackedAt === null || Number.isSafeInteger(part.earliestPositionTrackedAt) && part.earliestPositionTrackedAt >= 0) &&
+          Number.isInteger(part.unsupportedPositionRecords) && part.unsupportedPositionRecords >= 0;
+      }) || !cache.player.positionCoverage || !Number.isInteger(cache.player.positionCoverage.trackedHands) ||
+      cache.player.positionCoverage.trackedHands < 0 ||
+      !(cache.player.positionCoverage.earliestTrackedAt === null || Number.isSafeInteger(cache.player.positionCoverage.earliestTrackedAt) && cache.player.positionCoverage.earliestTrackedAt >= 0) ||
+      !Number.isInteger(cache.player.positionCoverage.unsupportedRecords) || cache.player.positionCoverage.unsupportedRecords < 0 ||
+      !profile || profile.version !== Aggregator.PROFILE_PROJECTION_VERSION || !validCounters(profile.counters) ||
+      !profile.profileContext || profile.profileContext.version !== Aggregator.PROFILE_CONTEXT_VERSION || !Number.isInteger(cache.physicalRecordCount)) return false;
+    return true;
   }
   function playerFromRecords(records, playerId) {
     var state = Aggregator.createState(records);
@@ -142,10 +159,13 @@
   }
   function tableSelection(player, tableSize) {
     if (!tableSize) return { counters: player.counters, contexts: player.contexts, recordCount: player.recordCount };
-    var selected = { counters: Aggregator.emptyCounters(), contexts: { situations: {}, positions: {} }, recordCount: 0 };
+    var selected = { counters: Aggregator.emptyCounters(), contexts: { situations: {}, positions: {} }, recordCount: 0, earliestPositionTrackedAt: null, unsupportedPositionRecords: 0 };
     Object.keys(player.tableSizes || {}).forEach(function (key) {
       if (Aggregator.classifyTableSize(Number(key)) !== tableSize) return;
       var part = player.tableSizes[key]; selected.recordCount += part.recordCount;
+      selected.unsupportedPositionRecords += part.unsupportedPositionRecords;
+      if (part.earliestPositionTrackedAt !== null) selected.earliestPositionTrackedAt = selected.earliestPositionTrackedAt === null
+        ? part.earliestPositionTrackedAt : Math.min(selected.earliestPositionTrackedAt, part.earliestPositionTrackedAt);
       Aggregator.COUNTER_FIELDS.forEach(function (field) { selected.counters[field] += part.counters[field]; });
       ['situations', 'positions'].forEach(function (kind) { Object.keys(part.contexts[kind]).forEach(function (context) {
         var target = selected.contexts[kind][context] || (selected.contexts[kind][context] = Aggregator.emptyCounters());
@@ -218,10 +238,10 @@
         situationTrackedHands: situation ? situationTracked : 0, matchedSituationHands: situation ? Number(counters.hands || 0) : 0,
         excludedUnsupportedSituationHands: situation ? total - situationTracked : 0,
         relationalSupportedOpportunities: 0, matchedRelationalOpportunities: 0,
-        earliestPositionTrackedAt: player.positionCoverage.earliestTrackedAt,
+        earliestPositionTrackedAt: scope.tableSize ? selected.earliestPositionTrackedAt : player.positionCoverage.earliestTrackedAt,
         earliestRelationalTrackedAt: null, activeRecordCount: Number(selected.recordCount || 0),
         physicalRecordCount: Number(cache && cache.physicalRecordCount || 0), tableSizeHands: tableCoverage(player, scope),
-        excludedUnsupportedPositionRecords: position ? player.positionCoverage.unsupportedRecords : 0,
+        excludedUnsupportedPositionRecords: position ? scope.tableSize ? selected.unsupportedPositionRecords : player.positionCoverage.unsupportedRecords : 0,
         excludedMissingCounterpartRecords: 0
       }
     };
@@ -325,6 +345,265 @@
   function normalizedPlayerIds(values) {
     return Array.from(new Set((Array.isArray(values) ? values : []).map(function (value) { return String(value || '').trim(); }).filter(Boolean))).slice(0, 64);
   }
+  function sessionSummaries(records, playerId) {
+    return Aggregator.historicalSessionCatalog(records).filter(function (summary) {
+      return playerId === undefined || Number(summary.playerHandCounts[String(playerId)] || 0) > 0;
+    }).map(function (summary) { return Aggregator.publicSessionSummary(summary, playerId); });
+  }
+  function sessionRecords(records, sessionId) {
+    return Aggregator.resolveActiveRecords(records).activeRecords.filter(function (record) {
+      return record.schemaVersion >= 4 && record.session.sessionId === sessionId;
+    });
+  }
+  function requiredSessionPlayerId(value) {
+    if (typeof value !== 'string' || !value || value.length > 500 || value.trim() !== value || /[\u0000-\u001f\u007f]/.test(value)) throw new TypeError('canonical player ID is required for historical Session query');
+    return value;
+  }
+  function requiredHistoricalSessionId(value) {
+    if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) throw new TypeError('canonical historical Session ID is required');
+    return value;
+  }
+  function normalizedSessionFilters(requested) {
+    if (requested !== undefined && (!requested || typeof requested !== 'object' || Array.isArray(requested) || Object.getPrototypeOf(requested) !== Object.prototype)) throw new TypeError('historical Session filters must be a plain object');
+    var filters = requested || {};
+    var allowed = ['position', 'situation', 'tableSize', 'statId', 'counterpartMode', 'counterpartPlayerId', 'selfPlayerId'];
+    if (Object.keys(filters).some(function (key) { return allowed.indexOf(key) < 0; })) throw new TypeError('unsupported historical Session filter');
+    allowed.forEach(function (key) { if (filters[key] !== undefined && filters[key] !== null && typeof filters[key] !== 'string') throw new TypeError('historical Session filter values must be strings'); });
+    var normalized = FilteredStats.normalizeFilters(filters);
+    if (normalized.position && Aggregator.POSITION_LABELS.indexOf(normalized.position) < 0) throw new TypeError('unsupported position filter');
+    if (normalized.statId && !FilteredStats.RELATIONAL_STATS[normalized.statId]) throw new TypeError('unsupported relational stat filter');
+    if (normalized.statId && !normalized.counterpartMode) throw new TypeError('relational stat filter requires a counterpart mode');
+    if (!normalized.counterpartMode && (normalized.counterpartPlayerId || normalized.selfPlayerId)) throw new TypeError('counterpart ID requires a relational filter');
+    if (normalized.counterpartMode && normalized.counterpartMode !== 'specific' && normalized.counterpartMode !== 'self' && normalized.counterpartMode !== 'others') throw new TypeError('unsupported counterpart mode');
+    if (normalized.counterpartPlayerId) requiredSessionPlayerId(normalized.counterpartPlayerId);
+    if (normalized.selfPlayerId) requiredSessionPlayerId(normalized.selfPlayerId);
+    return normalized;
+  }
+  function requiredRecentWindow(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype ||
+      Object.keys(value).sort().join('|') !== 'count|type' || (value.type !== 'sessions' && value.type !== 'hands') ||
+      !Number.isSafeInteger(value.count) || value.count < 1 || value.count > (value.type === 'sessions' ? 100 : 5000)) {
+      throw new TypeError('recent window requires sessions (1-100) or hands (1-5000)');
+    }
+    return { type: value.type, count: value.count };
+  }
+  function recentSnapshot(records, playerId) {
+    playerId = requiredSessionPlayerId(playerId);
+    var resolved = Aggregator.resolveActiveRecords(records || []);
+    var catalog = Aggregator.historicalSessionCatalogFromActive(resolved.activeRecords);
+    var hands = resolved.activeRecords.filter(function (record) {
+      return record.players.some(function (entry) { return String(entry.playerId) === playerId && Number(entry.counters && entry.counters.hands || 0) > 0; });
+    });
+    var physical = new Map();
+    resolved.physicalRecords.forEach(function (record) {
+      if (!physical.has(record.handKey)) physical.set(record.handKey, []);
+      physical.get(record.handKey).push(record);
+    });
+    return { playerId: playerId, resolved: resolved, catalog: catalog, hands: hands, physical: physical,
+      query: { historyTraversals: 1, resolverPasses: 1, physicalRecordsRead: (records || []).length, activeRecordsExamined: resolved.activeRecords.length } };
+  }
+  function sessionIdOf(record) { return record.schemaVersion >= 4 && record.session ? record.session.sessionId : null; }
+  function handTime(record) { return Number.isSafeInteger(record.finalizedAt) && record.finalizedAt > 0 ? record.finalizedAt : null; }
+  function selectedResolution(snapshot, active) {
+    var accepted = [];
+    active.forEach(function (record) { (snapshot.physical.get(record.handKey) || []).forEach(function (physical) { accepted.push(physical); }); });
+    return { activeRecords: active, acceptedRecords: accepted };
+  }
+  function composition(active) {
+    var counts = { HU: 0, '3_TO_5': 0, SIX_PLUS: 0, UNKNOWN: 0 };
+    active.forEach(function (record) { counts[Aggregator.classifyTableSize(Aggregator.resolveDealtPlayerCount(record))] += 1; });
+    return counts;
+  }
+  function timeCoverage(active) {
+    var times = active.map(handTime).filter(function (value) { return value !== null; });
+    return { startedAt: times.length ? Math.min.apply(null, times) : null, endedAt: times.length ? Math.max.apply(null, times) : null, undatedHandCount: active.length - times.length };
+  }
+  function publicStatResult(value) {
+    // The established AF derivation can be Infinity when calls are zero. JSON
+    // cannot carry Infinity, so expose null plus the exact raw counters.
+    return clone(value);
+  }
+  function profileForPopulation(active, physicalCount, playerId, filters) {
+    var player = Aggregator.aggregateActiveRecords(active).players[playerId];
+    return player ? profileStatsFromCache({ player: player, physicalRecordCount: physicalCount },
+      { position: filters.position, situation: filters.situation, tableSize: filters.tableSize }) : null;
+  }
+  function recentFromSnapshot(snapshot, window, filters) {
+    var active; var selectedSessionIds = []; var omittedUndatedHands = 0;
+    if (window.type === 'sessions') {
+      var participating = new Set(snapshot.hands.map(sessionIdOf).filter(Boolean));
+      selectedSessionIds = snapshot.catalog.filter(function (row) { return participating.has(row.sessionId); }).slice(0, window.count).map(function (row) { return row.sessionId; });
+      var selected = new Set(selectedSessionIds);
+      active = snapshot.hands.filter(function (record) { return selected.has(sessionIdOf(record)); });
+    } else {
+      var dated = snapshot.hands.filter(function (record) { return handTime(record) !== null; });
+      omittedUndatedHands = snapshot.hands.length - dated.length;
+      dated.sort(function (left, right) { return handTime(right) - handTime(left) ||
+        left.handKey.localeCompare(right.handKey) || left.fingerprint.localeCompare(right.fingerprint); });
+      active = dated.slice(0, window.count);
+    }
+    var resolution = selectedResolution(snapshot, active);
+    var coreFilters = { position: filters.position, situation: filters.situation, tableSize: filters.tableSize };
+    var results = FilteredStats.careerStatsBatchFromResolved(resolution, snapshot.playerId,
+      filters.counterpartMode ? [coreFilters, filters] : [coreFilters]);
+    var unassigned = { legacyHandCount: 0, unsupportedHandCount: 0 };
+    active.forEach(function (record) {
+      if (sessionIdOf(record)) return;
+      if (record.schemaVersion < 4) unassigned.legacyHandCount += 1;
+      else unassigned.unsupportedHandCount += 1;
+    });
+    return { playerId: snapshot.playerId, window: window, filters: filters,
+      selectedSessionIds: selectedSessionIds, selectedSessionCount: selectedSessionIds.length,
+      selectedPlayerHandCount: active.length, timeCoverage: timeCoverage(active),
+      playerTableSizeHands: composition(active), unassigned: unassigned, omittedUndatedHands: omittedUndatedHands,
+      core: publicStatResult(results[0]), relational: filters.counterpartMode ? publicStatResult(results[1]) : null,
+      profileStats: profileForPopulation(active, resolution.acceptedRecords.length, snapshot.playerId, filters),
+      query: Object.assign({}, snapshot.query, { selectedPhysicalRecords: resolution.acceptedRecords.length }) };
+  }
+  function statMeasures(core) {
+    var c = core.counters, d = core.derived;
+    var spec = { vpip: ['vpipMade', 'vpipOpportunities'], pfr: ['pfrMade', 'pfrOpportunities'],
+      af: ['postflopAggressiveActions', 'postflopCalls'], threeBet: ['threeBetMade', 'threeBetOpportunities'],
+      foldToThreeBet: ['foldToThreeBet', 'foldToThreeBetOpportunities'], flopCBet: ['flopCBetMade', 'flopCBetOpportunities'],
+      foldToFlopCBet: ['foldToFlopCBet', 'foldToFlopCBetOpportunities'], wtsd: ['wtsdMade', 'wtsdOpportunities'],
+      wsd: ['wsdMade', 'wsdOpportunities'] };
+    return Object.keys(spec).reduce(function (output, key) {
+      var numerator = c[spec[key][0]], denominator = c[spec[key][1]];
+      var evidenceApi = typeof module !== 'undefined' && module.exports ? require('./statEvidence.js') : globalThis.PokerStatEvidence;
+      var evidence = evidenceApi.evaluateStatEvidence({ statKey: key, numerator: numerator, opportunities: denominator,
+        aggressiveActions: key === 'af' ? numerator : undefined, calls: key === 'af' ? denominator : undefined });
+      output[key] = { value: Number.isFinite(d[key]) && (key === 'af' ? numerator + denominator > 0 : denominator > 0) ? d[key] : null,
+        numerator: numerator, denominator: denominator, supportCount: evidence.supportCount, evidenceStatus: evidence.status,
+        evidenceLevel: evidence.level, supportType: evidence.supportType,
+        nonFinite: key === 'af' && numerator > 0 && denominator === 0 };
+      return output;
+    }, {});
+  }
+  function careerRecentPlayerStatsFromRecords(records, playerId, requestedWindow, requestedFilters) {
+    var window = requiredRecentWindow(requestedWindow), filters = normalizedSessionFilters(requestedFilters);
+    return recentFromSnapshot(recentSnapshot(records, playerId), window, filters);
+  }
+  function careerRecentVsCareerFromRecords(records, playerId, requestedWindow, requestedFilters) {
+    var window = requiredRecentWindow(requestedWindow), filters = normalizedSessionFilters(requestedFilters);
+    var snapshot = recentSnapshot(records, playerId); var recent = recentFromSnapshot(snapshot, window, filters);
+    var whole = selectedResolution(snapshot, snapshot.hands);
+    var coreFilters = { position: filters.position, situation: filters.situation, tableSize: filters.tableSize };
+    var results = FilteredStats.careerStatsBatchFromResolved(whole, snapshot.playerId,
+      filters.counterpartMode ? [coreFilters, filters] : [coreFilters]);
+    var career = { playerId: snapshot.playerId, filters: filters, playerHandCount: snapshot.hands.length,
+      playerTableSizeHands: composition(snapshot.hands), core: publicStatResult(results[0]),
+      relational: filters.counterpartMode ? publicStatResult(results[1]) : null,
+      profileStats: profileForPopulation(snapshot.hands, whole.acceptedRecords.length, snapshot.playerId, filters) };
+    var recentMeasures = statMeasures(recent.core), careerMeasures = statMeasures(career.core), comparison = {};
+    if (filters.counterpartMode) {
+      recentMeasures[filters.statId] = statMeasures(recent.relational)[filters.statId];
+      careerMeasures[filters.statId] = statMeasures(career.relational)[filters.statId];
+    }
+    Object.keys(recentMeasures).forEach(function (key) {
+      var a = recentMeasures[key], b = careerMeasures[key];
+      comparison[key] = { unit: key === 'af' ? 'ratio' : 'percentage_points', recentValue: a.value, careerValue: b.value,
+        delta: a.value === null || b.value === null ? null : Math.round((a.value - b.value) * 100) / 100,
+        recentNumerator: a.numerator, careerNumerator: b.numerator,
+        recentOpportunities: key === 'af' ? null : a.denominator, careerOpportunities: key === 'af' ? null : b.denominator,
+        recentCalls: key === 'af' ? a.denominator : null, careerCalls: key === 'af' ? b.denominator : null,
+        recentSupport: { count: a.supportCount, type: a.supportType, status: a.evidenceStatus, level: a.evidenceLevel },
+        careerSupport: { count: b.supportCount, type: b.supportType, status: b.evidenceStatus, level: b.evidenceLevel },
+        recentNonFinite: a.nonFinite, careerNonFinite: b.nonFinite };
+    });
+    return { playerId: snapshot.playerId, window: window, recent: recent, career: career, comparison: comparison,
+      query: Object.assign({}, snapshot.query, { selectedPhysicalRecords: recent.query.selectedPhysicalRecords,
+        careerPhysicalRecords: whole.acceptedRecords.length }) };
+  }
+  function careerPlayerSessionTrendFromRecords(records, playerId, requested) {
+    var filters = normalizedSessionFilters(requested);
+    var snapshot = recentSnapshot(records, playerId), bySession = new Map();
+    snapshot.hands.forEach(function (record) {
+      var id = sessionIdOf(record); if (!id) return;
+      if (!bySession.has(id)) bySession.set(id, []);
+      bySession.get(id).push(record);
+    });
+    var points = snapshot.catalog.filter(function (row) { return bySession.has(row.sessionId); }).reverse().map(function (row) {
+      var active = bySession.get(row.sessionId), resolution = selectedResolution(snapshot, active);
+      var coreFilters = { position: filters.position, situation: filters.situation, tableSize: filters.tableSize };
+      var results = FilteredStats.careerStatsBatchFromResolved(resolution, snapshot.playerId,
+        filters.counterpartMode ? [coreFilters, filters] : [coreFilters]);
+      var core = publicStatResult(results[0]);
+      var relational = filters.counterpartMode ? publicStatResult(results[1]) : null;
+      var measures = statMeasures(core);
+      if (relational) measures[filters.statId] = statMeasures(relational)[filters.statId];
+      return { sessionId: row.sessionId, provenanceStatus: row.provenanceStatus, startedAt: row.startedAt, endedAt: row.endedAt,
+        sessionHandCount: row.handCount, playerHandCount: active.length, playerTableSizeHands: composition(active),
+        core: core, relational: relational, stats: measures };
+    });
+    return { playerId: snapshot.playerId, filters: filters, order: 'endedAt-ascending-sessionId-descending', points: points,
+      unassigned: { legacyHandCount: snapshot.hands.filter(function (record) { return !sessionIdOf(record) && record.schemaVersion < 4; }).length,
+        unsupportedHandCount: snapshot.hands.filter(function (record) { return !sessionIdOf(record) && record.schemaVersion >= 4; }).length },
+      query: Object.assign({}, snapshot.query, { sessionPopulationsComputed: points.length }) };
+  }
+  function historicalPlayerSessionPopulation(records, playerId) {
+    playerId = requiredSessionPlayerId(playerId);
+    var resolution = Aggregator.resolveActiveRecords(records || []);
+    var catalog = Aggregator.historicalSessionCatalogFromActive(resolution.activeRecords);
+    var groups = new Map(); var legacyHandCount = 0; var unsupportedHandCount = 0;
+    resolution.activeRecords.forEach(function (record) {
+      var entry = record.players.find(function (candidate) { return candidate.playerId === playerId && Number(candidate.counters && candidate.counters.hands || 0) > 0; });
+      if (!entry) return;
+      var id = record.schemaVersion >= 4 && record.session && record.session.sessionId;
+      if (!id) { if (record.schemaVersion >= 4) unsupportedHandCount += 1; else legacyHandCount += 1; return; }
+      var group = groups.get(id);
+      if (!group) { group = { records: [], activeRecords: [], tableSizeHands: { HU: 0, '3_TO_5': 0, SIX_PLUS: 0, UNKNOWN: 0 } }; groups.set(id, group); }
+      group.activeRecords.push(record);
+      group.tableSizeHands[Aggregator.classifyTableSize(Aggregator.resolveDealtPlayerCount(record))] += 1;
+    });
+    var activeHandKeys = new Set();
+    groups.forEach(function (group) { group.activeRecords.forEach(function (record) { activeHandKeys.add(record.handKey); }); });
+    resolution.physicalRecords.forEach(function (record) {
+      if (!activeHandKeys.has(record.handKey)) return;
+      var id = record.schemaVersion >= 4 && record.session && record.session.sessionId;
+      var group = groups.get(id);
+      if (group) group.records.push(record);
+    });
+    return { catalog: catalog, groups: groups, unassigned: { legacyHandCount: legacyHandCount, unsupportedHandCount: unsupportedHandCount },
+      query: { historyTraversals: 1, resolverPasses: 1, physicalRecordsRead: (records || []).length, activeRecordsExamined: resolution.activeRecords.length } };
+  }
+  function playerSessionSummary(summary, group, playerId) {
+    var stats = FilteredStats.careerStatsFromResolved({ activeRecords: group.activeRecords, acceptedRecords: group.records }, playerId, {});
+    return { sessionId: summary.sessionId, provenanceStatus: summary.provenanceStatus, startedAt: summary.startedAt, endedAt: summary.endedAt,
+      playerId: playerId, playerHandCount: group.activeRecords.length, sessionHandCount: summary.handCount,
+      tableSizeHands: clone(summary.tableSizeHands), playerTableSizeHands: clone(group.tableSizeHands),
+      stats: { counters: stats.counters, derived: stats.derived }, coverage: stats.coverage };
+  }
+  function listCareerSessionPlayerSummariesFromRecords(records, playerId) {
+    var population = historicalPlayerSessionPopulation(records, playerId);
+    var sessions = population.catalog.filter(function (summary) { return population.groups.has(summary.sessionId); }).map(function (summary) {
+      return playerSessionSummary(summary, population.groups.get(summary.sessionId), playerId);
+    });
+    return { playerId: playerId, sessions: sessions, unassigned: population.unassigned,
+      query: Object.assign({}, population.query, { sessionPopulationsComputed: sessions.length }) };
+  }
+  function careerSessionPlayerStatsFromRecords(records, sessionId, playerId, requested) {
+    sessionId = requiredHistoricalSessionId(sessionId); playerId = requiredSessionPlayerId(playerId);
+    var filters = normalizedSessionFilters(requested);
+    var population = historicalPlayerSessionPopulation(records, playerId);
+    var summary = population.catalog.find(function (candidate) { return candidate.sessionId === sessionId; });
+    var group = population.groups.get(sessionId);
+    if (!summary || !group) return null;
+    var scope = { position: filters.position, situation: filters.situation, tableSize: filters.tableSize };
+    var requests = [scope, { situation: 'ip', tableSize: filters.tableSize }, { situation: 'oop', tableSize: filters.tableSize }];
+    Aggregator.POSITION_LABELS.forEach(function (position) { requests.push({ position: position, tableSize: filters.tableSize }); });
+    if (filters.counterpartMode) requests.push(filters);
+    var results = FilteredStats.careerStatsBatchFromResolved({ activeRecords: group.activeRecords, acceptedRecords: group.records }, playerId, requests);
+    var positions = {};
+    Aggregator.POSITION_LABELS.forEach(function (position, index) { positions[position] = results[index + 3].counters.hands ? results[index + 3] : null; });
+    var aggregate = Aggregator.aggregateActiveRecords(group.activeRecords);
+    var player = aggregate.players[playerId] || null;
+    var cache = player ? { player: player, physicalRecordCount: group.records.length } : null;
+    return { session: playerSessionSummary(summary, group, playerId), playerId: playerId, filters: filters,
+      core: results[0], relational: filters.counterpartMode ? results[results.length - 1] : null,
+      comparisonContexts: { situations: { ip: results[1].counters.hands ? results[1] : null, oop: results[2].counters.hands ? results[2] : null }, positions: positions },
+      profileStats: profileStatsFromCache(cache, scope),
+      query: Object.assign({}, population.query, { sessionPhysicalRecordsSelected: group.records.length, sessionActiveHandsSelected: group.activeRecords.length }) };
+  }
   function removalError(message, code) {
     var error = new TypeError(message);
     error.code = code || 'CAREER_SESSION_REMOVAL_INVALID';
@@ -348,7 +627,9 @@
       if (!id || id.length > 500 || id.trim() !== id || /[\u0000-\u001f\u007f]/.test(id)) throw removalError('Current Session contains malformed hand provenance');
       if (!seen.has(id)) { seen.add(id); handIds.push(id); }
     });
-    return { namespace: namespace, sessionHandIds: handIds.sort() };
+    var historicalSessionId = request.historicalSessionId === undefined ? null : request.historicalSessionId;
+    if (historicalSessionId !== null && (typeof historicalSessionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(historicalSessionId))) throw removalError('Current Session identity is malformed');
+    return { namespace: namespace, historicalSessionId: historicalSessionId, sessionHandIds: handIds.sort() };
   }
   function sameNamespace(left, right) {
     return Boolean(left && String(left.provider || '').toLowerCase() === right.provider && String(left.host || '').toLowerCase() === right.host && String(left.gameId || '') === right.gameId);
@@ -373,7 +654,12 @@
       var candidates = Array.from(matchesByAlias.get(handId) || []).sort();
       if (candidates.length > 1) throw removalError('Current Session hand provenance is ambiguous across multiple Career logical hands', 'CAREER_SESSION_REMOVAL_AMBIGUOUS');
       if (!candidates.length) unmatchedSessionHandIds.push(handId);
-      else { matchedSessionHandIds.push(handId); logicalHandKeys.add(candidates[0]); }
+      else {
+        if (normalized.historicalSessionId && resolved.activeRecords.some(function (record) {
+          return record.handKey === candidates[0] && record.schemaVersion >= 4 && record.session.sessionId && record.session.sessionId !== normalized.historicalSessionId;
+        })) throw removalError('Current Session hand identity disagrees with Career Session provenance', 'CAREER_SESSION_REMOVAL_AMBIGUOUS');
+        matchedSessionHandIds.push(handId); logicalHandKeys.add(candidates[0]);
+      }
     });
     var selectedKeys = Array.from(logicalHandKeys).sort(); var selected = new Set(selectedKeys);
     var removedRecords = resolved.acceptedRecords.filter(function (record) { return selected.has(String(record.handKey)); });
@@ -382,6 +668,7 @@
     }, []))).sort();
     return {
       namespace: normalized.namespace,
+      historicalSessionId: normalized.historicalSessionId,
       sessionHandIds: normalized.sessionHandIds,
       sessionHandCount: normalized.sessionHandIds.length,
       matchedSessionHandIds: matchedSessionHandIds,
@@ -391,6 +678,51 @@
       physicalRecordCount: removedRecords.length,
       physicalFingerprints: removedRecords.map(function (record) { return String(record.fingerprint); }).sort(),
       affectedPlayerIds: affectedPlayerIds
+    };
+  }
+  function historicalSessionDeletionPlan(records, requestedSessionId) {
+    var sessionId = requiredHistoricalSessionId(requestedSessionId);
+    var sourceRecords = (records || []).map(clone);
+    var resolved = Aggregator.rebuild(sourceRecords);
+    if (resolved.acceptedRecords.length !== sourceRecords.length) throw removalError('Career history fails deterministic validation; the Session was not deleted', 'CAREER_HISTORICAL_SESSION_CONFLICT');
+    var summary = Aggregator.historicalSessionCatalogFromActive(resolved.activeRecords).find(function (row) { return row.sessionId === sessionId; });
+    if (!summary) throw removalError('This canonical Session no longer exists in Career', 'CAREER_HISTORICAL_SESSION_NOT_FOUND');
+    var active = resolved.activeRecords.filter(function (record) { return sessionIdOf(record) === sessionId; });
+    var selectedKeys = new Set(active.map(function (record) { return String(record.handKey); }));
+    var physical = resolved.acceptedRecords.filter(function (record) {
+      var belongs = selectedKeys.has(String(record.handKey)); var explicit = sessionIdOf(record);
+      if (belongs && explicit && explicit !== sessionId || !belongs && explicit === sessionId)
+        throw removalError('Conflicting physical Session provenance blocks deletion', 'CAREER_HISTORICAL_SESSION_CONFLICT');
+      return belongs;
+    });
+    var players = new Map();
+    active.forEach(function (record) {
+      (record.players || []).forEach(function (entry) {
+        if (Number(entry.counters && entry.counters.hands || 0) <= 0) return;
+        var id = String(entry.playerId); var row = players.get(id) || { playerId: id, displayName: '', handCount: 0, lastSeenAt: -1 };
+        row.handCount += 1;
+        if (entry.displayName && Number(record.finalizedAt || 0) >= row.lastSeenAt) {
+          row.displayName = String(entry.displayName); row.lastSeenAt = Number(record.finalizedAt || 0);
+        }
+        players.set(id, row);
+      });
+    });
+    var affectedPlayers = Array.from(players.values()).sort(function (left, right) { return left.playerId.localeCompare(right.playerId); }).map(function (row) {
+      return { playerId: row.playerId, displayName: row.displayName || row.playerId, handCount: row.handCount };
+    });
+    var namespaces = Array.from(new Map(active.map(function (record) {
+      var namespace = record.namespace || {};
+      var key = String(namespace.host || '') + ':' + String(namespace.gameId || '');
+      return [key, { host: String(namespace.host || ''), gameId: String(namespace.gameId || '') }];
+    })).values());
+    return {
+      sessionId: sessionId, startedAt: summary.startedAt, endedAt: summary.endedAt,
+      provenanceStatus: summary.provenanceStatus, logicalHandCount: active.length,
+      physicalRecordCount: physical.length, tableSizeHands: clone(summary.tableSizeHands),
+      affectedPlayers: affectedPlayers, affectedPlayerIds: affectedPlayers.map(function (row) { return row.playerId; }),
+      namespaces: namespaces,
+      logicalHandKeys: Array.from(selectedKeys).sort(),
+      physicalFingerprints: physical.map(function (record) { return String(record.fingerprint); }).sort()
     };
   }
   function affectedProjectionPlan(wrappers, metadata, handKeys) {
@@ -433,6 +765,14 @@
       playerSummaryVersion: PLAYER_SUMMARY_VERSION
     });
     return { removed: removed, retained: retained, resolved: resolved, affectedPlayerIds: affectedIds, heads: heads, caches: caches, metadata: nextMetadata };
+  }
+  function requireExpectedPhysicalDeletion(mutation, expectedFingerprints) {
+    if (expectedFingerprints === undefined) return;
+    if (!Array.isArray(expectedFingerprints) || expectedFingerprints.some(function (value) { return typeof value !== 'string'; }))
+      throw removalError('Expected physical deletion identity is malformed');
+    var actual = mutation.removed.map(function (wrapper) { return String(wrapper.record.fingerprint); }).sort();
+    if (canonicalJson(actual) !== canonicalJson(expectedFingerprints.slice().sort()))
+      throw removalError('Career changed after historical Session deletion preview; preview it again', 'CAREER_HISTORICAL_SESSION_STALE');
   }
 
   function createMemoryService(saved, options) {
@@ -572,10 +912,11 @@
       queue = operation.catch(function () {});
       return operation;
     }
-    function removeCareerHandKeys(handKeys) {
+    function removeCareerHandKeys(handKeys, expectedFingerprints) {
       var operation = queue.then(function () {
         if (!plan.ok) throw new Error(plan.reason);
         var mutation = affectedProjectionPlan(Array.from(records.values()).map(clone), metadata, handKeys);
+        requireExpectedPhysicalDeletion(mutation, expectedFingerprints);
         if (!mutation.removed.length) return { removed: false, logicalHandCount: 0, physicalRecordCount: 0, affectedPlayerIds: [], metadata: clone(metadata) };
         mutation.removed.forEach(function (wrapper) { records.delete(wrapper.record.fingerprint); });
         mutation.affectedPlayerIds.forEach(function (id) { heads.delete(id); caches.delete(id); });
@@ -668,6 +1009,15 @@
       careerLedgerInfo: function () { return Promise.resolve(Object.assign(clone(metadata), { ready: plan.ok, cacheEntryCount: caches.size, playerCount: heads.size, playerSummariesReady: summariesReady(metadata, Array.from(heads.values())), playerSummaryBackfillRunning: Boolean(summaryWork), playerSummaryError: summaryError })); },
       careerPlayerRecordInfo: async function (playerId) { await ensurePlayerSummaries(); var values = recordsForPlayer(playerId); var resolution = Aggregator.rebuild(values); return Promise.resolve({ playerId: String(playerId), physicalRecordCount: physicalRecordCountForPlayer(values, playerId), activeRecordCount: physicalRecordCountForPlayer(resolution.activeRecords, playerId), rejectedRecords: resolution.rejectedRecords }); },
       recentCareerRecords: function (limit) { return Promise.resolve(allRecords().sort(function (a, b) { return b.finalizedAt - a.finalizedAt; }).slice(0, Math.max(0, Math.min(20, Number(limit || 20))))); },
+      listCareerSessions: function () { return Promise.resolve(sessionSummaries(allRecords())); },
+      listCareerSessionsForPlayer: function (playerId) { return Promise.resolve(sessionSummaries(allRecords(), String(playerId))); },
+      getCareerSession: function (sessionId) { return Promise.resolve(sessionSummaries(allRecords()).find(function (summary) { return summary.sessionId === sessionId; }) || null); },
+      getCareerSessionRecords: function (sessionId) { return Promise.resolve(sessionRecords(allRecords(), String(sessionId))); },
+      listCareerSessionPlayerSummaries: function (playerId) { return Promise.resolve(listCareerSessionPlayerSummariesFromRecords(allRecords(), playerId)); },
+      getCareerSessionPlayerStats: function (sessionId, playerId, filters) { return Promise.resolve(careerSessionPlayerStatsFromRecords(allRecords(), sessionId, playerId, filters)); },
+      getCareerRecentPlayerStats: function (playerId, window, filters) { return Promise.resolve(careerRecentPlayerStatsFromRecords(allRecords(), playerId, window, filters)); },
+      getCareerRecentVsCareer: function (playerId, window, filters) { return Promise.resolve(careerRecentVsCareerFromRecords(allRecords(), playerId, window, filters)); },
+      getCareerPlayerSessionTrend: function (playerId, filters) { return Promise.resolve(careerPlayerSessionTrendFromRecords(allRecords(), playerId, filters)); },
       rebuildCareerStats: function () { return rebuild().then(function (result) { return result.aggregate; }); },
       exportCareer: function () { return Promise.resolve(serializableExport(metadata, allRecords())); },
       replaceCareerRecords: replaceCareerRecords,
@@ -1135,21 +1485,24 @@
         tx.onabort = function () { reject(tx.error || new Error('Career merge transaction aborted; previous Career history remains intact')); };
       });
     }
-    async function removeCareerHandKeys(handKeys) {
+    async function removeCareerHandKeys(handKeys, expectedFingerprints) {
       var read = db.transaction([STORE_RECORDS, STORE_METADATA], 'readonly');
       var snapshot = await Promise.all([requestPromise(read.objectStore(STORE_RECORDS).getAll()), requestPromise(read.objectStore(STORE_METADATA).get('career'))]);
       await transactionPromise(read);
       var mutation = affectedProjectionPlan(snapshot[0] || [], snapshot[1] || {}, handKeys);
+      requireExpectedPhysicalDeletion(mutation, expectedFingerprints);
       if (!mutation.removed.length) return { removed: false, logicalHandCount: 0, physicalRecordCount: 0, affectedPlayerIds: [], metadata: clone(snapshot[1] || {}) };
       return new Promise(function (resolve, reject) {
         var tx = db.transaction([STORE_RECORDS, STORE_METADATA, STORE_AGGREGATES, STORE_PLAYER_HEADS], 'readwrite');
         var recordStore = tx.objectStore(STORE_RECORDS); var metadataStore = tx.objectStore(STORE_METADATA);
         var aggregateStore = tx.objectStore(STORE_AGGREGATES); var headStore = tx.objectStore(STORE_PLAYER_HEADS);
-        mutation.removed.forEach(function (wrapper) { recordStore.delete(wrapper.record.fingerprint); });
-        mutation.affectedPlayerIds.forEach(function (id) { aggregateStore.delete(id); headStore.delete(id); });
-        mutation.caches.forEach(function (cache) { aggregateStore.put(cache); });
-        mutation.heads.forEach(function (head) { headStore.put(head); });
-        metadataStore.put(mutation.metadata);
+        try {
+          mutation.removed.forEach(function (wrapper) { recordStore.delete(wrapper.record.fingerprint); });
+          mutation.affectedPlayerIds.forEach(function (id) { aggregateStore.delete(id); headStore.delete(id); });
+          mutation.caches.forEach(function (cache) { aggregateStore.put(cache); });
+          mutation.heads.forEach(function (head) { headStore.put(head); });
+          metadataStore.put(mutation.metadata);
+        } catch (error) { tx.abort(); reject(error); return; }
         var expectedHeads = new Map(mutation.heads.map(function (head) { return [head.playerId, head]; }));
         var countResult = null; var metadataResult = null; var headResults = new Map(); var verified = false;
         var countRequest = recordStore.count(); var metadataRequest = metadataStore.get('career');
@@ -1195,6 +1548,15 @@
           tx.oncomplete = function () { resolve(values); }; tx.onerror = function () { reject(tx.error || new Error('Recent career record transaction failed')); };
         });
       },
+      listCareerSessions: async function () { return sessionSummaries(await allRecords()); },
+      listCareerSessionsForPlayer: async function (playerId) { return sessionSummaries(await allRecords(), String(playerId)); },
+      getCareerSession: async function (sessionId) { return sessionSummaries(await allRecords()).find(function (summary) { return summary.sessionId === sessionId; }) || null; },
+      getCareerSessionRecords: async function (sessionId) { return sessionRecords(await allRecords(), String(sessionId)); },
+      listCareerSessionPlayerSummaries: async function (playerId) { return listCareerSessionPlayerSummariesFromRecords(await allRecords(), playerId); },
+      getCareerSessionPlayerStats: async function (sessionId, playerId, filters) { return careerSessionPlayerStatsFromRecords(await allRecords(), sessionId, playerId, filters); },
+      getCareerRecentPlayerStats: async function (playerId, window, filters) { return careerRecentPlayerStatsFromRecords(await allRecords(), playerId, window, filters); },
+      getCareerRecentVsCareer: async function (playerId, window, filters) { return careerRecentVsCareerFromRecords(await allRecords(), playerId, window, filters); },
+      getCareerPlayerSessionTrend: async function (playerId, filters) { return careerPlayerSessionTrendFromRecords(await allRecords(), playerId, filters); },
       rebuildCareerStats: async function () { return Aggregator.rebuild(await allRecords()).aggregate; },
       exportCareer: async function () { var tx = db.transaction([STORE_METADATA, STORE_RECORDS], 'readonly'); var values = await Promise.all([requestPromise(tx.objectStore(STORE_METADATA).get('career')), requestPromise(tx.objectStore(STORE_RECORDS).getAll())]); await transactionPromise(tx); return serializableExport(values[0], values[1].map(function (wrapper) { return wrapper.record; })); },
       replaceCareerRecords: replaceCareerRecords,
@@ -1230,6 +1592,15 @@
       careerLedgerInfo: function () { return request('careerLedgerInfo'); },
       careerPlayerRecordInfo: function (playerId) { return request('careerPlayerRecordInfo', [String(playerId)]); },
       recentCareerRecords: function (limit) { return request('recentCareerRecords', [limit]); },
+      listCareerSessions: function () { return request('listCareerSessions'); },
+      listCareerSessionsForPlayer: function (playerId) { return request('listCareerSessionsForPlayer', [String(playerId)]); },
+      getCareerSession: function (sessionId) { return request('getCareerSession', [String(sessionId)]); },
+      getCareerSessionRecords: function (sessionId) { return request('getCareerSessionRecords', [String(sessionId)]); },
+      listCareerSessionPlayerSummaries: function (playerId) { return request('listCareerSessionPlayerSummaries', [playerId]); },
+      getCareerSessionPlayerStats: function (sessionId, playerId, filters) { return request('getCareerSessionPlayerStats', [sessionId, playerId, filters || {}]); },
+      getCareerRecentPlayerStats: function (playerId, window, filters) { return request('getCareerRecentPlayerStats', [playerId, window, filters || {}]); },
+      getCareerRecentVsCareer: function (playerId, window, filters) { return request('getCareerRecentVsCareer', [playerId, window, filters || {}]); },
+      getCareerPlayerSessionTrend: function (playerId, filters) { return request('getCareerPlayerSessionTrend', [playerId, filters || {}]); },
       rebuildCareerStats: function () { return request('rebuildCareerStats'); },
       exportCareer: function () { return request('exportCareer'); },
       exportCareerBackup: function () { return request('exportCareerBackup'); },
@@ -1240,6 +1611,8 @@
       mergeCareerBackup: function (backup, confirmation) { return request('mergeCareerBackup', [backup, confirmation]); },
       prepareCareerSessionRemoval: function (removalRequest) { return request('prepareCareerSessionRemoval', [removalRequest]); },
       removeCareerSession: function (removalRequest, confirmation) { return request('removeCareerSession', [removalRequest, confirmation]); },
+      prepareCareerHistoricalSessionDeletion: function (sessionId) { return request('prepareCareerHistoricalSessionDeletion', [sessionId]); },
+      deleteCareerHistoricalSession: function (sessionId, confirmation) { return request('deleteCareerHistoricalSession', [sessionId, confirmation]); },
       careerRuntimeTimings: function (playerId) { return request('careerRuntimeTimings', [playerId === undefined ? null : String(playerId)]); }
     };
   }
@@ -1247,7 +1620,10 @@
   return Object.freeze({
     DATABASE_NAME: DATABASE_NAME, DATABASE_VERSION: DATABASE_VERSION, STORAGE_SCHEMA_VERSION: STORAGE_SCHEMA_VERSION, PLAYER_SUMMARY_VERSION: PLAYER_SUMMARY_VERSION,
     MIGRATION_MARKER_KEY: MIGRATION_MARKER_KEY, OUTBOX_PREFIX: OUTBOX_PREFIX, MESSAGE_TYPE: MESSAGE_TYPE, STORES: Object.freeze({ records: STORE_RECORDS, metadata: STORE_METADATA, aggregates: STORE_AGGREGATES, playerHeads: STORE_PLAYER_HEADS }),
-    phaseOneRecords: phaseOneRecords, outboxKey: outboxKey, outboxRecords: outboxRecords, recordWrapper: recordWrapper, migrationPlan: migrationPlan, replacementPlan: replacementPlan, serializableExport: serializableExport, mergePreservesExisting: mergePreservesExisting, normalizedRemovalRequest: normalizedRemovalRequest, sessionRemovalPlan: sessionRemovalPlan, affectedProjectionPlan: affectedProjectionPlan,
+    phaseOneRecords: phaseOneRecords, outboxKey: outboxKey, outboxRecords: outboxRecords, recordWrapper: recordWrapper, migrationPlan: migrationPlan, replacementPlan: replacementPlan, serializableExport: serializableExport, mergePreservesExisting: mergePreservesExisting, normalizedRemovalRequest: normalizedRemovalRequest, sessionRemovalPlan: sessionRemovalPlan, historicalSessionDeletionPlan: historicalSessionDeletionPlan, affectedProjectionPlan: affectedProjectionPlan,
+    listCareerSessionPlayerSummariesFromRecords: listCareerSessionPlayerSummariesFromRecords, careerSessionPlayerStatsFromRecords: careerSessionPlayerStatsFromRecords,
+    careerRecentPlayerStatsFromRecords: careerRecentPlayerStatsFromRecords, careerRecentVsCareerFromRecords: careerRecentVsCareerFromRecords,
+    careerPlayerSessionTrendFromRecords: careerPlayerSessionTrendFromRecords,
     createMemoryService: createMemoryService, createIndexedService: createIndexedService, createMessageService: createMessageService, hasCompleteDatabase: hasCompleteDatabase
   });
 });

@@ -166,6 +166,7 @@
       namespace: ns,
       authoritativeHandId: authoritativeHandId,
       lifecycleHandIds: uniqueStrings(aliases.filter(function (alias) { return alias !== authoritativeHandId; })),
+      session: { schemaVersion: 1, sessionId: input.historicalSessionId === undefined ? null : input.historicalSessionId },
       finalizedAt: Number(semanticRecord.provenance && semanticRecord.provenance.finalizedAt || input.finalizedAt || Date.now()),
       semanticVersions: {
         core: Aggregator.CURRENT_SEMANTIC_VERSIONS.core,

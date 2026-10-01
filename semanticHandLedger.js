@@ -802,6 +802,10 @@
       bigBlindPlayerId: startState.bBPI,
       deadButton: startState.deadButton === true
     });
+    if (!hand.historyComplete || hand.recovered) positionProvenance = {
+      schemaVersion: 1, status: 'unsupported', reason: 'complete hand-start dealt provenance is unavailable',
+      dealtPlayerCount: null, assignments: {}, evidence: {}
+    };
     var fields = new Set();
     observations.forEach(function (observation) { Object.keys(observation.patch || {}).forEach(function (field) { fields.add(field); }); });
     return {

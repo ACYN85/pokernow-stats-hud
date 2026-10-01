@@ -9,8 +9,8 @@
   'use strict';
 
   var STORAGE_SCHEMA_VERSION = 2;
-  var RECORD_SCHEMA_VERSION = 3;
-  var SUPPORTED_RECORD_SCHEMA_VERSIONS = Object.freeze([1, 2, 3]);
+  var RECORD_SCHEMA_VERSION = 4;
+  var SUPPORTED_RECORD_SCHEMA_VERSIONS = Object.freeze([1, 2, 3, 4]);
   var AGGREGATE_SCHEMA_VERSION = 4;
   var PROFILE_CONTEXT_VERSION = 2;
   var PROFILE_PROJECTION_VERSION = 1;
@@ -45,7 +45,7 @@
     var count = counts[0];
     return classifyTableSize(count) !== 'UNKNOWN' && counts.every(function (value) { return value === count; }) ? count : null;
   }
-  function emptyTablePartition() { return { counters: emptyCounters(), contexts: { situations: {}, positions: {} }, recordCount: 0 }; }
+  function emptyTablePartition() { return { counters: emptyCounters(), contexts: { situations: {}, positions: {} }, recordCount: 0, earliestPositionTrackedAt: null, unsupportedPositionRecords: 0 }; }
   function canonical(value) {
     if (Array.isArray(value)) return value.map(canonical);
     if (!object(value)) return value;
@@ -96,6 +96,9 @@
     if (record.recordType !== 'certified-career-hand') return 'unsupported career record type';
     if (!record.handKey || !record.authoritativeHandId) return 'canonical hand identity is required';
     if (!object(record.namespace) || record.namespace.provider !== 'pokernow' || !record.namespace.host || !record.namespace.gameId) return 'canonical PokerNow namespace is required';
+    if (record.schemaVersion >= 4 && (!object(record.session) || Object.keys(record.session).sort().join('|') !== 'schemaVersion|sessionId' || record.session.schemaVersion !== 1 ||
+      (record.session.sessionId !== null && (typeof record.session.sessionId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(record.session.sessionId))))) return 'historical Session provenance v1 is required for career record schema v4';
     var semanticError = validateSemanticVersions(record.semanticVersions);
     if (semanticError) return semanticError;
     if (record.supersedesFingerprint !== null && record.supersedesFingerprint !== undefined && typeof record.supersedesFingerprint !== 'string') return 'supersedesFingerprint must be null or a fingerprint';
@@ -136,6 +139,9 @@
   function validateTransition(predecessor, successor) {
     if (predecessor.handKey !== successor.handKey) return 'cross-hand supersession is forbidden';
     if (!samePlayers(predecessor, successor)) return 'cross-player supersession is forbidden';
+    var priorSession = predecessor.schemaVersion >= 4 ? predecessor.session.sessionId : null;
+    var nextSession = successor.schemaVersion >= 4 ? successor.session.sessionId : null;
+    if (priorSession !== nextSession) return 'cross-session supersession is forbidden';
     var increased = false;
     for (var index = 0; index < SEMANTIC_VERSION_FIELDS.length; index += 1) {
       var field = SEMANTIC_VERSION_FIELDS[index];
@@ -263,6 +269,10 @@
         COUNTER_FIELDS.forEach(function (field) { partition.counters[field] += entry.counters[field]; });
         if (situation) addContextCounters(partition.contexts, 'situations', situation, entry.counters);
         if (entry.position && entry.position.status === 'supported' && entry.position.dealtPosition) addContextCounters(partition.contexts, 'positions', entry.position.dealtPosition, entry.counters);
+        if (entry.position && entry.position.status === 'supported' && entry.position.dealtPosition) {
+          partition.earliestPositionTrackedAt = partition.earliestPositionTrackedAt === null
+            ? Number(record.finalizedAt || 0) : Math.min(partition.earliestPositionTrackedAt, Number(record.finalizedAt || 0));
+        } else partition.unsupportedPositionRecords += 1;
       }
       // Career archetypes use a detached, rebuildable projection whose counters and
       // table context come from the same authoritative 3+ handed contribution set.
@@ -382,6 +392,49 @@
   function playerStats(state, playerId) { return derivePlayer(state && state.aggregate && state.aggregate.players[String(playerId)]); }
   function playerList(state) { return Object.keys(state.aggregate.players).sort().map(function (playerId) { return playerStats(state, playerId); }); }
 
+  function historicalSessionCatalogFromActive(active) {
+    var byId = new Map();
+    active.forEach(function (record) {
+      var id = record.schemaVersion >= 4 && record.session && record.session.sessionId;
+      if (!id) return;
+      var summary = byId.get(id);
+      if (!summary) {
+        summary = { sessionId: id, provenanceStatus: 'explicit', startedAt: null, endedAt: null,
+          handCount: 0, tableSizeHands: { HU: 0, '3_TO_5': 0, SIX_PLUS: 0, UNKNOWN: 0 }, playerHandCounts: Object.create(null),
+          namespace: record.namespace };
+        byId.set(id, summary);
+      }
+      if (summary.namespace.provider !== record.namespace.provider || summary.namespace.host !== record.namespace.host ||
+        summary.namespace.gameId !== record.namespace.gameId) throw new TypeError('historical Session ID collides across game namespaces');
+      summary.handCount += 1;
+      var at = Number.isSafeInteger(record.finalizedAt) && record.finalizedAt >= 0 ? record.finalizedAt : null;
+      if (at !== null) {
+        summary.startedAt = summary.startedAt === null ? at : Math.min(summary.startedAt, at);
+        summary.endedAt = summary.endedAt === null ? at : Math.max(summary.endedAt, at);
+      }
+      summary.tableSizeHands[classifyTableSize(resolveDealtPlayerCount(record))] += 1;
+      record.players.forEach(function (entry) {
+        if (Number(entry.counters && entry.counters.hands || 0) > 0) {
+          summary.playerHandCounts[entry.playerId] = (summary.playerHandCounts[entry.playerId] || 0) + 1;
+        }
+      });
+    });
+    return Array.from(byId.values()).sort(function (left, right) {
+      return (right.endedAt === null ? -1 : right.endedAt) - (left.endedAt === null ? -1 : left.endedAt) || left.sessionId.localeCompare(right.sessionId);
+    });
+  }
+  function historicalSessionCatalog(records) {
+    return historicalSessionCatalogFromActive(resolveActiveRecords(records || []).activeRecords);
+  }
+  function publicSessionSummary(summary, playerId) {
+    if (!summary) return null;
+    var result = { sessionId: summary.sessionId, provenanceStatus: summary.provenanceStatus,
+      startedAt: summary.startedAt, endedAt: summary.endedAt, handCount: summary.handCount,
+      tableSizeHands: clone(summary.tableSizeHands) };
+    if (playerId !== undefined) result.playerHandCount = summary.playerHandCounts[String(playerId)] || 0;
+    return result;
+  }
+
   return Object.freeze({
     STORAGE_SCHEMA_VERSION: STORAGE_SCHEMA_VERSION, RECORD_SCHEMA_VERSION: RECORD_SCHEMA_VERSION, SUPPORTED_RECORD_SCHEMA_VERSIONS: SUPPORTED_RECORD_SCHEMA_VERSIONS, AGGREGATE_SCHEMA_VERSION: AGGREGATE_SCHEMA_VERSION, PROFILE_CONTEXT_VERSION: PROFILE_CONTEXT_VERSION, PROFILE_PROJECTION_VERSION: PROFILE_PROJECTION_VERSION,
     CURRENT_SEMANTIC_VERSIONS: CURRENT_SEMANTIC_VERSIONS, SUPPORTED_SEMANTIC_VERSIONS: SUPPORTED_SEMANTIC_VERSIONS,
@@ -389,6 +442,7 @@
     classifyTableSize: classifyTableSize, resolveDealtPlayerCount: resolveDealtPlayerCount,
     SEMANTIC_VERSION_FIELDS: SEMANTIC_VERSION_FIELDS, COUNTER_FIELDS: COUNTER_FIELDS, emptyCounters: emptyCounters,
     fingerprint: fingerprint, validateRecord: validateRecord, validateTransition: validateTransition, resolveActiveRecords: resolveActiveRecords,
+    historicalSessionCatalog: historicalSessionCatalog, historicalSessionCatalogFromActive: historicalSessionCatalogFromActive, publicSessionSummary: publicSessionSummary,
     rebuild: rebuild, rebuildCooperatively: rebuildCooperatively, aggregateActiveRecords: aggregateActiveRecords, createState: createState, append: append, exactAggregate: exactAggregate, records: records, activeRecords: activeRecords,
     deriveCounters: deriveCounters, derivePlayer: derivePlayer, playerStats: playerStats, playerList: playerList,
     exactPostflopSituationMap: exactPostflopSituationMap, careerSituationMap: careerSituationMap, appendPlayer: appendPlayer

@@ -110,7 +110,7 @@ assert.ok(css.includes('#pnhud-settings-panel main { box-sizing: border-box; min
   var pendingPreview = new Promise(function (resolve) { resolvePreview = resolve; });
   var refreshes = 0;
   var context = {
-    location: { hostname: 'pokernow.com' }, pokerNowGameId: 'preview-instance',
+    location: { hostname: 'pokernow.com' }, pokerNowGameId: 'preview-instance', historicalSessionId: null,
     handAccounting: { finalizedHandIds: new Set(['H1', 'H2', 'H3']) },
     careerIndexedService: { prepareCareerSessionRemoval: function () { return pendingPreview; } },
     careerIndexedAppendQueue: Promise.resolve(),

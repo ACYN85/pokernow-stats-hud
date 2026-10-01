@@ -12,7 +12,7 @@ assert.deepStrictEqual(missing.value, {
   settingsBackgroundOpacity: 0.96,
   dashboardBackgroundOpacity: 0.96,
   accentTheme: 'teal',
-  hudSize: 'default',
+  hudSize: 'small',
   opportunityStatsLayout: 'combined',
   seatHudStatSource: 'session',
   leaderboardStatSource: 'session',
@@ -26,6 +26,9 @@ assert.deepStrictEqual(missing.value, {
   leaderboardCollapsedByDefault: false
 });
 assert.strictEqual(missing.defaultUsed, true);
+assert.strictEqual(settings.normalize({ version: 11, hudSize: 'small' }).value.hudSize, 'small');
+assert.strictEqual(settings.normalize({ version: 10, hudSize: 'default' }).value.hudSize, 'default', 'saved former default survives upgrade');
+assert.strictEqual(settings.normalize({ version: 10, hudSize: 'large' }).value.hudSize, 'large', 'saved large survives upgrade');
 
 var valid = settings.normalize({
   version: 2,
@@ -78,7 +81,7 @@ assert.strictEqual(invalid.value.hudOpacity, 0.96);
 assert.strictEqual(invalid.value.settingsBackgroundOpacity, 0.1);
 assert.strictEqual(invalid.value.dashboardBackgroundOpacity, 1);
 assert.strictEqual(invalid.value.accentTheme, 'teal');
-assert.strictEqual(invalid.value.hudSize, 'default');
+assert.strictEqual(invalid.value.hudSize, 'small');
 assert.strictEqual(invalid.value.opportunityStatsLayout, 'combined');
 assert.ok(invalid.invalidFields.includes('hudOpacity'));
 assert.ok(invalid.invalidFields.includes('settingsBackgroundOpacity'));

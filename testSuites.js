@@ -727,6 +727,15 @@ var full = Object.freeze([
   "observerRenderBudget.production.test.js",
   "stabilizationBPerformance.test.js",
   "stabilizationBSoak.test.js",
+  "historicalSessionDashboard.production.test.js",
+  "historicalSessionDeletion.test.js",
+  "historicalSessionDeletionWorker.test.js",
+  "historicalSessionModel.test.js",
+  "historicalSessionProvenance.test.js",
+  "historicalSessionTrends.test.js",
+  "leaderboardHudSizeDefault.production.test.js",
+  "playerDashboardReload.production.test.js",
+  "recentSessionTrendDashboard.production.test.js",
   "testSuites.test.js"
 ]);
 var releaseFreeze = Object.freeze(['releaseMetadata.test.js']);

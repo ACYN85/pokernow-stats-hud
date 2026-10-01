@@ -145,7 +145,17 @@ function createHarness(options) {
       storage: {
         local: {
           get: function (_keys, callback) { callback(clone(storage)); },
-          set: function (update, callback) { var copied = clone(update); Object.assign(storage, copied); storageWrites.push(copied); if (callback) callback(); },
+          set: function (update, callback) {
+            var copied = clone(update);
+            storageWrites.push(copied);
+            if (typeof options.failStorageSet === 'function' && options.failStorageSet(copied, storageWrites.length)) {
+              contextObject.chrome.runtime.lastError = { message: 'fixture storage write failed' };
+              if (callback) callback();
+              contextObject.chrome.runtime.lastError = null;
+              return;
+            }
+            Object.assign(storage, copied); if (callback) callback();
+          },
           remove: function (keys, callback) { (Array.isArray(keys) ? keys : [keys]).forEach(function (key) { delete storage[key]; }); if (callback) callback(); }
         },
         onChanged: { addListener: function () {}, removeListener: function () {} }
@@ -174,6 +184,7 @@ function createHarness(options) {
     navigator: { userAgent: 'flop-cbet-content-path-production-test' }
   };
   contextObject.sessionStorage = createSessionStorage(sessionStorageBacking);
+  if (options.crypto) contextObject.crypto = options.crypto;
   if (options.controlledClock) {
     function HarnessDate() {
       var args = Array.from(arguments);

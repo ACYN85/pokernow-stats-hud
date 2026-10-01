@@ -59,9 +59,11 @@ function validate(dir = root, documentation = true) {
   assert.strictEqual(manifest.name, 'PokerNow Stats HUD');
   assert.deepStrictEqual(manifest.permissions, ['storage', 'unlimitedStorage', 'activeTab']);
   assert(!manifest.host_permissions && !manifest.web_accessible_resources);
-  buildFiles.forEach(file => assert(read(file, dir).toString().includes("'" + config.buildId + "'")));
+  assert(read('runtimeScope.js', dir).toString().includes("'" + config.buildId + "'"), 'shared runtime Build ID');
+  buildFiles.filter(file => file !== 'runtimeScope.js').forEach(file =>
+    assert(read(file, dir).toString().includes('globalThis.PokerNowRuntimeScope.buildId'), 'shared Build ID consumer: ' + file));
   assert(read('popup.html', dir).toString().includes('pnhud-popup-build-id'));
-  assert(read('content.js', dir).toString().includes("getManifest().version : '" + config.version + "'"));
+  assert(read('content.js', dir).toString().includes("getManifest().version : 'unknown-version'"));
   assert(!/All-time/.test(read('popup.html', dir).toString()));
   const frozen = freeze(dir);
   if (documentation) {
@@ -75,7 +77,7 @@ function validate(dir = root, documentation = true) {
       }
     });
     assert(read('CHANGELOG.md').toString().startsWith('# ' + config.version));
-    assert(read('LIVE_VALIDATION_MATRIX.md').toString().includes('SIGNED-IN RC4 SMOKE ACCEPTED'));
+    assert(read('LIVE_VALIDATION_MATRIX.md').toString().includes('SIGNED-IN V1.4 RC2 ZIP ACCEPTED'));
     assert(read('PRIVACY.md').toString().includes('No extension-controlled external server'));
     assert(read('RELEASE_RUNBOOK.md').toString().includes(config.tag));
     assert(read('README.md').toString().includes(config.buildId));

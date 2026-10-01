@@ -1,9 +1,10 @@
 /* MV3 extension-origin owner for the career IndexedDB database. */
 'use strict';
 
-var PNHUD_BUILD_ID = 'v1.3.0-rc4-20260929-0321';
+importScripts('runtimeScope.js');
+var PNHUD_BUILD_ID = globalThis.PokerNowRuntimeScope && globalThis.PokerNowRuntimeScope.buildId || 'unavailable';
 
-importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js');
+importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'statEvidence.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js');
 
 var careerServicePromise = null;
 var careerMutationQueue = Promise.resolve();
@@ -131,6 +132,7 @@ async function careerSnapshotForRemoval(service, request) {
   var token = JSON.stringify({
     currentDigest: currentDigest,
     namespace: plan.namespace,
+    historicalSessionId: plan.historicalSessionId,
     sessionHandIds: plan.sessionHandIds,
     logicalHandKeys: plan.logicalHandKeys,
     physicalFingerprints: plan.physicalFingerprints
@@ -153,6 +155,41 @@ function removalPreview(snapshot) {
   };
 }
 
+async function careerSnapshotForHistoricalDeletion(service, sessionId) {
+  var exported = await service.exportCareer();
+  var currentDigest = await PokerCareerBackup.digestCareerExport(exported, crypto);
+  var plan = PokerCareerIndexedStore.historicalSessionDeletionPlan(exported.records, sessionId);
+  return { currentDigest: currentDigest, plan: plan, token: currentDigest + ':delete:' + plan.sessionId };
+}
+
+async function trustedHistoricalDeletionCurrentIds(plan) {
+  var namespaces = plan.namespaces || [];
+  if (!namespaces.length) throw new Error('Cannot establish the live Session identity for historical deletion');
+  var keys = namespaces.map(function (entry) { return 'pokerNowHudSessionMeta:game:' + encodeURIComponent(entry.host + ':' + entry.gameId); });
+  var saved = await chrome.storage.local.get(keys);
+  return namespaces.map(function (entry, index) {
+    var meta = saved[keys[index]]; var expectedKey = entry.host + ':' + entry.gameId;
+    if (!meta || meta.gameId !== entry.gameId || meta.sessionKey !== expectedKey ||
+        typeof meta.historicalSessionId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(meta.historicalSessionId))
+      throw new Error('Cannot establish the live Session identity for historical deletion; open that game before retrying');
+    return meta.historicalSessionId;
+  });
+}
+
+function historicalDeletionPreview(snapshot, currentIds) {
+  var plan = snapshot.plan;
+  return {
+    sessionId: plan.sessionId, startedAt: plan.startedAt, endedAt: plan.endedAt,
+    provenanceStatus: plan.provenanceStatus, logicalHandCount: plan.logicalHandCount,
+    physicalRecordCount: plan.physicalRecordCount, tableSizeHands: plan.tableSizeHands,
+    affectedPlayers: plan.affectedPlayers, affectedPlayerCount: plan.affectedPlayers.length,
+    isCurrentCanonicalSession: currentIds.indexOf(plan.sessionId) >= 0,
+    blocked: currentIds.indexOf(plan.sessionId) >= 0,
+    blockingReason: currentIds.indexOf(plan.sessionId) >= 0 ? 'Use Remove Current Session from Career & Reset for the live Session' : null,
+    currentDigest: snapshot.currentDigest, confirmationToken: snapshot.token
+  };
+}
+
 var allowedMethods = Object.freeze({
   careerStats: true,
   careerStatsFiltered: true,
@@ -164,6 +201,15 @@ var allowedMethods = Object.freeze({
   careerLedgerInfo: true,
   careerPlayerRecordInfo: true,
   recentCareerRecords: true,
+  listCareerSessions: true,
+  listCareerSessionsForPlayer: true,
+  getCareerSession: true,
+  getCareerSessionRecords: true,
+  listCareerSessionPlayerSummaries: true,
+  getCareerSessionPlayerStats: true,
+  getCareerRecentPlayerStats: true,
+  getCareerRecentVsCareer: true,
+  getCareerPlayerSessionTrend: true,
   rebuildCareerStats: true,
   exportCareer: true
 });
@@ -294,6 +340,28 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
         ? await service.removeCareerHandKeys(snapshot.plan.logicalHandKeys)
         : { removed: false, logicalHandCount: 0, physicalRecordCount: 0, affectedPlayerIds: [] };
       return { removed: result.removed, preview: removalPreview(snapshot), result: result, ledgerInfo: await service.careerLedgerInfo() };
+    });
+    if (message.method === 'prepareCareerHistoricalSessionDeletion') return queueCareerMutation(async function () {
+      await replayCareerOutbox(service);
+      var args = message.args || [];
+      var snapshot = await careerSnapshotForHistoricalDeletion(service, args[0]);
+      return historicalDeletionPreview(snapshot, await trustedHistoricalDeletionCurrentIds(snapshot.plan));
+    });
+    if (message.method === 'deleteCareerHistoricalSession') return queueCareerMutation(async function () {
+      await replayCareerOutbox(service);
+      var args = message.args || []; var sessionId = args[0]; var confirmation = args[1];
+      var snapshot = await careerSnapshotForHistoricalDeletion(service, sessionId);
+      if ((await trustedHistoricalDeletionCurrentIds(snapshot.plan)).indexOf(snapshot.plan.sessionId) >= 0)
+        throw new Error('Use Remove Current Session from Career & Reset for the live Session');
+      if (!confirmation || confirmation.mode !== 'delete-historical-session' || confirmation.confirmed !== true ||
+          confirmation.expectedCurrentDigest !== snapshot.currentDigest || confirmation.expectedConfirmationToken !== snapshot.token)
+        throw new Error('Historical Session deletion requires explicit current-digest-bound confirmation');
+      var result = await service.removeCareerHandKeys(snapshot.plan.logicalHandKeys, snapshot.plan.physicalFingerprints);
+      if (!result.removed) throw new Error('Historical Session no longer has authoritative Career hands');
+      return { deleted: true, sessionId: snapshot.plan.sessionId,
+        deletedLogicalHands: result.logicalHandCount, deletedPhysicalRecords: result.physicalRecordCount,
+        affectedPlayers: snapshot.plan.affectedPlayers, affectedPlayerIds: result.affectedPlayerIds,
+        mutationRevision: snapshot.token };
     });
     if (message.method === 'careerRuntimeTimings') return measuredCareerQueries(service, message.args && message.args[0]);
     if (message.method === 'exportCareer') { await requireSupportedCareerExport(service); return service.exportCareer(); }

@@ -1,4 +1,4 @@
-# Career data in V1.3 release candidate
+# Career data in V1.4
 
 Career means **all hands currently stored by PokerNow HUD Career data**, not your lifetime PokerNow account history. Tracking begins with newly accepted finalized contributions; there is no import/backfill of earlier Session events or PokerNow Full Log history.
 
@@ -6,13 +6,19 @@ Career means **all hands currently stored by PokerNow HUD Career data**, not you
 
 `careerServiceWorker.js` owns extension-origin IndexedDB through `careerIndexedStore.js` (storage schema 2). Content scripts use an allowlisted Chrome runtime-message proxy; they never open the host page's IndexedDB.
 
-A contribution is an immutable finalized hand bundle containing canonical host/game/authoritative-hand identity, stable player IDs, exact counters, supported opportunity results, position/relational provenance and a semantic fingerprint. Current record schema 3 adds exact dealt-position/table-count provenance; supported schema-2 records retain relational coverage and schema-1 records remain readable, but older records cannot acquire missing provenance. Derived aggregate caches are rebuildable, not historical authority.
+A contribution is an immutable finalized hand bundle containing canonical host/game/authoritative-hand identity, stable player IDs, exact counters, supported opportunity results, position/relational provenance and a semantic fingerprint. Current record schema 4 adds `session: { schemaVersion: 1, sessionId: string | null }`; null means exact Session provenance was unavailable. Schema-3 records retain exact dealt-position/table-count provenance; supported schema-2 records retain relational coverage and schema-1 records remain readable. Older records cannot acquire missing historical Session provenance. Derived aggregate caches are rebuildable, not historical authority.
 
 Fingerprint-keyed append transactions and durable pending/outbox replay prevent duplicate counting. Explicit linear supersession chains select the valid active tip; forks, broken identity/version transitions or ambiguous replacements are quarantined rather than silently summed. Physical record counts can exceed active logical-hand counts.
 
 Derived Career aggregate schema 4 maintains Overall, supported position and postflop IP/OOP counters, and exact dealt-player-count partitions with the same contexts. The count comes from frozen finalized-hand `iHPI` provenance through the position resolver; Away, sitting-out, and late-joining seats are excluded, while a dealt player who later folds or leaves remains counted. Product buckets are disjoint: HU (2), 3–5, and 6+ (6–9). Missing or inconsistent old provenance is UNKNOWN: its counters remain in All but no table-size segment. Ordinary finalized appends extend the applicable partitions in the existing transaction. Older derived aggregates are rebuilt in one canonical resolver/accumulation pass and atomically replaced; warm maintained Dashboard reads do not traverse player history. Supersession, Import, Restore, and Session removal use the shared resolver and rebuild affected derived aggregates. Backup v1 contains immutable records, not aggregate caches, so its format is unchanged. Session maintains equivalent partitions in memory from finalized events and reconstructs them on hydration.
 
 The Dashboard selects All, HU, 3–5, or 6+ without clearing position, situation, or opponent filters. All shows combined raw counters and table-size tracking coverage. A mixed or unknown All population has no calibrated Profile, Insights, Implications, or Review Signals; an authoritatively single-bucket slice may be analyzed. Evidence support gates remain independent of the table-size product heuristics in `playerInsights.js`. Relational filters retain their existing resolved-history path and apply table size during that traversal.
+
+## Historical Sessions, Recent, and Trends
+
+Each new Session receives an opaque per-game ID that persists across reload and rotates when Session state is explicitly cleared. The Dashboard lists only Sessions with exact recorded provenance; older unassigned hands remain in Career totals. Historical detail supports recorded table-size, situation, position, and relational filters where the underlying hand has sufficient provenance. Recent selects either canonical player Sessions or eligible dated hands before applying those filters, then compares the selected counters with full Career counters. Session Trends retain canonical Session order and show each Session's observed statistics without forecasting.
+
+Confirmed historical Session deletion removes the selected canonical Session and all physical versions of its hands from Career for every affected player, then rebuilds derived Career state. The current live Session is protected from this path and continues normally. An old Backup v1 file may reintroduce deleted records through Import or Restore.
 
 ## Export, import and advanced recovery
 

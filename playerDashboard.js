@@ -27,6 +27,15 @@
   var CORE_IDS = Object.freeze(['hands', 'vpip', 'pfr', 'af', 'flopCBet', 'wtsd', 'wsd']);
   var RELATIONAL_IDS = Object.freeze(['threeBet', 'foldToThreeBet', 'foldToFlopCBet']);
   var TREND_IDS = Object.freeze(['vpip', 'pfr', 'af', 'threeBet', 'foldToThreeBet', 'flopCBet', 'foldToFlopCBet', 'wtsd', 'wsd']);
+  var RECENT_WINDOW_OPTIONS = Object.freeze([
+    Object.freeze({ value: 'sessions:3', type: 'sessions', count: 3, label: '3 Sessions' }),
+    Object.freeze({ value: 'sessions:5', type: 'sessions', count: 5, label: '5 Sessions' }),
+    Object.freeze({ value: 'sessions:10', type: 'sessions', count: 10, label: '10 Sessions' }),
+    Object.freeze({ value: 'hands:100', type: 'hands', count: 100, label: '100 Hands' }),
+    Object.freeze({ value: 'hands:250', type: 'hands', count: 250, label: '250 Hands' }),
+    Object.freeze({ value: 'hands:500', type: 'hands', count: 500, label: '500 Hands' })
+  ]);
+  var TREND_LABELS = Object.freeze({ vpip: 'VPIP', pfr: 'PFR', af: 'AF', threeBet: '3Bet', foldToThreeBet: 'F3B', flopCBet: 'CBet', foldToFlopCBet: 'FCB', wtsd: 'WTSD', wsd: 'W$SD' });
   function esc(value) { return String(value === undefined || value === null ? '' : value).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function integer(value) { return Math.max(0, Number(value || 0)); }
   function percent(numerator, denominator) { return denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : null; }
@@ -101,13 +110,13 @@
     return (contextLabel ? contextLabel + ' ' : '') + analysisStatLabel(stat.statKey) + ' ' + percentageText(stat.rate * 100) +
       ' · ' + stat.supportCount + ' ' + unit + ' · ' + stat.evidenceLabel;
   }
-  function insightsHtml(state, cards, relationCards, mode, context, bucket) {
+  function insightsHtml(state, cards, relationCards, mode, context, bucket, observationsOnly) {
     if (state.loading || state.error || (state.selfPlayerId && String(state.playerId) === String(state.selfPlayerId)) || !Insights) return '';
     var scopedRelations = context.opponentMode !== 'overall';
     var selected = scopedRelations ? relationCards : cards;
     var observations = Insights.derive({ cards: selected, source: mode, context: context, tableSize: bucket, tableSizeSupported: Boolean(bucket) });
     if (!observations.length) return '';
-    var implications = Strategic ? Strategic.derive({ observations: observations, source: mode, context: context, tableSizeSupported: Boolean(bucket) }) : [];
+    var implications = Strategic && !observationsOnly ? Strategic.derive({ observations: observations, source: mode, context: context, tableSizeSupported: Boolean(bucket) }) : [];
     var actionable = implications.filter(function (item) { return item.type === 'composite' || item.adjustment; });
     var shownSingles = new Set(actionable.filter(function (item) { return item.type === 'single'; }).map(function (item) { return item.sourceInsightIds[0]; }));
     var rows = actionable.map(function (item) {
@@ -208,16 +217,16 @@
   }
   function profileHtml(profile, mode, bucket) {
     var bucketLabel = ({ HU: 'HU', '3_TO_5': '3–5 handed', SIX_PLUS: '6+ handed' })[bucket];
-    var title = (mode === 'career' ? 'Career profile' : 'Current profile') + (bucketLabel ? ' · ' + bucketLabel : '');
-    var unavailable = mode === 'career' && profile && profile.availability && profile.availability.message
+    var title = (mode === 'career' ? 'Career profile' : mode === 'recent' ? 'Recent profile' : mode === 'historical' ? 'Session profile' : 'Current profile') + (bucketLabel ? ' · ' + bucketLabel : '');
+    var unavailable = (mode === 'career' || mode === 'recent' || mode === 'historical') && profile && profile.availability && profile.availability.message
       ? profile.availability.message
-      : mode === 'career' ? 'Career profile inputs are unavailable.' : 'No current profile available.';
+      : mode === 'career' ? 'Career profile inputs are unavailable.' : mode === 'recent' ? 'Recent profile inputs are unavailable.' : mode === 'historical' ? 'Session profile inputs are unavailable.' : 'No current profile available.';
     if (!profile) return '<section class="pnhud-dashboard-section"><h3>' + title + '</h3><p class="pnhud-dashboard-empty">' + unavailable + '</p></section>';
     var displayed = profile.displayedArchetype || null; var raw = profile.rawArchetype || null; var scores = profile.rawScores || {};
-    var showFit = mode !== 'career' || !profile.availability || profile.availability.available === true;
+    var showFit = mode !== 'career' && mode !== 'recent' && mode !== 'historical' || !profile.availability || profile.availability.available === true;
     var rows = PROFILE_ORDER.map(function (name) { var score = Number(scores[name]); var value = Number.isFinite(score) && score >= 0 ? Math.round(score * 1000) / 10 : 0; return '<div><span>' + esc(name) + '</span><strong>' + value + '%</strong></div>'; }).join('');
-    var sample = mode === 'career' && profile ? '<span>Based on ' + integer(profile.hands) + ' Career ' + (integer(profile.hands) === 1 ? 'hand' : 'hands') + ' in this table-size segment</span>' : '';
-    var labels = (mode === 'career' && !displayed ? '<p class="pnhud-dashboard-empty">' + unavailable + '</p>' : '') + '<p class="pnhud-dashboard-profile-labels">' + (displayed ? 'Displayed profile: <strong>' + esc(displayed) + '</strong>' : 'Displayed profile unavailable') + (raw && raw !== displayed ? '<span>Current raw classification: <strong>' + esc(raw) + '</strong></span>' : '') + sample + '</p>';
+    var sample = (mode === 'career' || mode === 'recent' || mode === 'historical') && profile ? '<span>Based on ' + integer(profile.hands) + ' ' + (mode === 'career' ? 'Career' : mode === 'recent' ? 'Recent' : 'Session') + ' ' + (integer(profile.hands) === 1 ? 'hand' : 'hands') + ' in this table-size segment</span>' : '';
+    var labels = ((mode === 'career' || mode === 'recent' || mode === 'historical') && !displayed ? '<p class="pnhud-dashboard-empty">' + unavailable + '</p>' : '') + '<p class="pnhud-dashboard-profile-labels">' + (displayed ? 'Displayed profile: <strong>' + esc(displayed) + '</strong>' : 'Displayed profile unavailable') + (raw && raw !== displayed ? '<span>Current raw classification: <strong>' + esc(raw) + '</strong></span>' : '') + sample + '</p>';
     return '<section class="pnhud-dashboard-section"><h3>' + title + '</h3>' + labels + profileExplanationHtml(profile.explanation) + (showFit ? '<h4>Profile fit</h4><div class="pnhud-dashboard-profile-fit">' + rows + '</div>' : '') + '<p class="pnhud-dashboard-help">Profile uses the selected table-size and context population. Compatibility scores are independent and are not probabilities.</p></section>';
   }
   function unavailableCareerProfile(reason, message, diagnostics) {
@@ -301,9 +310,9 @@
     return '<div class="pnhud-dashboard-opponent" role="group" aria-label="Relational opponent context"><span>Opponent</span><div>' + button('overall', 'Overall', false) + button('self', 'Vs You', unavailable || selfDashboard, selfDashboard ? 'Self-vs-self comparisons are not meaningful' : unavailable ? 'Canonical self identity is unavailable' : '') + button('others', 'Vs Everyone Else', unavailable, unavailable ? 'Canonical self identity is unavailable' : '') + '</div></div>';
   }
   function coverageHtml(state, coverage, mode, position, situation) {
-    coverage = coverage || {}; var total = integer(mode === 'career' ? coverage.totalCareerHands : coverage.totalSessionHands); var tracked = integer(coverage.positionTrackedHands); var matched = integer(coverage.matchedPositionHands); var situationTracked = integer(coverage.situationTrackedHands); var situationMatched = integer(coverage.matchedSituationHands);
-    if (situation !== 'overall') return '<p class="pnhud-dashboard-coverage"><strong>' + esc(situationLabel(situation)) + '</strong> · ' + situationMatched + ' exact ' + (situationMatched === 1 ? 'hand' : 'hands') + '<span>' + total + ' total ' + (mode === 'career' ? 'career' : 'session') + ' hands · ' + situationTracked + ' exact heads-up postflop</span></p>';
-    if (position) return '<p class="pnhud-dashboard-coverage"><strong>' + esc(position) + '</strong> · ' + matched + ' tracked ' + (matched === 1 ? 'hand' : 'hands') + '<span>' + total + ' total ' + (mode === 'career' ? 'career' : 'session') + ' hands · ' + tracked + ' position-tracked</span></p>';
+    coverage = coverage || {}; var total = integer(mode !== 'session' || state.mode === 'history-detail' ? coverage.totalCareerHands : coverage.totalSessionHands); var tracked = integer(coverage.positionTrackedHands); var matched = integer(coverage.matchedPositionHands); var situationTracked = integer(coverage.situationTrackedHands); var situationMatched = integer(coverage.matchedSituationHands);
+    if (situation !== 'overall') return '<p class="pnhud-dashboard-coverage"><strong>' + esc(situationLabel(situation)) + '</strong> · ' + situationMatched + ' exact ' + (situationMatched === 1 ? 'hand' : 'hands') + '<span>' + total + ' total ' + (mode === 'career' ? 'career' : mode === 'recent' ? 'recent' : 'session') + ' hands · ' + situationTracked + ' exact heads-up postflop</span></p>';
+    if (position) return '<p class="pnhud-dashboard-coverage"><strong>' + esc(position) + '</strong> · ' + matched + ' tracked ' + (matched === 1 ? 'hand' : 'hands') + '<span>' + total + ' total ' + (mode === 'career' ? 'career' : mode === 'recent' ? 'recent' : 'session') + ' hands · ' + tracked + ' position-tracked</span></p>';
     return '<p class="pnhud-dashboard-coverage"><strong>All positions</strong> · ' + total + ' total ' + (total === 1 ? 'hand' : 'hands') + '<span>Position-tracked: ' + tracked + ' hands</span></p>';
   }
   function selectTrendWindow(trends, requested) {
@@ -433,18 +442,217 @@
   function tableSizeControl(selected) {
     return '<label class="pnhud-dashboard-table-size"><span>Table</span><select data-dashboard-table-size aria-label="Table size filter">' + TABLE_SIZE_OPTIONS.map(function (option) { return '<option value="' + option.value + '"' + (selected === option.value ? ' selected' : '') + '>' + option.label + '</option>'; }).join('') + '</select></label>';
   }
+  function historyDate(value) {
+    if (value === null || value === undefined || value === '') return 'Historical Session';
+    var date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Historical Session';
+  }
+  function historyComposition(counts) {
+    counts = counts || {};
+    return [['HU', 'HU'], ['3_TO_5', '3–5'], ['SIX_PLUS', '6+'], ['UNKNOWN', 'Unknown']]
+      .filter(function (part) { return integer(counts[part[0]]) > 0; })
+      .map(function (part) { return part[1] + ' ' + integer(counts[part[0]]); }).join(' · ') || 'Table size unavailable';
+  }
+  function historyTabs(mode) {
+    return '<div class="pnhud-dashboard-tabs" role="tablist" aria-label="Statistics window">' +
+      [['session', 'Session'], ['recent', 'Recent'], ['career', 'Career'], ['history', 'History']].map(function (tab) {
+        var active = tab[0] === 'history' ? mode === 'history-list' || mode === 'history-trends' || mode === 'history-detail' : tab[0] === mode;
+        return '<button type="button" role="tab" data-dashboard-mode="' + tab[0] + '" aria-selected="' + active + '" class="' + (active ? 'active' : '') + '">' + tab[1] + '</button>';
+      }).join('') + '</div>';
+  }
+  function historyViews(mode) {
+    return '<div class="pnhud-dashboard-history-views" role="group" aria-label="History view">' +
+      [['sessions', 'Sessions'], ['trends', 'Trends']].map(function (item) {
+        var active = item[0] === 'sessions' ? mode === 'history-list' : mode === 'history-trends';
+        return '<button type="button" data-dashboard-history-view="' + item[0] + '" aria-pressed="' + active + '" class="' + (active ? 'active' : '') + '">' + item[1] + '</button>';
+      }).join('') + '</div>';
+  }
+  function recentWindowControl(window) {
+    var selected = (window && window.type || 'sessions') + ':' + (window && window.count || 5);
+    return '<label class="pnhud-dashboard-recent-window"><span>Recent window</span><select data-dashboard-recent-window aria-label="Recent window">' +
+      RECENT_WINDOW_OPTIONS.map(function (option) { return '<option value="' + option.value + '"' + (selected === option.value ? ' selected' : '') + '>' + option.label + '</option>'; }).join('') + '</select></label>';
+  }
+  function recentPopulationHtml(state) {
+    var result = state.recentComparison && state.recentComparison.recent;
+    if (!result) return '';
+    var count = integer(result.selectedPlayerHandCount);
+    var sessionCount = integer(result.selectedSessionCount);
+    var window = result.window || state.recentWindow || { type: 'sessions', count: 5 };
+    var summary = window.type === 'sessions'
+      ? sessionCount + ' ' + (sessionCount === 1 ? 'Session' : 'Sessions') + (sessionCount < window.count ? ' available' : '') + ' · ' + count + ' player ' + (count === 1 ? 'hand' : 'hands')
+      : count + ' selected ' + (count === 1 ? 'hand' : 'hands') + ' of last ' + window.count;
+    var unassigned = result.unassigned || {};
+    var legacy = integer(unassigned.legacyHandCount) + integer(unassigned.unsupportedHandCount);
+    var note = window.type === 'hands' && legacy ? '<small>' + legacy + ' selected ' + (legacy === 1 ? 'hand lacks' : 'hands lack') + ' explicit Session provenance.</small>' : '';
+    var filtered = state.tableSize !== 'all' || state.position || state.situation !== 'overall' ? '<small>Statistics below use the active filters inside this fixed window.</small>' : '';
+    return '<p class="pnhud-dashboard-recent-population"><strong>' + esc(summary) + '</strong>' + note + filtered + '</p>';
+  }
+  function comparisonValue(stat, side) {
+    var value = stat && stat[side + 'Value'];
+    if (value === null || value === undefined) return stat && stat[side + 'NonFinite'] && stat.unit === 'ratio' ? '∞' : '—';
+    return stat.unit === 'ratio' ? String(Math.round(value * 100) / 100) : Number(value).toFixed(1) + '%';
+  }
+  function comparisonSupport(stat, side) {
+    var proof = stat && stat[side + 'Support'] || {};
+    var count = Number.isSafeInteger(proof.count) ? proof.count : 0;
+    var sample = stat.unit === 'ratio' ? integer(stat[side + 'Numerator']) + ' aggressive / ' + integer(stat[side + 'Calls']) + ' calls'
+      : count + ' ' + (count === 1 ? 'opportunity' : 'opportunities');
+    var status = proof.status ? proof.status.charAt(0).toUpperCase() + proof.status.slice(1) : 'Unavailable';
+    return sample + ' · ' + status + ' evidence';
+  }
+  function recentComparisonHtml(state) {
+    if (state.mode !== 'recent' || state.loading || state.error || !state.recentComparison ||
+        !integer(state.recentComparison.recent && state.recentComparison.recent.selectedPlayerHandCount)) return '';
+    var comparison = state.recentComparison.comparison || {};
+    var rows = TREND_IDS.map(function (id) {
+      var stat = comparison[id]; if (!stat) return '';
+      var delta = stat.delta === null || stat.delta === undefined ? '—' :
+        (stat.delta > 0 ? '+' : '') + Number(stat.delta).toFixed(stat.unit === 'ratio' ? 2 : 1) + (stat.unit === 'ratio' ? ' ratio' : ' pp');
+      return '<tr><th scope="row">' + esc(TREND_LABELS[id]) + '</th><td><strong>' + esc(comparisonValue(stat, 'recent')) + '</strong><small>' + esc(comparisonSupport(stat, 'recent')) + '</small></td>' +
+        '<td><strong>' + esc(comparisonValue(stat, 'career')) + '</strong><small>' + esc(comparisonSupport(stat, 'career')) + '</small></td><td>' + esc(delta) + '</td></tr>';
+    }).join('');
+    return '<section class="pnhud-dashboard-section pnhud-dashboard-comparison"><h3>Recent vs Career</h3><p class="pnhud-dashboard-help">' +
+      integer(state.recentComparison.recent && state.recentComparison.recent.selectedPlayerHandCount) + ' selected Recent hands · ' +
+      integer(state.recentComparison.career && state.recentComparison.career.playerHandCount) + ' Career hands. Differences are observations, not targets.</p>' +
+      '<div class="pnhud-dashboard-comparison-scroll"><table><thead><tr><th scope="col">Stat</th><th scope="col">Recent</th><th scope="col">Career</th><th scope="col">Δ</th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  }
+  function shortTrendDate(value) {
+    if (value === null || value === undefined || value === '') return 'Session';
+    var date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Session';
+  }
+  function trendDisplayValue(metric, stat) {
+    if (metric === 'af' && stat && stat.nonFinite) return '∞';
+    return stat && Number.isFinite(stat.value) ? (metric === 'af' ? String(Math.round(stat.value * 100) / 100) : Number(stat.value).toFixed(1) + '%') : '—';
+  }
+  function trendSupportText(metric, stat) {
+    if (!stat) return 'Support unavailable';
+    return metric === 'af' ? integer(stat.numerator) + ' aggressive / ' + integer(stat.denominator) + ' calls'
+      : integer(stat.numerator) + ' / ' + integer(stat.denominator) + ' opportunities';
+  }
+  function sessionTrendChart(points, metric) {
+    var supported = points.map(function (point) { var stat = point.stats && point.stats[metric]; return stat && Number.isFinite(stat.value) ? stat.value : null; });
+    var maximum = metric === 'af' ? Math.max(2, Math.ceil(Math.max.apply(null, supported.filter(function (value) { return value !== null; }).concat([0])))) : 100;
+    var x = function (index) { return points.length === 1 ? 300 : 34 + index * 532 / (points.length - 1); };
+    var y = function (value) { return 126 - Math.max(0, Math.min(maximum, value)) * 105 / maximum; };
+    var segments = []; var current = [];
+    supported.forEach(function (value, index) {
+      if (value === null) { if (current.length > 1) segments.push(current); current = []; }
+      else current.push(x(index).toFixed(1) + ',' + y(value).toFixed(1));
+    });
+    if (current.length > 1) segments.push(current);
+    var lines = segments.map(function (segment) { return '<polyline points="' + segment.join(' ') + '" fill="none" stroke="currentColor" stroke-width="2"/>'; }).join('');
+    var dots = supported.map(function (value, index) {
+      if (value === null) return '';
+      var stat = points[index].stats[metric]; var weak = stat.evidenceStatus === 'weak' || stat.evidenceStatus === 'insufficient';
+      return '<circle cx="' + x(index).toFixed(1) + '" cy="' + y(value).toFixed(1) + '" r="' + (weak ? 5 : 4) + '"' +
+        (weak ? ' fill="none" stroke="currentColor" stroke-width="2"' : ' fill="currentColor"') + '/>';
+    }).join('');
+    var sparse = Math.max(1, Math.ceil(points.length / 6));
+    var labels = points.map(function (point, index) {
+      if (index !== 0 && index !== points.length - 1 && index % sparse !== 0) return '';
+      return '<text x="' + x(index).toFixed(1) + '" y="158" text-anchor="middle">' + esc(shortTrendDate(point.endedAt || point.startedAt)) + '</text>';
+    }).join('');
+    return '<svg class="pnhud-dashboard-session-trend-chart" viewBox="0 0 600 170" role="img" aria-label="' + esc(TREND_LABELS[metric]) +
+      ' by Session, oldest to newest. Details for every Session follow the chart."><line x1="34" y1="126" x2="566" y2="126" stroke="currentColor" stroke-opacity=".45"/>' +
+      lines + dots + labels + '</svg>';
+  }
+  function historyTrendHtml(state) {
+    var series = state.historyTrend;
+    var metric = TREND_IDS.indexOf(state.historyTrendMetric) >= 0 ? state.historyTrendMetric : 'vpip';
+    var range = [10, 25, 'all'].indexOf(state.historyTrendRange) >= 0 ? state.historyTrendRange : 10;
+    var controls = '<div class="pnhud-dashboard-filter-row">' + historyTabs('history-trends') + historyViews('history-trends') + tableSizeControl(state.tableSize || 'all') +
+      situationControl(state.situation || 'overall') + positionControl(state.position || null, state.situation !== 'overall') +
+      '<label class="pnhud-dashboard-trend-metric"><span>Metric</span><select data-dashboard-session-trend-metric aria-label="Session trend metric">' + TREND_IDS.map(function (id) {
+        return '<option value="' + id + '"' + (id === metric ? ' selected' : '') + '>' + TREND_LABELS[id] + '</option>';
+      }).join('') + '</select></label><label class="pnhud-dashboard-trend-range"><span>Show</span><select data-dashboard-session-trend-range aria-label="Session trend range">' +
+      [[10, 'Last 10'], [25, 'Last 25'], ['all', 'All']].map(function (item) { return '<option value="' + item[0] + '"' + (item[0] === range ? ' selected' : '') + '>' + item[1] + '</option>'; }).join('') + '</select></label></div>';
+    var points = series && Array.isArray(series.points) ? series.points : [];
+    var visible = range === 'all' ? points : points.slice(-range);
+    var supported = visible.filter(function (point) { return point.stats && point.stats[metric] && Number.isFinite(point.stats[metric].value); });
+    var nonfinite = metric === 'af' ? visible.filter(function (point) { return point.stats && point.stats.af && point.stats.af.nonFinite; }) : [];
+    var body = state.historyTrendLoading ? '<p class="pnhud-dashboard-empty" role="status">Loading Session trends...</p>'
+      : state.historyTrendError ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.historyTrendError) + '</p>'
+      : !points.length ? '<p class="pnhud-dashboard-empty">No Session trend data yet.</p>'
+      : '<p class="pnhud-dashboard-help">' + visible.length + ' of ' + points.length + ' canonical Sessions · oldest to newest' + (points.length === 1 ? ' · one Session recorded' : '') + '.</p>' +
+        (!supported.length ? '<p class="pnhud-dashboard-empty">' + (nonfinite.length ? 'No finite AF values in these Sessions.' : 'No supported ' + esc(TREND_LABELS[metric]) + ' observations in these Sessions.') + '</p>' : '') +
+        (nonfinite.length ? '<p class="pnhud-dashboard-help">∞ AF observations have recorded aggression and zero calls; their action/call counts appear below. They remain gaps in the chart.</p>' : '') +
+        sessionTrendChart(visible, metric) + '<ol class="pnhud-dashboard-session-trend-points" aria-label="Session trend details">' + visible.map(function (point) {
+          var stat = point.stats && point.stats[metric]; var date = historyDate(point.endedAt || point.startedAt);
+          var value = trendDisplayValue(metric, stat); var proof = stat && stat.evidenceStatus ? stat.evidenceStatus : 'unavailable';
+          var support = trendSupportText(metric, stat); var weak = proof === 'weak' || proof === 'insufficient';
+          var detail = date + ', ' + TREND_LABELS[metric] + ' ' + (value === '—' ? 'unsupported' : value) + ', ' + support + ', ' + integer(point.playerHandCount) + ' player hands, ' + proof + ' evidence';
+          return '<li><button type="button" data-dashboard-trend-session="' + esc(point.sessionId) + '" aria-label="Open ' + esc(detail) + '" class="' + (weak ? 'pnhud-dashboard-session-trend-weak' : '') + '"><strong>' + esc(shortTrendDate(point.endedAt || point.startedAt)) + '</strong><span>' + esc(value) + '</span><small>' + esc(support) + ' · ' + integer(point.playerHandCount) + ' hands · ' + esc(proof) + ' evidence</small></button></li>';
+        }).join('') + '</ol>';
+    return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><h2>' + esc(state.displayName || 'Tracked player') + '</h2><p>Session History · Trends</p></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body">' + controls + '<section class="pnhud-dashboard-section pnhud-dashboard-session-trends"><h3>' + esc(TREND_LABELS[metric]) + ' by Session</h3>' + body + '</section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize"></button></div>';
+  }
+  function historyDeletionHtml(state) {
+    if (state.mode !== 'history-detail' || !state.selectedHistorySessionId) return '';
+    if (state.selectedHistorySessionId === state.currentHistoricalSessionId) return '<section class="pnhud-dashboard-section pnhud-dashboard-history-deletion"><h3>Career data</h3><p class="pnhud-dashboard-help">This is the current live Session. Use Settings → Data → Remove Current Session from Career &amp; Reset so live Session identity rotates safely.</p></section>';
+    var preview = state.historyDeletionPreview && state.historyDeletionPreview.sessionId === state.selectedHistorySessionId ? state.historyDeletionPreview : null;
+    var error = state.historyDeletionError ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.historyDeletionError) + '</p>' : '';
+    var status = state.historyDeletionLoading ? '<p class="pnhud-dashboard-help" role="status">Loading authoritative whole-Session preview...</p>' :
+      state.historyDeletionBusy ? '<p class="pnhud-dashboard-help" role="status">Deleting this Session from Career...</p>' : '';
+    var action = '<button type="button" class="pnhud-dashboard-delete-session pnhud-destructive" data-dashboard-delete-session' +
+      (state.loading || state.error || state.historyDeletionLoading || state.historyDeletionBusy ? ' disabled' : '') + '>Delete Session from Career</button>';
+    if (!preview) return '<section class="pnhud-dashboard-section pnhud-dashboard-history-deletion"><h3>Career data</h3>' +
+      '<p class="pnhud-dashboard-help">Remove this entire canonical Session from Career for every player in it.</p>' + action + status + error + '</section>';
+    var players = Array.isArray(preview.affectedPlayers) ? preview.affectedPlayers : [];
+    var selected = players.find(function (row) { return String(row.playerId) === String(state.playerId); });
+    var rows = players.map(function (row) { return '<li>' + esc(row.displayName || row.playerId) + ' · ' + integer(row.handCount) + ' ' +
+      (integer(row.handCount) === 1 ? 'hand' : 'hands') + '</li>'; }).join('');
+    return '<section class="pnhud-dashboard-section pnhud-dashboard-history-deletion" role="group" aria-labelledby="pnhud-dashboard-delete-title">' +
+      '<h3 id="pnhud-dashboard-delete-title">Delete this Session from Career?</h3><p><strong>' + esc(historyDate(preview.endedAt || preview.startedAt)) +
+      '</strong> · ' + integer(preview.logicalHandCount) + ' total Session ' + (integer(preview.logicalHandCount) === 1 ? 'hand' : 'hands') +
+      ' · ' + integer(preview.physicalRecordCount) + ' stored physical ' + (integer(preview.physicalRecordCount) === 1 ? 'version' : 'versions') +
+      ' · ' + integer(preview.affectedPlayerCount) + ' affected ' + (integer(preview.affectedPlayerCount) === 1 ? 'player' : 'players') + '</p>' +
+      (selected ? '<p>' + integer(selected.handCount) + ' hands for ' + esc(selected.displayName || selected.playerId) + ' in this Session.</p>' : '') +
+      '<ul class="pnhud-dashboard-deletion-players">' + rows + '</ul>' +
+      '<p class="pnhud-dashboard-help">This removes the whole Session for every affected player, regardless of the filters above. Career, Recent, and Trends recalculate. There is no in-app Undo; a prior Career backup can restore its records.</p>' +
+      status + error + '<div class="pnhud-dashboard-deletion-actions"><button type="button" data-dashboard-cancel-session-deletion' +
+      (state.historyDeletionBusy ? ' disabled' : '') + '>Cancel</button><button type="button" class="pnhud-destructive" data-dashboard-confirm-session-deletion' +
+      (state.historyDeletionBusy ? ' disabled' : '') + '>Delete Session</button></div></section>';
+  }
+  function historyListHtml(state) {
+    var history = state.historyList;
+    var rows = history && Array.isArray(history.sessions) ? history.sessions : [];
+    var body = state.historyLoading ? '<p class="pnhud-dashboard-empty" role="status">Loading Session history...</p>'
+      : state.historyError ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.historyError) + '</p>'
+      : !rows.length ? '<p class="pnhud-dashboard-empty">No historical Sessions recorded yet.</p>'
+      : '<div class="pnhud-dashboard-history-rows">' + rows.map(function (row) {
+          var cards = fromCounterResult(row.stats, 'session');
+          var byId = function (id) { var item = cards.find(function (card) { return card.id === id; }); return item ? item.value : '---'; };
+          var current = row.sessionId === state.currentHistoricalSessionId;
+          return '<button type="button" class="pnhud-dashboard-history-row" data-dashboard-history-session="' + esc(row.sessionId) + '" aria-label="Open ' + esc(historyDate(row.endedAt || row.startedAt)) + ', ' + integer(row.playerHandCount) + ' hands played' + (current ? ', current Session' : '') + '"><span class="pnhud-dashboard-history-heading"><strong>' + esc(historyDate(row.endedAt || row.startedAt)) + '</strong>' + (current ? '<em>Current Session</em>' : '') + '</span><span>' + integer(row.playerHandCount) + ' hands played' + (integer(row.sessionHandCount) !== integer(row.playerHandCount) ? ' · Session total: ' + integer(row.sessionHandCount) : '') + '</span><small>' + esc(historyComposition(row.playerTableSizeHands)) + '</small><span class="pnhud-dashboard-history-stats">VPIP ' + esc(byId('vpip')) + ' · PFR ' + esc(byId('pfr')) + ' · 3Bet ' + esc(byId('threeBet')) + '</span></button>';
+        }).join('') + '</div>';
+    var unassigned = history && history.unassigned || {};
+    var legacy = integer(unassigned.legacyHandCount) + integer(unassigned.unsupportedHandCount);
+    var note = legacy ? '<p class="pnhud-dashboard-help">' + legacy + ' Career ' + (legacy === 1 ? 'hand lacks' : 'hands lack') + ' explicit Session provenance and ' + (legacy === 1 ? 'is' : 'are') + ' not grouped into Sessions.</p>' : '';
+    return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><h2>' + esc(state.displayName || 'Tracked player') + '</h2><p>Session History</p></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row">' + historyTabs('history-list') + historyViews('history-list') + '</div><section class="pnhud-dashboard-section pnhud-dashboard-history"><h3>Sessions</h3>' + body + note + '</section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
+  }
   function render(state) {
-    state = state || {}; var mode = state.mode === 'career' ? 'career' : 'session'; var situation = SITUATION_OPTIONS.some(function (option) { return option.value === state.situation; }) ? state.situation : 'overall'; var position = situation === 'overall' && POSITION_OPTIONS.indexOf(state.position) >= 0 ? state.position : null; var modeLabel = mode === 'career' ? 'Career' : 'Current session';
-    var tableSize = TABLE_SIZE_OPTIONS.some(function (option) { return option.value === state.tableSize; }) ? state.tableSize : 'all'; var scoped = Boolean(position || situation !== 'overall' || tableSize !== 'all'); var source = scoped ? state.coreStats : state.coreStats || (mode === 'career' ? state.careerStats : state.sessionStats); var missingScopedSource = Boolean(scoped && !source && !state.loading && !state.error); var evidenceContext = { position: position, situation: situation, opponentMode: 'overall', tableSize: tableSize }; var cards = cardsFor(source, mode, evidenceContext); var hands = cards.length ? cards[0].numerator : 0; var coverage = source && source.coverage || {};
-    var name = state.displayName || 'Tracked player'; var noteValue = Object.prototype.hasOwnProperty.call(state, 'noteDraft') ? state.noteDraft : state.note; var headerProfile = analysisBucket(source, state) && state.profile && (state.profile.displayedArchetype || state.profile.rawArchetype); var tableLabel = ({ all: 'All table sizes', HU: 'HU', '3_TO_5': '3–5 handed', SIX_PLUS: '6+ handed' })[tableSize]; var context = modeLabel + ' · ' + tableLabel + (situation !== 'overall' ? ' · ' + situationLabel(situation) : position ? ' · ' + position : '') + ' · ' + hands + ' ' + (hands === 1 ? 'hand' : 'hands');
+    state = state || {}; if (state.mode === 'history-list') return historyListHtml(state); if (state.mode === 'history-trends') return historyTrendHtml(state);
+    var historical = state.mode === 'history-detail'; var mode = state.mode === 'career' ? 'career' : state.mode === 'recent' ? 'recent' : 'session'; var situation = SITUATION_OPTIONS.some(function (option) { return option.value === state.situation; }) ? state.situation : 'overall'; var position = situation === 'overall' && POSITION_OPTIONS.indexOf(state.position) >= 0 ? state.position : null; var modeLabel = historical ? 'Historical Session' : mode === 'career' ? 'Career' : mode === 'recent' ? 'Recent' : 'Current session';
+    var tableSize = TABLE_SIZE_OPTIONS.some(function (option) { return option.value === state.tableSize; }) ? state.tableSize : 'all'; var scoped = Boolean(position || situation !== 'overall' || tableSize !== 'all'); var source = historical || mode === 'recent' ? state.coreStats : scoped ? state.coreStats : state.coreStats || (mode === 'career' ? state.careerStats : state.sessionStats); var missingScopedSource = Boolean(scoped && !source && !state.loading && !state.error); var evidenceContext = { position: position, situation: situation, opponentMode: 'overall', tableSize: tableSize }; var cards = (historical || mode === 'recent') && (!source || state.error || state.loading) ? [] : cardsFor(source, mode === 'recent' ? 'career' : mode, evidenceContext); var hands = cards.length ? cards[0].numerator : 0; var coverage = source && source.coverage || {};
+    if (mode === 'recent') {
+      var requestedRecentCount = integer(state.recentWindow && state.recentWindow.count || 5);
+      var availableRecentCount = state.recentComparison && state.recentComparison.recent &&
+        integer(state.recentWindow.type === 'hands' ? state.recentComparison.recent.selectedPlayerHandCount : state.recentComparison.recent.selectedSessionCount);
+      modeLabel += ' · ' + (availableRecentCount === null || availableRecentCount === undefined ? requestedRecentCount : availableRecentCount) +
+        ' ' + (state.recentWindow && state.recentWindow.type === 'hands' ? 'Hands' : 'Sessions') +
+        (availableRecentCount !== null && availableRecentCount !== undefined && availableRecentCount < requestedRecentCount ? ' available' : '');
+    }
+    var name = state.displayName || 'Tracked player'; var noteValue = Object.prototype.hasOwnProperty.call(state, 'noteDraft') ? state.noteDraft : state.note; var headerProfile = analysisBucket(source, state) && state.profile && (state.profile.displayedArchetype || state.profile.rawArchetype); var tableLabel = ({ all: 'All table sizes', HU: 'HU', '3_TO_5': '3–5 handed', SIX_PLUS: '6+ handed' })[tableSize]; var context = modeLabel + (historical ? ' · ' + historyDate(state.selectedHistorySummary && (state.selectedHistorySummary.endedAt || state.selectedHistorySummary.startedAt)) : '') + ' · ' + tableLabel + (situation !== 'overall' ? ' · ' + situationLabel(situation) : position ? ' · ' + position : '') + ' · ' + hands + ' ' + (hands === 1 ? 'hand' : 'hands');
     if (mode === 'career' && state.careerTrackingStartedAt) context += ' · Tracked since ' + new Date(state.careerTrackingStartedAt).toLocaleDateString();
     var coreCards = cardsByIds(cards, CORE_IDS); var relationCards = relationalCards(state, mode, cards); var bucket = analysisBucket(source, state); var exactCoverageAvailable = Boolean(source && source.coverage); var noPositionSample = Boolean(position && !state.loading && exactCoverageAvailable && integer(coverage.matchedPositionHands) === 0); var noSituationSample = Boolean(situation !== 'overall' && !state.loading && exactCoverageAvailable && integer(coverage.matchedSituationHands) === 0); var tracked = coverage.tableSizeHands && ['HU', '3_TO_5', 'SIX_PLUS'].reduce(function (sum, key) { return sum + integer(coverage.tableSizeHands[key]); }, 0); var analysisHelp = !state.loading && !state.error && hands > 0 && !bucket ? '<p class="pnhud-dashboard-help">Select a table-size segment for calibrated player analysis.</p>' : ''; var coverageHelp = tableSize === 'all' && tracked !== undefined ? '<p class="pnhud-dashboard-help">Table-size tracked: ' + tracked + ' / ' + hands + ' hands</p>' : '';
-    var coreBody = state.loading ? '<p class="pnhud-dashboard-empty" role="status">Loading career statistics and filters...</p>' : state.error ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.error) + '</p>' : missingScopedSource ? '<p class="pnhud-dashboard-empty">Filtered statistics and evidence are unavailable for this context.</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No position-tracked hands for ' + esc(position) + ' yet.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No exact heads-up postflop hands for ' + esc(situationLabel(situation).toLowerCase()) + ' yet.</p>' : !cards.length ? '<p class="pnhud-dashboard-empty">No ' + (mode === 'career' ? 'career' : 'session') + ' hands tracked yet.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-core-grid">' + cardsHtml(coreCards) + '</div>';
+    var noRecentPopulation = mode === 'recent' && state.recentComparison && state.recentComparison.recent && !integer(state.recentComparison.recent.selectedPlayerHandCount);
+    var coreBody = state.loading ? '<p class="pnhud-dashboard-empty" role="status">Loading ' + (historical ? 'historical Session' : mode === 'recent' ? 'Recent' : 'career') + ' statistics and filters...</p>' : state.error ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.error) + '</p>' : noRecentPopulation ? '<p class="pnhud-dashboard-empty">' + (state.recentWindow && state.recentWindow.type === 'hands' ? 'No ordered Career hands are available for this hand window.' : 'No explicit recent Session history exists for this player. A hand window may include dated unassigned Career hands.') + '</p>' : missingScopedSource ? '<p class="pnhud-dashboard-empty">Filtered statistics and evidence are unavailable for this context.</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No position-tracked hands for ' + esc(position) + ' yet.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No exact heads-up postflop hands for ' + esc(situationLabel(situation).toLowerCase()) + ' yet.</p>' : !cards.length ? '<p class="pnhud-dashboard-empty">No ' + (mode === 'career' ? 'career' : mode === 'recent' ? 'recent' : 'session') + ' hands tracked yet.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-core-grid">' + cardsHtml(coreCards) + '</div>';
     var relationContext = tableLabel + ' · ' + (situation !== 'overall' ? situationLabel(situation) + ' · ' : position ? position + ' · ' : ''); relationContext += state.opponentMode === 'self' ? 'Vs You' : state.opponentMode === 'others' ? 'Vs Everyone Else' : 'Overall';
-    var relationBody = state.loading ? '<p class="pnhud-dashboard-empty">Loading relational samples...</p>' : missingScopedSource ? '<p class="pnhud-dashboard-empty">Filtered relational evidence is unavailable for this context.</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this position.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this situation.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-relational-grid">' + cardsHtml(relationCards) + '</div>';
+    var relationBody = state.loading ? '<p class="pnhud-dashboard-empty">Loading relational samples...</p>' : state.error ? '' : missingScopedSource ? '<p class="pnhud-dashboard-empty">Filtered relational evidence is unavailable for this context.</p>' : noPositionSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this position.</p>' : noSituationSample ? '<p class="pnhud-dashboard-empty">No supported relational sample for this situation.</p>' : '<div class="pnhud-dashboard-stat-grid pnhud-dashboard-relational-grid">' + cardsHtml(relationCards) + '</div>';
     var relationalCoverage = state.opponentMode && state.opponentMode !== 'overall' ? relationCards.reduce(function (sum, item) { return sum + integer(item.denominator); }, 0) : null;
     var profileBucket = bucket || (tableSize !== 'all' && !state.loading && !state.error && source && hands === 0 ? tableSize : null);
-    return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><div class="pnhud-dashboard-title"><h2>' + esc(name) + '</h2>' + (headerProfile ? '<span class="pnhud-dashboard-header-profile">' + esc(headerProfile) + '</span>' : '') + '</div><p>' + esc(context) + '</p><small title="Canonical stable player ID">ID ' + esc(state.playerId) + '</small></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row"><div class="pnhud-dashboard-tabs" role="tablist" aria-label="Statistics window"><button type="button" role="tab" data-dashboard-mode="session" aria-selected="' + (mode === 'session') + '" class="' + (mode === 'session' ? 'active' : '') + '">Session</button><button type="button" role="tab" data-dashboard-mode="career" aria-selected="' + (mode === 'career') + '" class="' + (mode === 'career' ? 'active' : '') + '">Career</button></div>' + tableSizeControl(tableSize) + situationControl(situation) + positionControl(position, situation !== 'overall') + '</div><section class="pnhud-dashboard-section"><h3>Core stats</h3>' + coverageHtml(state, coverage, mode, position, situation) + coverageHelp + analysisHelp + coreBody + '</section>' + trendsHtml(state, mode) + '<section class="pnhud-dashboard-section pnhud-dashboard-relational"><div class="pnhud-dashboard-section-heading"><div><h3>Relational stats</h3><small>' + esc(relationContext) + '</small></div>' + opponentControl(state) + '</div>' + relationBody + (relationalCoverage !== null ? '<p class="pnhud-dashboard-help">' + relationalCoverage + ' supported relational ' + (relationalCoverage === 1 ? 'opportunity' : 'opportunities') + ' across 3Bet, F3B, and FCB. Missing counterpart history is excluded.</p>' : '<p class="pnhud-dashboard-help">Opponent context applies only to 3Bet, F3B, and FCB.</p>') + '</section>' + (missingScopedSource || noPositionSample || noSituationSample ? '' : insightsHtml(state, cards, relationCards, mode, { position: position, situation: situation, opponentMode: state.opponentMode || 'overall', tableSize: tableSize }, bucket)) + reviewSignalsHtml(state, cards, mode, evidenceContext, bucket) + (profileBucket ? profileHtml(state.profile, mode, profileBucket) : '') + '<section class="pnhud-dashboard-section"><div class="pnhud-dashboard-notes-heading"><h3>Notes</h3><span class="pnhud-dashboard-note-status" role="status" aria-live="polite">' + esc(state.noteStatus || '') + '</span></div><textarea class="pnhud-dashboard-note" maxlength="5000" aria-label="Notes for ' + esc(name) + '" placeholder="Add a private note about this player...">' + esc(noteValue || '') + '</textarea><div class="pnhud-dashboard-note-actions"><button type="button" class="pnhud-dashboard-save-note">Save Note</button><button type="button" class="pnhud-dashboard-clear-note"' + (!noteValue ? ' disabled' : '') + '>Clear Note</button></div><p class="pnhud-dashboard-help">Notes are keyed only by stable player ID and are unaffected by dashboard filters.</p></section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
+    var historyHeader = historical ? '<button type="button" class="pnhud-dashboard-history-back">← Back to ' + (state.historyReturnMode === 'history-trends' ? 'Trends' : 'Sessions') + '</button><p class="pnhud-dashboard-help">' + esc(historyComposition(state.selectedHistorySummary && state.selectedHistorySummary.playerTableSizeHands)) + ' · ' + integer(state.selectedHistorySummary && state.selectedHistorySummary.playerHandCount) + ' hands played</p>' : '';
+    return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><div class="pnhud-dashboard-title"><h2>' + esc(name) + '</h2>' + (headerProfile ? '<span class="pnhud-dashboard-header-profile">' + esc(headerProfile) + '</span>' : '') + '</div><p>' + esc(context) + '</p><small title="Canonical stable player ID">ID ' + esc(state.playerId) + '</small></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row">' + historyTabs(state.mode) + (historical ? historyHeader : '') + (mode === 'recent' ? recentWindowControl(state.recentWindow) : '') + tableSizeControl(tableSize) + situationControl(situation) + positionControl(position, situation !== 'overall') + '</div>' + (mode === 'recent' ? recentPopulationHtml(state) : '') + '<section class="pnhud-dashboard-section"><h3>Core stats</h3>' + coverageHtml(state, coverage, mode, position, situation) + coverageHelp + analysisHelp + coreBody + '</section>' + historyDeletionHtml(state) + (mode === 'recent' ? recentComparisonHtml(state) : trendsHtml(state, mode)) + '<section class="pnhud-dashboard-section pnhud-dashboard-relational"><div class="pnhud-dashboard-section-heading"><div><h3>Relational stats</h3><small>' + esc(relationContext) + '</small></div>' + opponentControl(state) + '</div>' + relationBody + (relationalCoverage !== null ? '<p class="pnhud-dashboard-help">' + relationalCoverage + ' supported relational ' + (relationalCoverage === 1 ? 'opportunity' : 'opportunities') + ' across 3Bet, F3B, and FCB. Missing counterpart history is excluded.</p>' : '<p class="pnhud-dashboard-help">Opponent context applies only to 3Bet, F3B, and FCB.</p>') + '</section>' + (missingScopedSource || noPositionSample || noSituationSample ? '' : insightsHtml(state, cards, relationCards, mode === 'recent' ? 'career' : mode, { position: position, situation: situation, opponentMode: state.opponentMode || 'overall', tableSize: tableSize }, bucket, mode === 'recent')) + (historical || mode === 'recent' ? '' : reviewSignalsHtml(state, cards, mode, evidenceContext, bucket)) + (profileBucket ? profileHtml(state.profile, historical ? 'historical' : mode, profileBucket) : '') + '<section class="pnhud-dashboard-section"><div class="pnhud-dashboard-notes-heading"><h3>Notes</h3><span class="pnhud-dashboard-note-status" role="status" aria-live="polite">' + esc(state.noteStatus || '') + '</span></div><textarea class="pnhud-dashboard-note" maxlength="5000" aria-label="Notes for ' + esc(name) + '" placeholder="Add a private note about this player...">' + esc(noteValue || '') + '</textarea><div class="pnhud-dashboard-note-actions"><button type="button" class="pnhud-dashboard-save-note">Save Note</button><button type="button" class="pnhud-dashboard-clear-note"' + (!noteValue ? ' disabled' : '') + '>Clear Note</button></div><p class="pnhud-dashboard-help">Notes are keyed only by stable player ID and are unaffected by dashboard filters.</p></section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
   }
-  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, SITUATION_OPTIONS: SITUATION_OPTIONS, TABLE_SIZE_OPTIONS: TABLE_SIZE_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, TREND_IDS: TREND_IDS, CAREER_CONTEXT_POLICY: CAREER_CONTEXT_POLICY, createGeometryController: createGeometryController, careerProfile: careerProfile, fromSession: fromSession, fromCareer: fromCareer, fromCounterResult: fromCounterResult, selectTrendWindow: selectTrendWindow, trendDelta: trendDelta, careerRevisionsMatch: careerRevisionsMatch, requestMatches: requestMatches, render: render, percentageText: percentageText, afText: afText });
+  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, SITUATION_OPTIONS: SITUATION_OPTIONS, TABLE_SIZE_OPTIONS: TABLE_SIZE_OPTIONS, RECENT_WINDOW_OPTIONS: RECENT_WINDOW_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, TREND_IDS: TREND_IDS, CAREER_CONTEXT_POLICY: CAREER_CONTEXT_POLICY, createGeometryController: createGeometryController, careerProfile: careerProfile, fromSession: fromSession, fromCareer: fromCareer, fromCounterResult: fromCounterResult, selectTrendWindow: selectTrendWindow, trendDelta: trendDelta, careerRevisionsMatch: careerRevisionsMatch, requestMatches: requestMatches, render: render, percentageText: percentageText, afText: afText });
 });

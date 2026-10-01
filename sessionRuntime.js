@@ -69,5 +69,23 @@
       recent: state.recent.map(function (entry) { return Object.assign({}, entry); })
     };
   }
-  return Object.freeze({ INVALIDATION: INVALIDATION, invalidationFor: invalidationFor, createPersistencePlanner: createPersistencePlanner, planPersistence: planPersistence, completePersistence: completePersistence, observePersistedRevision: observePersistedRevision, inspectPersistence: inspectPersistence });
+  function validHistoricalSessionId(value) {
+    return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+  }
+  function newHistoricalSessionId(cryptoSource) {
+    var source = cryptoSource || rootCrypto();
+    if (!source || typeof source.getRandomValues !== 'function') return null;
+    var bytes = new Uint8Array(16);
+    try { source.getRandomValues(bytes); } catch (_error) { return null; }
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    var hex = Array.from(bytes).map(function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
+  }
+  function rootCrypto() { return typeof globalThis !== 'undefined' ? globalThis.crypto : null; }
+  function restoreHistoricalSessionId(meta, gameId, sessionKey) {
+    return meta && meta.gameId === gameId && meta.sessionKey === sessionKey && validHistoricalSessionId(meta.historicalSessionId)
+      ? meta.historicalSessionId : null;
+  }
+  return Object.freeze({ INVALIDATION: INVALIDATION, invalidationFor: invalidationFor, createPersistencePlanner: createPersistencePlanner, planPersistence: planPersistence, completePersistence: completePersistence, observePersistedRevision: observePersistedRevision, inspectPersistence: inspectPersistence, validHistoricalSessionId: validHistoricalSessionId, newHistoricalSessionId: newHistoricalSessionId, restoreHistoricalSessionId: restoreHistoricalSessionId });
 });

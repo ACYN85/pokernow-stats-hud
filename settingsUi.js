@@ -26,7 +26,7 @@
     settingsBackgroundOpacity: 0.96,
     dashboardBackgroundOpacity: 0.96,
     accentTheme: 'teal',
-    hudSize: 'default',
+    hudSize: 'small',
     opportunityStatsLayout: 'combined',
     seatHudStatSource: 'session',
     leaderboardStatSource: 'session',

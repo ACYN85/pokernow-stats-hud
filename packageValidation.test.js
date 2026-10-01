@@ -182,13 +182,14 @@ var profileExplanationSource = fs.readFileSync(path.join(extensionRoot, 'playerP
 var profileStoreSource = fs.readFileSync(path.join(extensionRoot, 'playerProfileShadowStore.js'), 'utf8');
 var profileCalibrationSource = fs.readFileSync(path.join(extensionRoot, 'playerProfileCalibration.js'), 'utf8');
 var showdownExporterSource = fs.readFileSync(path.join(extensionRoot, 'showdownDiagnosticExporter.js'), 'utf8');
-var buildIds = [runtimeSource, contentSource, popupSource, careerWorkerSource].map(function (source) {
-  var match = source.match(buildPattern);
-  assert.ok(match, 'runtimeScope, content, popup, and career service worker each embed a build ID');
-  return match[0];
+var buildIdMatch = runtimeSource.match(buildPattern);
+assert.ok(buildIdMatch, 'runtimeScope embeds the shared Build ID');
+var buildIds = [buildIdMatch[0]];
+assert.strictEqual(buildIds[0], 'v1.4.0-rc2-20260930-2250');
+[contentSource, popupSource, careerWorkerSource].forEach(function (source) {
+  assert.ok(source.includes('globalThis.PokerNowRuntimeScope.buildId'), 'runtime consumer reads the shared Build ID');
 });
-assert.strictEqual(new Set(buildIds).size, 1, 'runtimeScope, content, popup, and career service worker build IDs match');
-assert.ok(careerWorkerSource.includes("importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js')"), 'career service worker loads the exact filtered persistence, size-policy, and formal-backup dependency chain');
+assert.ok(careerWorkerSource.includes("importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'statEvidence.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js')"), 'career service worker loads the exact filtered persistence, Evidence, size-policy, and formal-backup dependency chain');
 assert.ok(careerWorkerSource.includes('PokerCareerIndexedStore.createIndexedService(indexedDB'), 'career service worker opens IndexedDB in the extension origin');
 assert.ok(rootNames.has('careerBackup.js') && careerBackupSource.includes('root.PokerCareerBackup = api;'), 'canonical career backup validator is packaged exactly once at the extension root');
 assert.ok(careerWorkerSource.includes('PokerCareerBackup.validateBackup') && careerWorkerSource.includes('replaceCareerRecords'), 'service worker validates before atomic replacement');
