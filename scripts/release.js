@@ -57,7 +57,7 @@ function validate(dir = root, documentation = true) {
   assert.strictEqual(manifest.version, config.version);
   assert.strictEqual(manifest.manifest_version, 3);
   assert.strictEqual(manifest.name, 'PokerNow Stats HUD');
-  assert.deepStrictEqual(manifest.permissions, ['storage', 'unlimitedStorage', 'activeTab']);
+  assert.deepStrictEqual(manifest.permissions, ['storage', 'alarms', 'unlimitedStorage', 'activeTab']);
   assert(!manifest.host_permissions && !manifest.web_accessible_resources);
   assert(read('runtimeScope.js', dir).toString().includes("'" + config.buildId + "'"), 'shared runtime Build ID');
   buildFiles.filter(file => file !== 'runtimeScope.js').forEach(file =>
@@ -77,7 +77,7 @@ function validate(dir = root, documentation = true) {
       }
     });
     assert(read('CHANGELOG.md').toString().startsWith('# ' + config.version));
-    assert(read('LIVE_VALIDATION_MATRIX.md').toString().includes('SIGNED-IN V1.4 RC2 ZIP ACCEPTED'));
+    assert(read('LIVE_VALIDATION_MATRIX.md').toString().includes('SIGNED-IN V1.5 RC2 ZIP ACCEPTED'));
     assert(read('PRIVACY.md').toString().includes('No extension-controlled external server'));
     assert(read('RELEASE_RUNBOOK.md').toString().includes(config.tag));
     assert(read('README.md').toString().includes(config.buildId));

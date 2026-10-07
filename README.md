@@ -2,9 +2,9 @@
 
 PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into a real-time, configurable player-statistics overlay with persistent Session and Career history.
 
-This extension analyzes information visible during games and stores derived statistics locally. It does not automate gameplay, access hidden cards, use solver-based recommendations, or tell you what action to take. It simply organizes and summarizes information from hands you can already see.
+This extension analyzes information visible during PokerNow games and stores derived statistics locally. It does not access hidden cards, infer hidden information, automate gameplay, make betting decisions, recommend actions, provide solver output, or calculate live equity, EV, or outs strategy. Pot Odds displays arithmetic from supported visible pot and call-cost information.
 
-**Version 1.4.0** · Release Build `v1.4.0-rc2-20260930-2250`
+**Version 1.5.0** · Release Build `v1.5.0-rc2-20261006-2218`
 
 ## Demo
 
@@ -29,8 +29,8 @@ This extension analyzes information visible during games and stores derived stat
 - Real-time player statistics calculated from finalized hands, including VPIP, PFR, aggression factor, 3Bet/F3B, flop CBet/FCB, WTSD, and W$SD.
 - Separate Session history and persistent local Career history for cross-session tracking.
 - Browse exact historical Sessions, open Session detail, compare Recent Career windows with Career totals, and inspect Session Trends. Filters use recorded table, situation, and position provenance where supported; visible history refreshes after finalized hands.
-- Delete a selected historical Session from Career for every affected player while preserving the current live Session. Older Career records without exact Session provenance remain in Career and are never inferred into historical Sessions. Portable Backup format remains v1.
-- Career Data controls for exact current-Session removal, gzip-compressed portable export, Import (Merge), and Restore (Replace). Import and restore also accept legacy JSON backups.
+- Delete a selected historical Session from Career for every affected player while preserving the current live Session. Older Career records without exact Session provenance remain in Career and are never inferred into historical Sessions. Backup v2 adds large-history streaming portability; Backup v1 compatibility is retained.
+- Settings → Data offers Backup v2 streaming export, Replace, and Merge with a certified 150,000-record runtime/portability target. Replace replaces Career and resets the selected current Session; Merge deduplicates compatible histories, rejects conflicts, and preserves Session. Backup v1 and legacy JSON remain supported within their existing small-history limits.
 - A successful Career Restore resets Session; a failed restore leaves Session intact. Export and Import do not reset Session.
 - Session/Career Leaderboard sources plus a Settings → Players browser for every tracked Career player.
 - Hand-state, lifecycle, position, action-opportunity, and showdown inference with conservative handling of incomplete evidence.
@@ -68,25 +68,26 @@ Session and Career persistence remain separate, and no extension-controlled exte
 
 ### Install from a release ZIP
 
-Extract the exact `pokernow-hud-v1.4.0.zip` release archive and load the extracted directory through **Load unpacked**.
+Extract the exact `pokernow-hud-v1.5.0.zip` release archive and load the extracted directory through **Load unpacked**.
 
 Chrome does not load the ZIP directly.
 
 Keep only one copy of the extension enabled at a time. Export a Career backup before replacing an existing installation, since uninstalling the extension or clearing its data can remove locally stored history.
 
+## Backup v2
+
+From Settings → Data, use **Export Backup v2** or **Restore or Merge Backup v2**. Keep the transfer page open until completion. Always choose a fresh export filename; incomplete backups are invalid and interrupted transfers are not durably resumable. See [Career Data](CAREER_DATA.md) for Replace/Merge behavior and [Known Limitations](KNOWN_LIMITATIONS.md) for large-history boundaries.
+
 ## Testing
 
-The public source includes behavioral tests and a separate release-integrity gate covering hand inference, statistics, Career portability, dashboards, overlays, Pot Odds, and package boundaries. The final ZIP is byte-identical to the accepted V1.4 RC2 package (SHA-256 `E1F804E1FF9E47A937E857A2F65201B36CEB07C99620E633E3739DC0236AB8BB`).
+The final ZIP is byte-identical to the manually accepted V1.5 RC2 archive (SHA-256 `560DAF7A3E7F6E586732BC8C7807482261FFF5BEBFF1CFF235BB0BA69B14573E`). Public mechanical release checks validate the 83-file inventory, exact runtime hashes, manifest dependencies, documentation links, and deterministic archive identity. Existing behavioral tests and synthetic fixtures remain available; they are separate from the completed private RC2 certification and signed-in acceptance. No npm installation is required.
 
 ```powershell
-node runTests.js full
 node runTests.js release
 node scripts/release.js validate
 ```
 
-No npm installation or third-party test dependency is required.
-
-See [Testing](TESTING.md) for additional details.
+See [Testing](TESTING.md) and [V1.5 release notes](release/v1.5.0-notes.md).
 
 ## Privacy, limitations, and non-affiliation
 

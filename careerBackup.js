@@ -287,9 +287,12 @@
   return Object.freeze({
     FORMAT: FORMAT, FORMAT_VERSION: FORMAT_VERSION, DIGEST_ALGORITHM: DIGEST_ALGORITHM,
     canonicalStringify: canonicalStringify,
+    // Local codec reuse; this does not change v1 bytes, policy, or graph validation.
+    validatePortableRecord: validateCompleteRecord,
     digestCareerExport: digestCareerExport,
     createBackup: createBackup,
     validateBackup: validateBackup,
+    mergedCareerMetadata: mergedCareerMetadata,
     mergeValidatedBackups: mergeValidatedBackups
   });
 });

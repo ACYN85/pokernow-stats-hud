@@ -1,0 +1,9 @@
+:root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #111b24; color: #eef5f8; }
+main { max-width: 720px; margin: 48px auto; padding: 24px; }
+h1 { margin-top: 0; }
+.warning { border: 1px solid #d7a95f; background: #302a20; padding: 18px; margin: 24px 0; border-radius: 8px; }
+.warning p:last-child { margin-bottom: 0; }
+.actions { display: flex; gap: 12px; margin: 24px 0; flex-wrap: wrap; }
+button { font: inherit; padding: 10px 18px; border-radius: 6px; border: 1px solid #718a9b; background: #21485b; color: white; cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } dd { margin: 0; font-variant-numeric: tabular-nums; }

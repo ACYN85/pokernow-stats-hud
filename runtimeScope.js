@@ -1,7 +1,7 @@
 /* Shared PokerNow game-page scope contract for one Chrome execution world. */
 (function (root) {
   'use strict';
-  var PNHUD_BUILD_ID = 'v1.4.0-rc2-20260930-2250';
+  var PNHUD_BUILD_ID = 'v1.5.0-rc2-20261006-2218';
   console.log('[HUD BUILD] runtimeScope ' + PNHUD_BUILD_ID);
 
   function locationParts(locationLike) {

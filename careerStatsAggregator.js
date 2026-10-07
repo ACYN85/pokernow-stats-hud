@@ -313,6 +313,95 @@
     addPlayerEntry(next, entry, record, situation, resolveDealtPlayerCount(record));
     return next;
   }
+  // Readonly query callers own this detached accumulator. Reuse the exact
+  // aggregate reducer without JSON-cloning accumulated NaN/Infinity to null.
+  function foldQueryPlayer(player, record, entry, situation) {
+    var next = player || emptyPlayer(String(entry.playerId));
+    addPlayerEntry(next, entry, record, situation, resolveDealtPlayerCount(record));
+    return next;
+  }
+  // Exact one-hand replacement in a certified maintained player aggregate.
+  // Null requests the authoritative history path: DB4 has no surviving-extremum
+  // witness or zero-valued-context population to justify those inverses.
+  function replacePlayer(player, beforeRecord, afterRecord, playerId) {
+    var beforeEntry = beforeRecord.players.find(function (entry) { return String(entry.playerId) === String(playerId); });
+    var afterEntry = afterRecord.players.find(function (entry) { return String(entry.playerId) === String(playerId); });
+    if (!player || !beforeEntry || !afterEntry) return null;
+    var before = appendPlayer(null, beforeRecord, beforeEntry, careerSituationMap(beforeRecord)[String(playerId)]);
+    var after = appendPlayer(null, afterRecord, afterEntry, careerSituationMap(afterRecord)[String(playerId)]);
+    // A sole active contribution can be reconstructed directly, including all
+    // names, times, context presence and empty profile metadata.
+    if (player.recordCount === 1) return after;
+    if (before.lastSeenAt !== after.lastSeenAt || before.latestDisplayName !== after.latestDisplayName ||
+        !Number.isSafeInteger(before.lastSeenAt) || !Number.isSafeInteger(player.lastSeenAt)) return null;
+    var next = clone(player); delete next.derived;
+    var exact = true;
+    function delta(total, oldValue, newValue) {
+      if (![total, oldValue, newValue].every(function (value) { return Number.isSafeInteger(value) && value >= 0; })) { exact = false; return 0; }
+      var remaining = total - oldValue, result = remaining + newValue;
+      if (remaining < 0 || !Number.isSafeInteger(result)) exact = false;
+      return result;
+    }
+    function counters(total, oldValues, newValues) {
+      var result = emptyCounters();
+      COUNTER_FIELDS.forEach(function (field) { result[field] = delta(total[field], oldValues && oldValues[field] || 0, newValues && newValues[field] || 0); });
+      return result;
+    }
+    function contexts(total, oldValues, newValues) {
+      var result = clone(total);
+      ['positions', 'situations'].forEach(function (kind) {
+        Array.from(new Set(Object.keys(oldValues[kind]).concat(Object.keys(newValues[kind])))).forEach(function (key) {
+          var oldCounters = oldValues[kind][key], newCounters = newValues[kind][key];
+          if (oldCounters && !total[kind][key]) exact = false;
+          var updated = counters(total[kind][key] || emptyCounters(), oldCounters, newCounters);
+          // Nonzero remaining counters prove another contribution exists. Zero
+          // cannot distinguish an absent context from surviving zero entries.
+          if (!newCounters && COUNTER_FIELDS.every(function (field) { return updated[field] === 0; })) exact = false;
+          result[kind][key] = updated;
+        });
+      });
+      return result;
+    }
+    function minimum(total, oldValue, newValue, remainingTracked) {
+      if (newValue !== null && (total === null || newValue <= total)) return newValue;
+      if (!remainingTracked) return newValue;
+      if (oldValue !== null && oldValue === total) { exact = false; return total; }
+      return total;
+    }
+    next.counters = counters(player.counters, before.counters, after.counters);
+    next.recordCount = delta(player.recordCount, before.recordCount, after.recordCount);
+    next.contexts = contexts(player.contexts, before.contexts, after.contexts);
+    var coverage = next.positionCoverage;
+    coverage.trackedHands = delta(coverage.trackedHands, before.positionCoverage.trackedHands, after.positionCoverage.trackedHands);
+    coverage.unsupportedRecords = delta(coverage.unsupportedRecords, before.positionCoverage.unsupportedRecords, after.positionCoverage.unsupportedRecords);
+    coverage.earliestTrackedAt = minimum(coverage.earliestTrackedAt, before.positionCoverage.earliestTrackedAt,
+      after.positionCoverage.earliestTrackedAt, next.recordCount - coverage.unsupportedRecords - Number(after.positionCoverage.earliestTrackedAt !== null));
+    Array.from(new Set(Object.keys(before.tableSizes).concat(Object.keys(after.tableSizes)))).forEach(function (key) {
+      var oldPart = before.tableSizes[key], newPart = after.tableSizes[key], part = player.tableSizes[key] || emptyTablePartition();
+      var count = delta(part.recordCount, oldPart && oldPart.recordCount || 0, newPart && newPart.recordCount || 0);
+      if (!count) { delete next.tableSizes[key]; return; }
+      var updated = clone(part);
+      updated.recordCount = count;
+      updated.counters = counters(part.counters, oldPart && oldPart.counters, newPart && newPart.counters);
+      updated.contexts = contexts(part.contexts, oldPart ? oldPart.contexts : emptyPlayer(playerId).contexts, newPart ? newPart.contexts : emptyPlayer(playerId).contexts);
+      updated.unsupportedPositionRecords = delta(part.unsupportedPositionRecords, oldPart && oldPart.unsupportedPositionRecords || 0, newPart && newPart.unsupportedPositionRecords || 0);
+      updated.earliestPositionTrackedAt = minimum(part.earliestPositionTrackedAt, oldPart ? oldPart.earliestPositionTrackedAt : null,
+        newPart ? newPart.earliestPositionTrackedAt : null, count - updated.unsupportedPositionRecords - Number(Boolean(newPart && newPart.earliestPositionTrackedAt !== null)));
+      next.tableSizes[key] = updated;
+    });
+    var profile = next.profileProjection;
+    if (before.profileProjection.recordCount !== after.profileProjection.recordCount) {
+      if (profile.recordCount !== before.profileProjection.recordCount) return null;
+      next.profileProjection = clone(after.profileProjection);
+    } else {
+      profile.counters = counters(profile.counters, before.profileProjection.counters, after.profileProjection.counters);
+      profile.recordCount = delta(profile.recordCount, before.profileProjection.recordCount, after.profileProjection.recordCount);
+      ['preflopTableSizeSum', 'preflopTableSizeOpportunities'].forEach(function (field) {
+        profile.profileContext[field] = delta(profile.profileContext[field], before.profileProjection.profileContext[field], after.profileProjection.profileContext[field]);
+      });
+    }
+    return exact ? next : null;
+  }
   function rebuild(records) {
     var resolved = resolveActiveRecords(records || []);
     var aggregate = emptyAggregate();
@@ -445,6 +534,7 @@
     historicalSessionCatalog: historicalSessionCatalog, historicalSessionCatalogFromActive: historicalSessionCatalogFromActive, publicSessionSummary: publicSessionSummary,
     rebuild: rebuild, rebuildCooperatively: rebuildCooperatively, aggregateActiveRecords: aggregateActiveRecords, createState: createState, append: append, exactAggregate: exactAggregate, records: records, activeRecords: activeRecords,
     deriveCounters: deriveCounters, derivePlayer: derivePlayer, playerStats: playerStats, playerList: playerList,
-    exactPostflopSituationMap: exactPostflopSituationMap, careerSituationMap: careerSituationMap, appendPlayer: appendPlayer
+    exactPostflopSituationMap: exactPostflopSituationMap, careerSituationMap: careerSituationMap, appendPlayer: appendPlayer, replacePlayer: replacePlayer,
+    foldQueryPlayer: foldQueryPlayer
   });
 });

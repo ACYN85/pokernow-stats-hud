@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Career Backup v2 — Replace or Merge</title><link rel="stylesheet" href="careerBackupV2Transfer.css"></head>
+<body><main><h1>Backup v2 — Replace or Merge</h1>
+<p>Replace replaces your entire Career history. Merge combines compatible histories and rejects conflicts instead of overwriting them. Export, Replace, and Merge are certified through 150,000 physical records. Backup v1 remains available separately in Settings within its existing limits.</p>
+<label>Import mode <select id="mode"><option value="replace">Replace Career</option><option value="merge">Merge compatible histories</option></select></label>
+<p>Keep this page open. An interrupted import before publication applies no Career changes. A new attempt safely restarts inactive staging.</p>
+<label>Current PokerNow Session to reset after successful Replace <select id="session"><option value="">No open game</option></select></label>
+<div class="actions"><label>Choose Backup v2 <input id="file" type="file" accept=".gz,.jsonl"></label><button id="cancel" disabled>Cancel import</button></div>
+<p id="status" role="status" aria-live="polite">Select a Backup v2 file.</p><dl id="progress"></dl>
+<div id="confirmation" hidden class="warning"><div id="replace-confirmation"><strong>Replace current Career?</strong>
+<p>The imported Backup v2 will become the complete Career authority. Current live Career changes since import started may force a retry. Successful publication resets the selected live Session afterward. If Session persistence fails, the imported Career remains committed and the failure is reported.</p>
+<p>I confirm that the current Career will be replaced by this imported Backup v2.</p></div>
+<div id="merge-confirmation" hidden><strong>Merge current and imported Career?</strong>
+<p>Both physical histories will be combined. Exact complete-record duplicates are deduplicated. Conflicts reject the import instead of overwriting either source. Current live Career changes during Merge may force a retry. Your live Session is preserved. An exact unchanged union avoids publication.</p></div>
+<label><input id="ack" type="checkbox"> I confirm the selected import mode and its effects described above.</label>
+<button id="publish" disabled>Replace Career and reset Session</button></div>
+</main><script src="careerBackupV2ImportPage.js"></script></body></html>

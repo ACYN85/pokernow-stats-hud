@@ -1,13 +1,11 @@
-# Public V1.4.0 release runbook
+# Public V1.5.0 release runbook
 
-V1.4.0 promotes the exact accepted RC2 archive. The final package retains Build ID `v1.4.0-rc2-20260930-2250`: `pokernow-hud-v1.4.0.zip`, 73 files, 2,377,285 bytes, SHA-256 `E1F804E1FF9E47A937E857A2F65201B36CEB07C99620E633E3739DC0236AB8BB`. Do not rebuild a replacement distribution archive or rewrite its Build ID.
+V1.5.0 promotes the exact manually accepted RC2 archive. The final asset is a byte-identical copy named `pokernow-hud-v1.5.0.zip`: 83 files, 2,651,237 bytes, SHA-256 `560DAF7A3E7F6E586732BC8C7807482261FFF5BEBFF1CFF235BB0BA69B14573E`. Build ID `v1.5.0-rc2-20261006-2218` is retained. Never rebuild, recompress, or rewrite the accepted artifact.
 
-## Public source and package verification
+## Mechanical verification
 
-The 73 root production files must match the accepted private archive byte-for-byte. `release/baseline.json` binds every public production file and the deterministic ZIP hash. Check the release manifest name and version, the Build ID in all runtime contexts, and the sorted allowlist. Then run `node scripts/release.js validate`, the public privacy scan, and the directly relevant release-integrity tests. The final asset is the exact accepted RC2 ZIP copied under its final filename.
-
-The public checkout keeps synthetic fixtures and public documentation. Raw captures, private certification records, experiment files, local artifacts, and private roadmap files are excluded. Verify the public tracked files and archive inventory before distribution.
+The 83 root production files must match the independently extracted accepted archive byte-for-byte. The only established private-source staging projection changes the manifest display name from development to release. `release/production-files.json` defines the inventory; `release/baseline.json` binds every runtime hash and the accepted archive identity. Run `node runTests.js release`, `node scripts/release.js validate`, complete-tree privacy/parity checks, and `git diff --check`. Retained private RC2 certification and manual acceptance do not require repeating feature reviews or rebuilding an archive.
 
 ## Publication
 
-Public push, tag push, GitHub Release, and other distribution require an explicit project-owner record that the PokerNow terms and third-party-tool policy check is complete. Signed-in acceptance of the exact RC2 ZIP is separate from that administrative check. When the publication gate is confirmed, push the curated release commit and annotated `v1.4.0` tag without rewriting prior tags. Attach the exact accepted ZIP to the GitHub Release and verify its hash.
+After checks pass and publication is explicitly authorized, commit the curated public source, create an annotated `v1.5.0` tag on that commit, and push main and the tag without force. Create the GitHub Release using [the release notes](release/v1.5.0-notes.md), attach only the byte-identical final asset, then download it and verify size and SHA-256. Preserve all V1.4 tags, releases, and assets. Keep private evidence and experimental work out of the public tree.

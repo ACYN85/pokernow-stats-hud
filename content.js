@@ -356,7 +356,7 @@
   var careerDiagnostics = { accepted: 0, externalAccepted: 0, duplicates: 0, conflicts: 0, rejected: 0, recent: [] };
   var careerDataUiState = { info: null, summaryError: null, loading: false, busy: false, message: '', messageKind: 'none', activeFlow: null, importPreview: null, importCandidate: null, importRequestToken: 0, preview: null, backupCandidate: null, restoreRequestToken: 0, removalPreview: null, removalRequest: null, removalFlowActive: false, removalRequestToken: 0, fetchedAt: 0 };
   var playerNotesState = PokerPlayerNotesStore.normalize(null);
-  var playerDashboardState = { open: false, playerId: null, displayName: '', mode: 'session', position: null, overallPosition: null, situation: 'overall', tableSize: 'all', opponentMode: 'overall', selfPlayerId: null, coreStats: null, relationalStats: {}, comparisonContexts: null, sessionRevision: null, careerRevision: null, sessionStats: null, careerStats: null, careerTrackingStartedAt: null, trends: null, trendWindow: null, trendError: null, recentWindow: { type: 'sessions', count: 5 }, recentComparison: null, historyTrend: null, historyTrendMetric: 'vpip', historyTrendRange: 10, historyTrendLoading: false, historyTrendError: null, historyReturnMode: 'history-list', historyDeletionPreview: null, historyDeletionLoading: false, historyDeletionBusy: false, historyDeletionError: null, historyDeletionRequestToken: 0, careerMutationRevision: 0, loading: false, error: null, profile: null, note: '', noteDraft: '', noteStatus: '', requestToken: 0, returnFocus: null, historyList: null, historyLoading: false, historyError: null, historyListScroll: 0, selectedHistorySessionId: null, selectedHistorySummary: null, currentHistoricalSessionId: null };
+  var playerDashboardState = { open: false, playerId: null, displayName: '', mode: 'session', position: null, overallPosition: null, situation: 'overall', tableSize: 'all', opponentMode: 'overall', selfPlayerId: null, coreStats: null, relationalStats: {}, comparisonContexts: null, sessionRevision: null, careerRevision: null, sessionStats: null, careerStats: null, careerTrackingStartedAt: null, trends: null, trendWindow: null, trendError: null, recentWindow: { type: 'sessions', count: 5 }, recentComparison: null, historyTrend: null, historyTrendMetric: 'vpip', historyTrendRange: 10, historyTrendDetailPage: 1, historyTrendLoading: false, historyTrendError: null, historyReturnMode: 'history-list', historyDeletionPreview: null, historyDeletionLoading: false, historyDeletionBusy: false, historyDeletionError: null, historyDeletionRequestToken: 0, careerMutationRevision: 0, loading: false, error: null, profile: null, note: '', noteDraft: '', noteStatus: '', requestToken: 0, returnFocus: null, historyList: null, historyLoading: false, historyError: null, historyListScroll: 0, selectedHistorySessionId: null, selectedHistorySummary: null, currentHistoricalSessionId: null };
   var pendingPlayerDashboardRestore = null;
   var playerDashboardRestoreReady = false;
   var playerDashboardElement = null;
@@ -1198,7 +1198,7 @@
       if (!ownsRuntimeController()) return;
       var savedDashboard = saved[STORAGE_KEYS.playerDashboard];
       pendingPlayerDashboardRestore = savedDashboard && savedDashboard.open === true
-        ? { playerId: PokerPlayerNotesStore.stableId(savedDashboard.playerId) } : null;
+        ? { playerId: PokerPlayerNotesStore.stableId(savedDashboard.playerId), mode: validPersistedPlayerDashboardMode(savedDashboard.mode) } : null;
       var indexedCareerBackendAvailable = Boolean(globalThis.PokerCareerIndexedStore && chrome.runtime && typeof chrome.runtime.sendMessage === 'function');
       careerStoreState = indexedCareerBackendAvailable ? null : PokerCareerContributionStore.createState(saved, { initializedAt: Date.now(), buildId: PNHUD_BUILD_ID });
       authoritativePersistenceQueue.observeRevision(saved[STORAGE_KEYS.liveRevision]);
@@ -2309,7 +2309,8 @@
     if (!playerDashboardState.open) return;
     panel.innerHTML = PokerPlayerDashboard.render(playerDashboardState);
     if (playerDashboardGeometryController) playerDashboardGeometryController.sync();
-    var target = preferredFocus && panel.querySelector(preferredFocus);
+    var target = preferredFocus && (panel.querySelector(preferredFocus) ||
+      playerDashboardState.mode === 'history-trends' && panel.querySelector('[data-dashboard-session-trend-range]'));
     if (target && target.focus) target.focus();
   }
 
@@ -2485,14 +2486,20 @@
       playerDashboardState.error = 'Recent statistics are unavailable.';
       return renderPlayerDashboard(preferredFocus || '[data-dashboard-mode="recent"]');
     }
-    var requests = [careerIndexedService.getCareerRecentVsCareer(playerId, window, filters)];
+    var batchFilters = [filters];
     if (playerDashboardState.opponentMode !== 'overall' && localUserPlayerId) {
       ['threeBet', 'foldToThreeBet', 'foldToFlopCBet'].forEach(function (statId) {
-        requests.push(careerIndexedService.getCareerRecentPlayerStats(playerId, window, Object.assign({}, filters,
-          { statId: statId, counterpartMode: playerDashboardState.opponentMode, selfPlayerId: localUserPlayerId })));
+        batchFilters.push(Object.assign({}, filters,
+          { statId: statId, counterpartMode: playerDashboardState.opponentMode, selfPlayerId: localUserPlayerId }));
       });
     }
-    Promise.all(requests).then(function (values) {
+    var request = ((window.type === 'sessions' && [3, 5, 10].indexOf(window.count) >= 0) ||
+      (window.type === 'hands' && [100, 250, 500].indexOf(window.count) >= 0)) && typeof careerIndexedService.getCareerRecentBatch === 'function'
+      ? careerIndexedService.getCareerRecentBatch(playerId, window, batchFilters)
+      : Promise.all(batchFilters.map(function (scope, index) { return index === 0
+        ? careerIndexedService.getCareerRecentVsCareer(playerId, window, scope)
+        : careerIndexedService.getCareerRecentPlayerStats(playerId, window, scope); }));
+    request.then(function (values) {
       if (!current()) return;
       var result = values[0];
       if (!result || String(result.playerId) !== playerId || !result.recent || !result.career ||
@@ -2533,6 +2540,7 @@
     clearPlayerDashboardHistoryDeletion();
     var playerId = playerDashboardState.playerId;
     playerDashboardState.mode = 'history-trends';
+    if (playerDashboardState.open) persistPlayerDashboardVisibility(true, playerDashboardState.playerId);
     playerDashboardState.selectedHistorySessionId = null;
     playerDashboardState.selectedHistorySummary = null;
     playerDashboardState.coreStats = null;
@@ -2540,22 +2548,39 @@
     playerDashboardState.relationalStats = {};
     playerDashboardState.loading = false;
     playerDashboardState.error = null;
-    if (!force && playerDashboardState.historyTrend && playerDashboardState.historyTrend.playerId === playerId) {
-      playerDashboardState.requestToken += 1;
-      renderPlayerDashboard(preferredFocus || '[data-dashboard-history-view="trends"]');
-      return;
-    }
+    var retained = !force && playerDashboardState.historyTrend && playerDashboardState.historyTrend.playerId === playerId ? playerDashboardState.historyTrend : null;
     var token = ++playerDashboardState.requestToken;
     var snapshot = { playerId: playerId, mode: 'history-trends', position: playerDashboardState.position,
       situation: playerDashboardState.situation, tableSize: playerDashboardState.tableSize,
       opponentMode: playerDashboardState.opponentMode, requestToken: token,
-      metric: playerDashboardState.historyTrendMetric, careerMutationRevision: playerDashboardState.careerMutationRevision };
+      metric: playerDashboardState.historyTrendMetric, range: playerDashboardState.historyTrendRange, careerMutationRevision: playerDashboardState.careerMutationRevision };
     function current() {
       return PokerPlayerDashboard.requestMatches(playerDashboardState, snapshot) &&
         playerDashboardState.historyTrendMetric === snapshot.metric &&
+        playerDashboardState.historyTrendRange === snapshot.range &&
         playerDashboardState.careerMutationRevision === snapshot.careerMutationRevision;
     }
+    if (retained && retained.query && retained.query.ledgerRevision && careerIndexedService && typeof careerIndexedService.careerSessionProjectionState === 'function') {
+      playerDashboardState.historyTrendLoading = true;
+      renderPlayerDashboard(preferredFocus || '[data-dashboard-history-view="trends"]');
+      careerIndexedService.careerSessionProjectionState().then(function (state) {
+        if (!current()) return;
+        var query = retained.query;
+        if (state.ledgerRevision === query.ledgerRevision && (query.source === 'raw-ledger' || state.ready && state.generation === query.generation)) {
+          playerDashboardState.historyTrendLoading = false;
+          renderPlayerDashboard(preferredFocus || '[data-dashboard-history-view="trends"]');
+        } else loadPlayerDashboardHistoryTrends(true, preferredFocus);
+      }).catch(function () {
+        if (!current()) return;
+        playerDashboardState.historyTrend = null;
+        playerDashboardState.historyTrendLoading = false;
+        playerDashboardState.historyTrendError = 'Session trends could not be loaded.';
+        renderPlayerDashboard(preferredFocus);
+      });
+      return;
+    }
     playerDashboardState.historyTrend = null;
+    playerDashboardState.historyTrendDetailPage = 1;
     playerDashboardState.historyTrendLoading = true;
     playerDashboardState.historyTrendError = null;
     renderPlayerDashboard(preferredFocus || '[data-dashboard-history-view="trends"]');
@@ -2564,7 +2589,7 @@
       playerDashboardState.historyTrendError = 'Session trends are unavailable.';
       return renderPlayerDashboard();
     }
-    careerIndexedService.getCareerPlayerSessionTrend(playerId, dashboardScopeFilters()).then(function (result) {
+    careerIndexedService.getCareerPlayerSessionTrend(playerId, dashboardScopeFilters(), snapshot.range).then(function (result) {
       if (!current()) return;
       if (!result || String(result.playerId) !== playerId) throw new Error('Session trend identity mismatch');
       playerDashboardState.historyTrend = result;
@@ -2578,6 +2603,15 @@
     });
   }
 
+  function changePlayerDashboardTrendDetails(direction) {
+    if (playerDashboardState.mode !== 'history-trends' || playerDashboardState.historyTrendLoading || !playerDashboardState.historyTrend) return;
+    var details = PokerPlayerDashboard.trendDetailPage(playerDashboardState);
+    var next = direction === 'next' ? details.page + 1 : direction === 'previous' ? details.page - 1 : details.page;
+    if (next < 1 || next > details.pages || next === details.page) return;
+    playerDashboardState.historyTrendDetailPage = next;
+    renderPlayerDashboard('[data-dashboard-trend-page-status]');
+  }
+
   function dashboardHistoryRequestMatches(snapshot) {
     return PokerPlayerDashboard.requestMatches(playerDashboardState, snapshot) &&
       playerDashboardState.selectedHistorySessionId === snapshot.selectedHistorySessionId;
@@ -2587,6 +2621,7 @@
     clearPlayerDashboardHistoryDeletion();
     var playerId = playerDashboardState.playerId;
     playerDashboardState.mode = 'history-list';
+    if (playerDashboardState.open) persistPlayerDashboardVisibility(true, playerDashboardState.playerId);
     playerDashboardState.selectedHistorySessionId = null;
     playerDashboardState.selectedHistorySummary = null;
     playerDashboardState.requestToken += 1;
@@ -2597,37 +2632,136 @@
     playerDashboardState.comparisonContexts = null;
     playerDashboardState.loading = false;
     playerDashboardState.error = null;
-    if (!force && playerDashboardState.historyList && playerDashboardState.historyList.playerId === playerId) {
-      renderPlayerDashboard(focusSessionId ? '[data-dashboard-history-session="' + focusSessionId + '"]' : '[data-dashboard-mode="history"]');
-      var cachedRows = playerDashboardElement.querySelector('.pnhud-dashboard-history-rows');
-      if (cachedRows) cachedRows.scrollTop = playerDashboardState.historyListScroll;
-      return;
+    var paging = playerDashboardState.historyPaging;
+    var reuse = !force && paging && paging.playerId === playerId &&
+      paging.localRevision === playerDashboardState.careerMutationRevision;
+    if (!reuse || !playerDashboardState.historyList && !paging.pending) {
+      paging = playerDashboardState.historyPaging = { playerId: playerId, localRevision: playerDashboardState.careerMutationRevision,
+        page: 1, trail: [], after: null, next: null, source: null, generation: null, ledgerRevision: null, fallback: null };
+      playerDashboardState.historyList = null;
+      playerDashboardState.historyListScroll = 0;
     }
+    var outstanding = reuse && paging.pending && paging.retry;
+    requestPlayerDashboardHistoryPage(paging, outstanding ? outstanding.after : paging.after, outstanding ? outstanding.page : paging.page,
+      outstanding ? outstanding.trail : paging.trail, focusSessionId, outstanding ? outstanding.validateCache : reuse && !!playerDashboardState.historyList);
+  }
+
+  // One visible page, no persisted tokens, at most 128 previous-page cursors.
+  // Raw fallback is deliberately exceptional: retain its authoritative result
+  // in memory to avoid repeating a full scan for each 50-row slice.
+  function requestPlayerDashboardHistoryPage(paging, after, page, trail, focusSessionId, validateCache) {
+    var playerId = playerDashboardState.playerId;
     var snapshot = { playerId: playerId, mode: 'history-list', position: playerDashboardState.position,
       situation: playerDashboardState.situation, tableSize: playerDashboardState.tableSize,
-      opponentMode: playerDashboardState.opponentMode, selectedHistorySessionId: null, requestToken: playerDashboardState.requestToken };
-    playerDashboardState.historyList = null;
+      opponentMode: playerDashboardState.opponentMode, selectedHistorySessionId: null, requestToken: playerDashboardState.requestToken,
+      localRevision: playerDashboardState.careerMutationRevision };
+    function current() { return dashboardHistoryRequestMatches(snapshot) && playerDashboardState.historyPaging === paging &&
+      playerDashboardState.careerMutationRevision === snapshot.localRevision; }
+    function belongs() { return playerDashboardState.open && playerDashboardState.playerId === playerId &&
+      playerDashboardState.historyPaging === paging && playerDashboardState.careerMutationRevision === snapshot.localRevision; }
+    var preferredFocus = focusSessionId ? '[data-dashboard-history-session="' + focusSessionId + '"]' : '[data-dashboard-history-page-status]';
     playerDashboardState.historyLoading = true;
     playerDashboardState.historyError = null;
-    renderPlayerDashboard('[data-dashboard-mode="history"]');
+    paging.retry = { after: after, page: page, trail: trail, validateCache: validateCache, focusSessionId: focusSessionId };
+    renderPlayerDashboard('[data-dashboard-history-page-status]');
     if (!careerIndexedService) {
       playerDashboardState.historyLoading = false;
       playerDashboardState.historyError = 'Session history is unavailable.';
       return renderPlayerDashboard('[data-dashboard-mode="history"]');
     }
-    careerIndexedService.listCareerSessionPlayerSummaries(playerId).then(function (result) {
-      if (!dashboardHistoryRequestMatches(snapshot) || !result || result.playerId !== playerId) return;
-      playerDashboardState.historyList = result;
+    function unchanged(state) {
+      return state && state.ledgerRevision === paging.ledgerRevision &&
+        (paging.source === 'raw-fallback' || state.ready && state.generation === paging.generation);
+    }
+    function cachedPage() {
+      if (paging.source === 'raw-fallback') {
+        var offset = (page - 1) * 50;
+        return { source: paging.source, value: { playerId: playerId, sessions: paging.fallback.sessions.slice(offset, offset + 50), unassigned: paging.fallback.unassigned },
+          next: offset + 50 < paging.fallback.sessions.length ? { fallbackPage: page + 1 } : null,
+          ledgerRevision: paging.ledgerRevision, generation: null };
+      }
+      return { cached: true };
+    }
+    async function query() {
+      if (validateCache || paging.source === 'raw-fallback') {
+        var state = await careerIndexedService.careerSessionProjectionState();
+        if (!belongs()) return null;
+        if (!unchanged(state)) return { restart: true };
+        return cachedPage();
+      }
+      var result = await careerIndexedService.readCareerSessionProjectionPage({ playerId: playerId, mode: 'summary', limit: 50, after: after });
+      if (!belongs()) return null;
+      if (result.valid) {
+        if (paging.source && (result.generation !== paging.generation || result.ledgerRevision !== paging.ledgerRevision)) return { restart: true };
+        return { source: 'projection-page', value: result.value, next: result.next,
+          generation: result.generation, ledgerRevision: result.ledgerRevision };
+      }
+      // Never reconcile an invalid continuation with another population.
+      if (after || paging.source) return { restart: true };
+      var before = await careerIndexedService.careerSessionProjectionState();
+      if (!belongs()) return null;
+      var raw = await careerIndexedService.listCareerSessionPlayerSummaries(playerId);
+      if (!belongs()) return null;
+      var latest = await careerIndexedService.careerSessionProjectionState();
+      if (!belongs()) return null;
+      if (before.ledgerRevision !== latest.ledgerRevision) throw new Error('Career changed while loading fallback; retry history');
+      if (!raw || raw.playerId !== playerId || !Array.isArray(raw.sessions)) throw new Error('Invalid Session history response');
+      return { source: 'raw-fallback', fallback: raw, value: { playerId: playerId, sessions: raw.sessions.slice(0, 50), unassigned: raw.unassigned },
+        next: raw.sessions.length > 50 ? { fallbackPage: 2 } : null, generation: null, ledgerRevision: latest.ledgerRevision };
+    }
+    // Re-entering Sessions during an outstanding request reuses its work. The
+    // new callback owns publication; the old callback remains token-fenced.
+    var pendingKey = JSON.stringify([after, page, !!validateCache]);
+    var work = paging.pending && paging.pending.key === pendingKey ? paging.pending.work : query();
+    paging.pending = { key: pendingKey, work: work };
+    work.then(function (result) {
+      if (!current()) return;
+      paging.pending = null;
+      if (!result) return loadPlayerDashboardHistory(true);
+      if (result.restart) {
+        playerDashboardState.historyNotice = 'Career history changed. Showing the newest Sessions.';
+        return loadPlayerDashboardHistory(true);
+      }
+      if (!result.cached) {
+        if (!result.value || result.value.playerId !== playerId || !Array.isArray(result.value.sessions) || result.value.sessions.length > 50)
+          throw new Error('Invalid bounded Session history response');
+        playerDashboardState.historyList = result.value;
+        paging.page = page; paging.after = after; paging.trail = trail.slice(-128); paging.next = result.next;
+        paging.source = result.source; paging.generation = result.generation; paging.ledgerRevision = result.ledgerRevision;
+        if (result.fallback) paging.fallback = result.fallback;
+      }
+      paging.retry = null;
       playerDashboardState.historyLoading = false;
-      renderPlayerDashboard(focusSessionId ? '[data-dashboard-history-session="' + focusSessionId + '"]' : '[data-dashboard-mode="history"]');
+      renderPlayerDashboard(preferredFocus);
       var historyRows = playerDashboardElement.querySelector('.pnhud-dashboard-history-rows');
       if (historyRows) historyRows.scrollTop = playerDashboardState.historyListScroll;
-    }).catch(function () {
-      if (!dashboardHistoryRequestMatches(snapshot)) return;
+    }).catch(function (error) {
+      if (!current()) return;
+      paging.pending = null;
       playerDashboardState.historyLoading = false;
-      playerDashboardState.historyError = 'Session history could not be loaded.';
-      renderPlayerDashboard('[data-dashboard-mode="history"]');
+      playerDashboardState.historyError = 'Session history could not be loaded. ' + String(error && error.message || 'Please retry.');
+      renderPlayerDashboard('[data-dashboard-history-page="retry"]');
     });
+  }
+
+  function changePlayerDashboardHistoryPage(action) {
+    var paging = playerDashboardState.historyPaging;
+    if (playerDashboardState.mode !== 'history-list' || !paging || playerDashboardState.historyLoading) return;
+    if (action === 'start') { playerDashboardState.historyNotice = null; return loadPlayerDashboardHistory(true); }
+    var after, page, trail;
+    if (action === 'retry' && paging.retry) {
+      var retry = paging.retry;
+      playerDashboardState.requestToken += 1;
+      return requestPlayerDashboardHistoryPage(paging, retry.after, retry.page, retry.trail, retry.focusSessionId, retry.validateCache);
+    }
+    if (action === 'next' && paging.next) {
+      after = paging.next; page = paging.page + 1; trail = paging.trail.concat([{ after: paging.after, page: paging.page }]);
+    } else if (action === 'previous' && paging.trail.length) {
+      var previous = paging.trail[paging.trail.length - 1]; after = previous.after; page = previous.page; trail = paging.trail.slice(0, -1);
+    } else return;
+    playerDashboardState.historyListScroll = 0;
+    playerDashboardState.requestToken += 1;
+    requestPlayerDashboardHistoryPage(paging, after, page, trail);
   }
 
   function loadPlayerDashboardHistoryDetail(preferredFocus) {
@@ -2767,7 +2901,7 @@
     });
   }
 
-  function openPlayerDashboard(playerId, displayName, returnFocus) {
+  function openPlayerDashboard(playerId, displayName, returnFocus, restoredMode) {
     var canonicalId = PokerPlayerNotesStore.stableId(playerId);
     if (!canonicalId) return;
     pendingPlayerDashboardRestore = null;
@@ -2777,7 +2911,6 @@
     closeStatTooltip('player-dashboard-open');
     playerDashboardState.open = true;
     playerDashboardState.playerId = canonicalId;
-    persistPlayerDashboardVisibility(true, canonicalId);
     playerDashboardState.displayName = String(displayName || socketPlayerNames.get(canonicalId) || 'Tracked player');
     playerDashboardState.returnFocus = returnFocus || document.activeElement;
     playerDashboardState.note = PokerPlayerNotesStore.get(playerNotesState, canonicalId);
@@ -2785,6 +2918,8 @@
     playerDashboardState.noteStatus = '';
     playerDashboardState.requestToken += 1;
     playerDashboardState.historyList = null;
+    playerDashboardState.historyPaging = null;
+    playerDashboardState.historyNotice = null;
     playerDashboardState.historyTrend = null;
     playerDashboardState.historyTrendLoading = false;
     playerDashboardState.historyTrendError = null;
@@ -2813,11 +2948,16 @@
     playerDashboardState.error = null;
     playerDashboardState.mode = 'session';
     refreshPlayerDashboardSession();
-    playerDashboardState.mode = playerDashboardState.sessionStats && playerDashboardState.sessionStats.handsPlayed > 0 ? 'session' : 'career';
+    playerDashboardState.mode = restoredMode || (playerDashboardState.sessionStats && playerDashboardState.sessionStats.handsPlayed > 0 ? 'session' : 'career');
+    persistPlayerDashboardVisibility(true, canonicalId);
     playerDashboardState.comparisonContexts = playerDashboardState.mode === 'session'
       ? PokerFilteredStats.sessionComparisonContexts(sessionContextState, canonicalId, finalizedSessionRevision, null) : null;
     renderPlayerDashboard('.pnhud-dashboard-close');
-    if (preserveHistory) {
+    if (restoredMode === 'history-trends') loadPlayerDashboardHistoryTrends(true);
+    else if (restoredMode === 'history-list') loadPlayerDashboardHistory(true);
+    else if (restoredMode === 'recent') loadPlayerDashboardRecent();
+    else if (restoredMode === 'career') loadPlayerDashboardCareer();
+    else if (preserveHistory) {
       if (priorMode === 'history-trends') loadPlayerDashboardHistoryTrends(true);
       else loadPlayerDashboardHistory(true);
     } else if (priorMode === 'recent') {
@@ -2829,8 +2969,18 @@
   function persistPlayerDashboardVisibility(open, playerId) {
     if (!ownsRuntimeController()) return;
     var update = {};
-    update[STORAGE_KEYS.playerDashboard] = { open: open, playerId: open ? playerId : null };
+    update[STORAGE_KEYS.playerDashboard] = { open: open, playerId: open ? playerId : null, mode: persistedPlayerDashboardMode() };
     chrome.storage.local.set(update);
+  }
+
+  function validPersistedPlayerDashboardMode(mode) {
+    return ['session', 'recent', 'career', 'history-list', 'history-trends'].indexOf(mode) >= 0 ? mode : null;
+  }
+
+  function persistedPlayerDashboardMode() {
+    return playerDashboardState.mode === 'history-detail'
+      ? (playerDashboardState.historyReturnMode === 'history-trends' ? 'history-trends' : 'history-list')
+      : validPersistedPlayerDashboardMode(playerDashboardState.mode) || 'session';
   }
 
   function restorePlayerDashboardAfterStartup() {
@@ -2840,7 +2990,7 @@
       : localUserPlayerId && socketPlayerNames.has(String(localUserPlayerId)) ? String(localUserPlayerId)
         : socketPlayerNames.keys().next().value;
     if (!playerId) return;
-    openPlayerDashboard(playerId, socketPlayerNames.get(playerId), null);
+    openPlayerDashboard(playerId, socketPlayerNames.get(playerId), null, pendingPlayerDashboardRestore.mode);
   }
 
   function closePlayerDashboard() {
@@ -2849,6 +2999,8 @@
     clearPlayerDashboardHistoryDeletion();
     if (playerDashboardGeometryController) playerDashboardGeometryController.cancel();
     playerDashboardState.open = false;
+    playerDashboardState.historyList = null;
+    playerDashboardState.historyPaging = null;
     persistPlayerDashboardVisibility(false, null);
     playerDashboardState.requestToken += 1;
     renderPlayerDashboard();
@@ -3028,6 +3180,8 @@
       if (historyRows) historyRows.scrollTop = playerDashboardState.historyListScroll;
       return;
     }
+    var historyPage = event.target.closest('[data-dashboard-history-page]');
+    if (historyPage && !historyPage.disabled) return changePlayerDashboardHistoryPage(historyPage.dataset.dashboardHistoryPage);
     var historyRow = event.target.closest('[data-dashboard-history-session]');
     if (historyRow && playerDashboardState.mode === 'history-list' && playerDashboardState.historyList) {
       var sessionId = historyRow.dataset.dashboardHistorySession;
@@ -3042,6 +3196,8 @@
       loadPlayerDashboardHistoryDetail('.pnhud-dashboard-history-back');
       return;
     }
+    var detailPage = event.target.closest('[data-dashboard-trend-page]');
+    if (detailPage && !detailPage.disabled) return changePlayerDashboardTrendDetails(detailPage.dataset.dashboardTrendPage);
     var trendPoint = event.target.closest('[data-dashboard-trend-session]');
     if (trendPoint && playerDashboardState.mode === 'history-trends' && playerDashboardState.historyTrend) {
       var trendSessionId = trendPoint.dataset.dashboardTrendSession;
@@ -3073,6 +3229,7 @@
       playerDashboardState.selectedHistorySessionId = null;
       playerDashboardState.selectedHistorySummary = null;
       playerDashboardState.mode = nextMode;
+      persistPlayerDashboardVisibility(true, playerDashboardState.playerId);
       playerDashboardState.error = null;
       if (nextMode === 'session') { playerDashboardState.requestToken += 1; playerDashboardState.loading = false; refreshPlayerDashboardSession(); renderPlayerDashboard('[data-dashboard-mode="session"]'); }
       else if (nextMode === 'recent') loadPlayerDashboardRecent();
@@ -3123,7 +3280,7 @@
       var range = event.target.value === 'all' ? 'all' : Number(event.target.value);
       if (playerDashboardState.mode !== 'history-trends' || !['all', 10, 25].includes(range) || range === playerDashboardState.historyTrendRange) return;
       playerDashboardState.historyTrendRange = range;
-      renderPlayerDashboard('[data-dashboard-session-trend-range]');
+      loadPlayerDashboardHistoryTrends(true, '[data-dashboard-session-trend-range]');
       return;
     }
     if (event.target.matches('[data-dashboard-table-size]')) {
@@ -4217,6 +4374,18 @@
     if (event.target.closest && event.target.closest('.pnhud-career-confirm-removal')) return confirmCurrentSessionCareerRemoval();
     if (event.target.closest && event.target.closest('.pnhud-career-cancel-removal')) return cancelCurrentSessionCareerRemoval();
     if (event.target.closest && event.target.closest('.pnhud-career-export')) return exportCareerBackupFromSettings();
+    var backupV2Button = event.target.closest && event.target.closest('[data-career-backup-v2]');
+    if (backupV2Button && !backupV2Button.disabled) {
+      chrome.runtime.sendMessage({ type: 'PNHUD_CAREER_INDEXED_REQUEST', method: 'openBackupV2Page', args: [backupV2Button.dataset.careerBackupV2] }, function (result) {
+        var error = chrome.runtime.lastError;
+        if (error || !result || !result.ok) {
+          careerDataUiState.message = 'Could not open Backup v2: ' + (error && error.message || result && result.error || 'Please retry.');
+          careerDataUiState.messageKind = 'error';
+          refreshCareerDataView();
+        }
+      });
+      return;
+    }
     if (event.target.closest && event.target.closest('.pnhud-career-import-select')) {
       var careerImportFileInput = settingsPanel.querySelector('.pnhud-career-import-file-input');
       if (careerImportFileInput) careerImportFileInput.click();
@@ -9040,7 +9209,8 @@
       playerDashboardState.careerMutationRevision += 1;
       playerDashboardState.historyList = null;
       playerDashboardState.historyTrend = null;
-      if (playerDashboardState.mode === 'recent') loadPlayerDashboardRecent();
+      if (playerDashboardState.mode === 'history-list') loadPlayerDashboardHistory(true);
+      else if (playerDashboardState.mode === 'recent') loadPlayerDashboardRecent();
       else if (playerDashboardState.mode === 'history-trends') loadPlayerDashboardHistoryTrends(true);
     }
     if (playerDashboardState.open && playerDashboardState.mode === 'career' && (!playerIds || playerIds.some(function (id) { return String(id) === playerDashboardState.playerId; }))) loadPlayerDashboardCareer();
@@ -9523,11 +9693,11 @@
           playerDashboardState.careerMutationRevision += 1;
           playerDashboardState.historyList = null;
           playerDashboardState.historyTrend = null;
-          if (playerDashboardState.mode === 'recent') loadPlayerDashboardRecent();
+          if (playerDashboardState.mode === 'history-list') loadPlayerDashboardHistory(true);
+          else if (playerDashboardState.mode === 'recent') loadPlayerDashboardRecent();
+          else if (playerDashboardState.mode === 'history-trends') loadPlayerDashboardHistoryTrends(true);
           else if (careerRecord.session && careerRecord.session.sessionId === historicalSessionId) {
-            if (playerDashboardState.mode === 'history-list') loadPlayerDashboardHistory(true);
-            else if (playerDashboardState.mode === 'history-trends') loadPlayerDashboardHistoryTrends(true);
-            else if (playerDashboardState.mode === 'history-detail' && playerDashboardState.selectedHistorySessionId === historicalSessionId) {
+            if (playerDashboardState.mode === 'history-detail' && playerDashboardState.selectedHistorySessionId === historicalSessionId) {
               playerDashboardState.historyList = null;
               playerDashboardState.historyTrend = null;
               loadPlayerDashboardHistoryDetail();
@@ -14546,8 +14716,37 @@
     cleanupExtension('page hidden or unloaded');
   }
 
+  // Internal v2 page gates only the short publication/reset boundary. Staging
+  // is independent of this port and ordinary finalized appends remain live.
+  function handleBackupV2SessionPort(port) {
+    if (!ownsRuntimeController() || port.name !== 'PNHUD_BACKUP_V2_REPLACE' ||
+        !port.sender || port.sender.url !== chrome.runtime.getURL('careerBackupV2Import.html')) return;
+    var prepared = false, committed = false;
+    function reply(type, error) { try { port.postMessage({ type: type, ok: !error, error: error && error.message }); } catch (_error) {} }
+    port.onMessage.addListener(function (message) {
+      if (!ownsRuntimeController()) { reply(message.type, new Error('superseded content controller')); return; }
+      if (message.type === 'prepare') {
+        if (prepared || careerRestoreAppendGate || sessionResetInProgress) { reply('prepare', new Error('Another Session or Career reset is in progress')); return; }
+        prepared = true; careerRestoreAppendGate = { records: [] };
+        careerIndexedAppendQueue.then(function () { requireRuntimeController(); reply('prepare'); }, function (error) { reply('prepare', error); });
+      } else if (message.type === 'committed' && prepared && !committed) {
+        committed = true;
+        invalidateSeatHudCareerStats(null, 'Career v2 Replace published', true);
+        resetCurrentSession({ preserveAuthoritativePause: true, source: 'successful Career v2 Replace' }, function (error) { reply('committed', error); });
+        releaseCareerRestoreAppendGate(true);
+      }
+    });
+    port.onDisconnect.addListener(function () { if (prepared && !committed) releaseCareerRestoreAppendGate(false); });
+  }
+
   function handleRuntimeMessage(message, sender, sendResponse) {
     if (!ownsRuntimeController()) return;
+    if (message && message.type === 'PNHUD_BACKUP_V2_MERGE_PUBLISHED' && sender &&
+        sender.url === chrome.runtime.getURL('careerBackupV2Import.html')) {
+      invalidateSeatHudCareerStats(null, 'Career v2 Merge published', true);
+      if (sendResponse) sendResponse({ ok: true });
+      return false;
+    }
     if (!message || message.type !== 'PNHUD_RESET_OVERLAY_POSITIONS') return false;
     resetOverlayPositions('popup reset button');
     if (sendResponse) sendResponse({ ok: true, gameId: pokerNowGameId });
@@ -14643,6 +14842,7 @@
       potOddsDragBehavior = null;
     }
     chrome.storage.onChanged.removeListener(handleStorageChanged);
+    if (chrome.runtime && chrome.runtime.onConnect) chrome.runtime.onConnect.removeListener(handleBackupV2SessionPort);
     if (chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
     if (seatOverlayController) seatOverlayController.clear(reason);
     pendingBinaryQueue.clear();
@@ -14741,6 +14941,7 @@
 
   chrome.storage.onChanged.addListener(handleStorageChanged);
   if (chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+  if (chrome.runtime && chrome.runtime.onConnect) chrome.runtime.onConnect.addListener(handleBackupV2SessionPort);
   try {
     ensureDemoData(function (saved) {
       try {

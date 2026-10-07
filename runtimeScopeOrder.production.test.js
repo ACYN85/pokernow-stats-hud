@@ -5,10 +5,10 @@ var fs = require('fs');
 var vm = require('vm');
 
 var exactLocation = {
-  href: 'https://pokernow.com/games/pglC7CkrwmskDJfKrkFuSc2JF',
+  href: 'https://pokernow.com/games/synthetic-room-fixture',
   protocol: 'https:',
   hostname: 'pokernow.com',
-  pathname: '/games/pglC7CkrwmskDJfKrkFuSc2JF',
+  pathname: '/games/synthetic-room-fixture',
   origin: 'https://pokernow.com',
   search: '',
   hash: ''

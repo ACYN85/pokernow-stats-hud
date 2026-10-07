@@ -9,6 +9,103 @@ importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'statE
 var careerServicePromise = null;
 var careerMutationQueue = Promise.resolve();
 var careerRuntimeDiagnostics = { initializationDurationMs: null, lastAppendDurationMs: null, lastReplaceDurationMs: null, lastMergeDurationMs: null };
+var SESSION_PROJECTION_ALARM = 'pnhud-career-session-projections';
+var sessionProjectionDriverWork = null;
+var sessionProjectionScheduleWork = null;
+// Measured short/medium/long bursts: docs/V1_5_DERIVED_BACKFILL_THROUGHPUT.md.
+// Admission stops at the deadline; an already-started atomic chunk may finish.
+var DERIVED_BACKFILL_BUDGET_MS = 7500;
+var DERIVED_BACKFILL_MAX_CHUNKS = 16;
+// Native key-delete probe: 128 keys/batch, four low-priority admissions.
+var DERIVED_CLEANUP_BUDGET_MS = 250;
+var DERIVED_CLEANUP_MAX_BATCHES = 4;
+
+async function derivedCleanupPending(service) {
+  return Boolean(service.careerDerivedCleanupState && (await service.careerDerivedCleanupState()).pending);
+}
+
+function sessionProjectionNeedsWork(state) {
+  return state.needsBackfill === undefined ? !state.ready : state.needsBackfill;
+}
+async function ensureSessionProjectionAlarm() {
+  if (!chrome.alarms) return;
+  if (!await chrome.alarms.get(SESSION_PROJECTION_ALARM))
+    await chrome.alarms.create(SESSION_PROJECTION_ALARM, { delayInMinutes: 1, periodInMinutes: 1 });
+}
+// Arm the durable continuation before opening/working. A terminated worker has
+// no lease to expire; the next alarm/wake resumes the native checkpoint.
+function scheduleSessionProjectionWork() {
+  if (!chrome.alarms) return Promise.resolve();
+  if (sessionProjectionScheduleWork) return sessionProjectionScheduleWork;
+  sessionProjectionScheduleWork = queueCareerMutation(async function () {
+    await ensureSessionProjectionAlarm();
+    var service = await careerService(), state = await service.careerSessionProjectionState();
+    var memberships = await service.careerHandMembershipState();
+    if (!sessionProjectionNeedsWork(state) && !sessionProjectionNeedsWork(memberships) && !await derivedCleanupPending(service)) await chrome.alarms.clear(SESSION_PROJECTION_ALARM);
+  }).finally(function () { sessionProjectionScheduleWork = null; });
+  return sessionProjectionScheduleWork;
+}
+function driveCareerSessionProjections() {
+  if (sessionProjectionDriverWork) return sessionProjectionDriverWork;
+  sessionProjectionDriverWork = (async function () {
+    var service;
+    // Leave the periodic alarm armed before any work; never defer continuation
+    // creation until an in-memory burst finishes. Bootstrap has its own cost.
+    await queueCareerMutation(async function () { await ensureSessionProjectionAlarm(); service = await careerService(); });
+    var started = monotonicNow(), chunks = 0;
+    while (chunks < DERIVED_BACKFILL_MAX_CHUNKS && monotonicNow() - started < DERIVED_BACKFILL_BUDGET_MS) {
+      var worked = await queueCareerMutation(async function () {
+        // Re-read after queued appends/Restore/removal, never trust last iteration.
+        var state = await service.careerSessionProjectionState(), memberships = await service.careerHandMembershipState();
+        var sessionsNeedWork = sessionProjectionNeedsWork(state), membershipsNeedWork = sessionProjectionNeedsWork(memberships);
+        if ((!sessionsNeedWork && !membershipsNeedWork) || monotonicNow() - started >= DERIVED_BACKFILL_BUDGET_MS) return false;
+        // Least durable chunk progress goes first, Session wins ties. Restarted
+        // generations start at zero. This survives worker loss, including wakes
+        // that can afford only one chunk, without an in-memory turn or lease.
+        var sessionChunks = state.status === 'building' && !state.restartRequired ? state.chunks || 0 : 0;
+        var membershipChunks = memberships.status === 'building' && !memberships.restartRequired ? memberships.chunks || 0 : 0;
+        if (sessionsNeedWork && (!membershipsNeedWork || sessionChunks <= membershipChunks))
+          await service.backfillCareerSessionProjections({ maxChunks: 1, chunkGroups: 128,
+            restart: Boolean(state.restartRequired || state.status === 'ready' || state.status === 'invalid') });
+        else await service.backfillCareerHandMemberships({ maxChunks: 1, chunkGroups: 128, restart: Boolean(memberships.restartRequired) });
+        return true;
+      });
+      if (!worked) break;
+      chunks += 1;
+      // Release queue ownership and give message/alarm tasks a turn each chunk.
+      await new Promise(function (resolve) { setTimeout(resolve, 0); });
+    }
+    // A wake that rebuilt anything yields cleanup until another opportunity.
+    // Each cleanup admission rechecks readiness after queued mutations.
+    var cleanupStarted = monotonicNow(), cleanupBatches = 0, cleanupDeleted = 0;
+    if (chunks === 0 && service.cleanupCareerDerivedNamespaces) {
+      while (cleanupBatches < DERIVED_CLEANUP_MAX_BATCHES && monotonicNow() - cleanupStarted < DERIVED_CLEANUP_BUDGET_MS) {
+        var cleanup = await queueCareerMutation(async function () {
+          var state = await service.careerSessionProjectionState(), memberships = await service.careerHandMembershipState();
+          if (sessionProjectionNeedsWork(state) || sessionProjectionNeedsWork(memberships) ||
+              monotonicNow() - cleanupStarted >= DERIVED_CLEANUP_BUDGET_MS) return null;
+          if (!await derivedCleanupPending(service) || monotonicNow() - cleanupStarted >= DERIVED_CLEANUP_BUDGET_MS) return null;
+          return service.cleanupCareerDerivedNamespaces();
+        });
+        if (!cleanup) break;
+        cleanupBatches += 1; cleanupDeleted += cleanup.deleted;
+        await new Promise(function (resolve) { setTimeout(resolve, 0); });
+        if (!cleanup.pending) break;
+      }
+    }
+    // The readiness check and alarm cleanup serialize with mutations too.
+    return queueCareerMutation(async function () {
+      var state = await service.careerSessionProjectionState(), memberships = await service.careerHandMembershipState();
+      var remaining = sessionProjectionNeedsWork(state) || sessionProjectionNeedsWork(memberships) || await derivedCleanupPending(service);
+      if (chrome.alarms && !remaining) await chrome.alarms.clear(SESSION_PROJECTION_ALARM);
+      return Object.assign({}, state, { handMemberships: memberships, cleanupBurst: { batches: cleanupBatches, deleted: cleanupDeleted, elapsedMs: monotonicNow() - cleanupStarted }, backfillBurst: {
+        chunks: chunks, elapsedMs: monotonicNow() - started,
+        stopReason: !remaining ? 'complete' : chunks >= DERIVED_BACKFILL_MAX_CHUNKS ? 'chunks' : 'deadline'
+      } });
+    });
+  })().finally(function () { sessionProjectionDriverWork = null; });
+  return sessionProjectionDriverWork;
+}
 
 function monotonicNow() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
 function queueCareerMutation(operation) {
@@ -42,6 +139,7 @@ async function replayCareerOutbox(service) {
     if (!result.accepted && !result.duplicate) throw new Error('Pending Career outbox record was rejected before data management: ' + result.reason);
     await chrome.storage.local.remove(pending[index].key);
   }
+  if (pending.length) scheduleSessionProjectionWork().catch(function () {});
 }
 
 async function initializeCareerService() {
@@ -198,6 +296,13 @@ var allowedMethods = Object.freeze({
   careerHudStats: true,
   careerPlayers: true,
   careerPlayerSummaries: true,
+  careerSessionProjectionState: true,
+  careerHandMembershipState: true,
+  backfillCareerHandMemberships: true,
+  readCareerHandMemberships: true,
+  backfillCareerSessionProjections: true,
+  readCareerSessionProjections: true,
+  readCareerSessionProjectionPage: true,
   careerLedgerInfo: true,
   careerPlayerRecordInfo: true,
   recentCareerRecords: true,
@@ -209,6 +314,7 @@ var allowedMethods = Object.freeze({
   getCareerSessionPlayerStats: true,
   getCareerRecentPlayerStats: true,
   getCareerRecentVsCareer: true,
+  getCareerRecentBatch: true,
   getCareerPlayerSessionTrend: true,
   rebuildCareerStats: true,
   exportCareer: true
@@ -241,7 +347,25 @@ async function measuredCareerQueries(service, playerId) {
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
   if (!message || message.type !== PokerCareerIndexedStore.MESSAGE_TYPE) return false;
   (async function () {
+    if (message.method === 'openBackupV2Page') {
+      var pages = { export: 'careerBackupV2Transfer.html', import: 'careerBackupV2Import.html' };
+      var action = message.args && message.args[0];
+      var page = Object.prototype.hasOwnProperty.call(pages, action) && pages[action];
+      if (!page || !sender || sender.id !== chrome.runtime.id || !sender.tab ||
+          !globalThis.PokerNowRuntimeScope.isPokerNowGamePage(sender.url))
+        throw new Error('Backup v2 pages can only be opened from PokerNow Settings');
+      await chrome.tabs.create({ url: chrome.runtime.getURL(page), openerTabId: sender.tab.id });
+      return { opened: true };
+    }
     var service = await careerService();
+    if (message.method === 'prepareBackupV2Publication') {
+      if (!sender || sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL('careerBackupV2Import.html'))
+        throw new Error('Backup v2 publication preparation is internal only');
+      return queueCareerMutation(async function () { await replayCareerOutbox(service); await ensureSessionProjectionAlarm(); return { outboxReplayed: true }; });
+    }
+    if (message.method === 'driveCareerSessionProjections') return driveCareerSessionProjections();
+    if (message.method === 'backfillCareerSessionProjections') return queueCareerMutation(function () { return service.backfillCareerSessionProjections(message.args && message.args[0]); });
+    if (message.method === 'backfillCareerHandMemberships') return queueCareerMutation(function () { return service.backfillCareerHandMemberships(message.args && message.args[0]); });
     if (message.method === 'initialize' || message.method === 'careerLedgerInfo') return careerLedgerInfoWithBackupPolicy(service);
     if (message.method === 'append') return queueCareerMutation(async function () { var started = monotonicNow(); try { return await service.append(message.args && message.args[0]); } finally { careerRuntimeDiagnostics.lastAppendDurationMs = Math.round((monotonicNow() - started) * 100) / 100; } });
     if (message.method === 'exportCareerBackup') return queueCareerMutation(async function () {
@@ -368,9 +492,20 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     if (!allowedMethods[message.method] || typeof service[message.method] !== 'function') throw new Error('Unsupported career service method: ' + String(message.method));
     return service[message.method].apply(service, Array.isArray(message.args) ? message.args : []);
   })().then(function (value) {
+    if (['append', 'replaceCareerBackup', 'mergeCareerBackup', 'removeCareerSession', 'deleteCareerHistoricalSession', 'backfillCareerSessionProjections', 'backfillCareerHandMemberships'].indexOf(message.method) >= 0)
+      scheduleSessionProjectionWork().catch(function () {});
     sendResponse({ ok: true, value: value });
   }).catch(function (error) {
     sendResponse({ ok: false, error: String(error && error.message || error) });
   });
   return true;
 });
+
+if (chrome.alarms) chrome.alarms.onAlarm.addListener(function (alarm) {
+  if (alarm.name === SESSION_PROJECTION_ALARM) driveCareerSessionProjections().catch(function () {});
+});
+if (chrome.runtime.onStartup) chrome.runtime.onStartup.addListener(function () { scheduleSessionProjectionWork().catch(function () {}); });
+if (chrome.runtime.onInstalled) chrome.runtime.onInstalled.addListener(function () { scheduleSessionProjectionWork().catch(function () {}); });
+// One wake check, no in-memory timer loop or startup backfill. Ready/invalid
+// catalogs remove the alarm; successful mutations can schedule it again.
+scheduleSessionProjectionWork().catch(function () {});

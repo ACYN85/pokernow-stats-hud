@@ -1,5 +1,7 @@
 # PokerNow Stats HUD architecture
 
+Current V1.5 uses storage schema 5, bounded derived maintenance, and Backup v2 streaming portability. [Career Data](CAREER_DATA.md) describes current user-facing data behavior. The earlier architecture sections below remain historical context.
+
 ## V1.0.0 RC1 operating map
 
 This section records the frozen V1.0.0 RC1 architecture and the durable owners retained through V1.3. Use this document for data flow and historical rationale. Release-only metadata/text changes do not alter any owner below.

@@ -185,7 +185,7 @@ var showdownExporterSource = fs.readFileSync(path.join(extensionRoot, 'showdownD
 var buildIdMatch = runtimeSource.match(buildPattern);
 assert.ok(buildIdMatch, 'runtimeScope embeds the shared Build ID');
 var buildIds = [buildIdMatch[0]];
-assert.strictEqual(buildIds[0], 'v1.4.0-rc2-20260930-2250');
+assert.strictEqual(buildIds[0], require('./release/config.json').buildId);
 [contentSource, popupSource, careerWorkerSource].forEach(function (source) {
   assert.ok(source.includes('globalThis.PokerNowRuntimeScope.buildId'), 'runtime consumer reads the shared Build ID');
 });

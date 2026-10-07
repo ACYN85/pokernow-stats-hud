@@ -334,6 +334,7 @@ html.pnhud-leaderboard-hud-dragging, html.pnhud-leaderboard-hud-dragging * { use
 #pnhud-player-dashboard .pnhud-dashboard-tabs button.active { border-color: var(--pnhud-accent, #5eead4); color: #052e2b; background: var(--pnhud-accent, #5eead4); font-weight: 800; }
 #pnhud-player-dashboard .pnhud-dashboard-tabs button { flex: 1 1 0; min-width: 0; }
 #pnhud-player-dashboard .pnhud-dashboard-history-rows { display: grid; gap: 6px; max-height: min(430px, 54vh); overflow-y: auto; }
+#pnhud-player-dashboard .pnhud-dashboard-history-pages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 #pnhud-player-dashboard .pnhud-dashboard-history-row { display: grid; gap: 3px; width: 100%; min-width: 0; padding: 9px; border: 1px solid #3f766d; border-radius: 6px; color: #bdece4; background: #0b2b25; text-align: left; overflow-wrap: anywhere; }
 #pnhud-player-dashboard .pnhud-dashboard-history-row:hover { border-color: var(--pnhud-accent, #5eead4); }
 #pnhud-player-dashboard .pnhud-dashboard-history-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; color: #f0fdfa; }

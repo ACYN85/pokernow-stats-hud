@@ -554,8 +554,33 @@
       return '<text x="' + x(index).toFixed(1) + '" y="158" text-anchor="middle">' + esc(shortTrendDate(point.endedAt || point.startedAt)) + '</text>';
     }).join('');
     return '<svg class="pnhud-dashboard-session-trend-chart" viewBox="0 0 600 170" role="img" aria-label="' + esc(TREND_LABELS[metric]) +
-      ' by Session, oldest to newest. Details for every Session follow the chart."><line x1="34" y1="126" x2="566" y2="126" stroke="currentColor" stroke-opacity=".45"/>' +
+      ' by Session, oldest to newest. Session details are available in pages below the chart."><line x1="34" y1="126" x2="566" y2="126" stroke="currentColor" stroke-opacity=".45"/>' +
       lines + dots + labels + '</svg>';
+  }
+  function trendVisiblePoints(state) {
+    var points = state.historyTrend && Array.isArray(state.historyTrend.points) ? state.historyTrend.points : [];
+    return state.historyTrendRange === 'all' ? points : points.slice(-([10, 25].indexOf(state.historyTrendRange) >= 0 ? state.historyTrendRange : 10));
+  }
+  function trendDetailPage(state) {
+    var points = trendVisiblePoints(state), pages = Math.max(1, Math.ceil(points.length / 50));
+    var requested = Number.isInteger(state.historyTrendDetailPage) ? state.historyTrendDetailPage : 1;
+    var page = Math.max(1, Math.min(pages, requested));
+    return { page: page, pages: pages, start: (page - 1) * 50, total: points.length, points: points.slice((page - 1) * 50, page * 50) };
+  }
+  function sessionTrendDetails(state, metric) {
+    var details = trendDetailPage(state);
+    return '<nav class="pnhud-dashboard-history-pagination" aria-label="Session trend detail pages">' +
+      '<button type="button" data-dashboard-trend-page="previous"' + (details.page <= 1 ? ' disabled' : '') + '>Previous</button>' +
+      '<p data-dashboard-trend-page-status tabindex="-1" role="status">Detail Sessions ' + (details.total ? details.start + 1 : 0) + '–' +
+      Math.min(details.total, details.start + 50) + ' of ' + details.total + ' · Page ' + details.page + ' of ' + details.pages + '</p>' +
+      '<button type="button" data-dashboard-trend-page="next"' + (details.page >= details.pages ? ' disabled' : '') + '>Next</button></nav>' +
+      '<ol class="pnhud-dashboard-session-trend-points" start="' + (details.start + 1) + '" aria-label="Session trend details">' + details.points.map(function (point) {
+        var stat = point.stats && point.stats[metric]; var date = historyDate(point.endedAt || point.startedAt);
+        var value = trendDisplayValue(metric, stat); var proof = stat && stat.evidenceStatus ? stat.evidenceStatus : 'unavailable';
+        var support = trendSupportText(metric, stat); var weak = proof === 'weak' || proof === 'insufficient';
+        var detail = date + ', ' + TREND_LABELS[metric] + ' ' + (value === '—' ? 'unsupported' : value) + ', ' + support + ', ' + integer(point.playerHandCount) + ' player hands, ' + proof + ' evidence';
+        return '<li><button type="button" data-dashboard-trend-session="' + esc(point.sessionId) + '" aria-label="Open ' + esc(detail) + '" class="' + (weak ? 'pnhud-dashboard-session-trend-weak' : '') + '"><strong>' + esc(shortTrendDate(point.endedAt || point.startedAt)) + '</strong><span>' + esc(value) + '</span><small>' + esc(support) + ' · ' + integer(point.playerHandCount) + ' hands · ' + esc(proof) + ' evidence</small></button></li>';
+      }).join('') + '</ol>';
   }
   function historyTrendHtml(state) {
     var series = state.historyTrend;
@@ -568,22 +593,16 @@
       }).join('') + '</select></label><label class="pnhud-dashboard-trend-range"><span>Show</span><select data-dashboard-session-trend-range aria-label="Session trend range">' +
       [[10, 'Last 10'], [25, 'Last 25'], ['all', 'All']].map(function (item) { return '<option value="' + item[0] + '"' + (item[0] === range ? ' selected' : '') + '>' + item[1] + '</option>'; }).join('') + '</select></label></div>';
     var points = series && Array.isArray(series.points) ? series.points : [];
-    var visible = range === 'all' ? points : points.slice(-range);
+    var visible = trendVisiblePoints(state);
     var supported = visible.filter(function (point) { return point.stats && point.stats[metric] && Number.isFinite(point.stats[metric].value); });
     var nonfinite = metric === 'af' ? visible.filter(function (point) { return point.stats && point.stats.af && point.stats.af.nonFinite; }) : [];
     var body = state.historyTrendLoading ? '<p class="pnhud-dashboard-empty" role="status">Loading Session trends...</p>'
       : state.historyTrendError ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.historyTrendError) + '</p>'
       : !points.length ? '<p class="pnhud-dashboard-empty">No Session trend data yet.</p>'
-      : '<p class="pnhud-dashboard-help">' + visible.length + ' of ' + points.length + ' canonical Sessions · oldest to newest' + (points.length === 1 ? ' · one Session recorded' : '') + '.</p>' +
+      : '<p class="pnhud-dashboard-help">' + visible.length + ' of ' + (series.totalSessionCount === undefined ? points.length : series.totalSessionCount) + ' canonical Sessions · oldest to newest' + (points.length === 1 ? ' · one Session recorded' : '') + '.</p>' +
         (!supported.length ? '<p class="pnhud-dashboard-empty">' + (nonfinite.length ? 'No finite AF values in these Sessions.' : 'No supported ' + esc(TREND_LABELS[metric]) + ' observations in these Sessions.') + '</p>' : '') +
         (nonfinite.length ? '<p class="pnhud-dashboard-help">∞ AF observations have recorded aggression and zero calls; their action/call counts appear below. They remain gaps in the chart.</p>' : '') +
-        sessionTrendChart(visible, metric) + '<ol class="pnhud-dashboard-session-trend-points" aria-label="Session trend details">' + visible.map(function (point) {
-          var stat = point.stats && point.stats[metric]; var date = historyDate(point.endedAt || point.startedAt);
-          var value = trendDisplayValue(metric, stat); var proof = stat && stat.evidenceStatus ? stat.evidenceStatus : 'unavailable';
-          var support = trendSupportText(metric, stat); var weak = proof === 'weak' || proof === 'insufficient';
-          var detail = date + ', ' + TREND_LABELS[metric] + ' ' + (value === '—' ? 'unsupported' : value) + ', ' + support + ', ' + integer(point.playerHandCount) + ' player hands, ' + proof + ' evidence';
-          return '<li><button type="button" data-dashboard-trend-session="' + esc(point.sessionId) + '" aria-label="Open ' + esc(detail) + '" class="' + (weak ? 'pnhud-dashboard-session-trend-weak' : '') + '"><strong>' + esc(shortTrendDate(point.endedAt || point.startedAt)) + '</strong><span>' + esc(value) + '</span><small>' + esc(support) + ' · ' + integer(point.playerHandCount) + ' hands · ' + esc(proof) + ' evidence</small></button></li>';
-        }).join('') + '</ol>';
+        sessionTrendChart(visible, metric) + sessionTrendDetails(state, metric);
     return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><h2>' + esc(state.displayName || 'Tracked player') + '</h2><p>Session History · Trends</p></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body">' + controls + '<section class="pnhud-dashboard-section pnhud-dashboard-session-trends"><h3>' + esc(TREND_LABELS[metric]) + ' by Session</h3>' + body + '</section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize"></button></div>';
   }
   function historyDeletionHtml(state) {
@@ -615,20 +634,28 @@
   }
   function historyListHtml(state) {
     var history = state.historyList;
-    var rows = history && Array.isArray(history.sessions) ? history.sessions : [];
-    var body = state.historyLoading ? '<p class="pnhud-dashboard-empty" role="status">Loading Session history...</p>'
-      : state.historyError ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.historyError) + '</p>'
-      : !rows.length ? '<p class="pnhud-dashboard-empty">No historical Sessions recorded yet.</p>'
+    var rows = history && Array.isArray(history.sessions) ? history.sessions.slice(0, 50) : [];
+    var paging = state.historyPaging;
+    var pageStatus = '<p role="status" tabindex="-1" data-dashboard-history-page-status>' +
+      (state.historyLoading ? 'Loading Session history...' : 'Page ' + integer(paging && paging.page || 1) + ' · Newest Sessions first') + '</p>';
+    var body = state.historyLoading || state.historyError && !history ? ''
+      : !rows.length ? '<p class="pnhud-dashboard-empty">' + (paging && paging.next ? 'No participating Sessions in this portion of history. Continue to older Sessions.' : paging && paging.page > 1 ? 'End of Session history.' : 'No historical Sessions recorded yet.') + '</p>'
       : '<div class="pnhud-dashboard-history-rows">' + rows.map(function (row) {
           var cards = fromCounterResult(row.stats, 'session');
           var byId = function (id) { var item = cards.find(function (card) { return card.id === id; }); return item ? item.value : '---'; };
           var current = row.sessionId === state.currentHistoricalSessionId;
           return '<button type="button" class="pnhud-dashboard-history-row" data-dashboard-history-session="' + esc(row.sessionId) + '" aria-label="Open ' + esc(historyDate(row.endedAt || row.startedAt)) + ', ' + integer(row.playerHandCount) + ' hands played' + (current ? ', current Session' : '') + '"><span class="pnhud-dashboard-history-heading"><strong>' + esc(historyDate(row.endedAt || row.startedAt)) + '</strong>' + (current ? '<em>Current Session</em>' : '') + '</span><span>' + integer(row.playerHandCount) + ' hands played' + (integer(row.sessionHandCount) !== integer(row.playerHandCount) ? ' · Session total: ' + integer(row.sessionHandCount) : '') + '</span><small>' + esc(historyComposition(row.playerTableSizeHands)) + '</small><span class="pnhud-dashboard-history-stats">VPIP ' + esc(byId('vpip')) + ' · PFR ' + esc(byId('pfr')) + ' · 3Bet ' + esc(byId('threeBet')) + '</span></button>';
         }).join('') + '</div>';
+    var error = state.historyError ? '<p class="pnhud-dashboard-error" role="status">' + esc(state.historyError) + '</p><button type="button" data-dashboard-history-page="retry">Retry</button>' : '';
+    var navigation = paging ? '<div class="pnhud-dashboard-history-pages" role="group" aria-label="Session history pages">' +
+      '<button type="button" data-dashboard-history-page="start"' + (state.historyLoading ? ' disabled' : '') + '>Newest</button>' +
+      '<button type="button" data-dashboard-history-page="previous"' + (state.historyLoading || !paging.trail.length ? ' disabled' : '') + '>Previous</button>' +
+      '<button type="button" data-dashboard-history-page="next"' + (state.historyLoading || !paging.next ? ' disabled' : '') + '>Next · Older</button></div>' : '';
+    var notice = state.historyNotice ? '<p role="status">' + esc(state.historyNotice) + '</p>' : '';
     var unassigned = history && history.unassigned || {};
     var legacy = integer(unassigned.legacyHandCount) + integer(unassigned.unsupportedHandCount);
     var note = legacy ? '<p class="pnhud-dashboard-help">' + legacy + ' Career ' + (legacy === 1 ? 'hand lacks' : 'hands lack') + ' explicit Session provenance and ' + (legacy === 1 ? 'is' : 'are') + ' not grouped into Sessions.</p>' : '';
-    return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><h2>' + esc(state.displayName || 'Tracked player') + '</h2><p>Session History</p></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row">' + historyTabs('history-list') + historyViews('history-list') + '</div><section class="pnhud-dashboard-section pnhud-dashboard-history"><h3>Sessions</h3>' + body + note + '</section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
+    return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><h2>' + esc(state.displayName || 'Tracked player') + '</h2><p>Session History</p></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row">' + historyTabs('history-list') + historyViews('history-list') + '</div><section class="pnhud-dashboard-section pnhud-dashboard-history"><h3>Sessions</h3>' + notice + pageStatus + error + body + navigation + note + '</section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
   }
   function render(state) {
     state = state || {}; if (state.mode === 'history-list') return historyListHtml(state); if (state.mode === 'history-trends') return historyTrendHtml(state);
@@ -654,5 +681,5 @@
     var historyHeader = historical ? '<button type="button" class="pnhud-dashboard-history-back">← Back to ' + (state.historyReturnMode === 'history-trends' ? 'Trends' : 'Sessions') + '</button><p class="pnhud-dashboard-help">' + esc(historyComposition(state.selectedHistorySummary && state.selectedHistorySummary.playerTableSizeHands)) + ' · ' + integer(state.selectedHistorySummary && state.selectedHistorySummary.playerHandCount) + ' hands played</p>' : '';
     return '<div class="pnhud-dashboard-window" role="document"><header class="pnhud-dashboard-drag-handle"><div><div class="pnhud-dashboard-title"><h2>' + esc(name) + '</h2>' + (headerProfile ? '<span class="pnhud-dashboard-header-profile">' + esc(headerProfile) + '</span>' : '') + '</div><p>' + esc(context) + '</p><small title="Canonical stable player ID">ID ' + esc(state.playerId) + '</small></div><button type="button" class="pnhud-dashboard-close" aria-label="Close player dashboard">×</button></header><div class="pnhud-dashboard-body"><div class="pnhud-dashboard-filter-row">' + historyTabs(state.mode) + (historical ? historyHeader : '') + (mode === 'recent' ? recentWindowControl(state.recentWindow) : '') + tableSizeControl(tableSize) + situationControl(situation) + positionControl(position, situation !== 'overall') + '</div>' + (mode === 'recent' ? recentPopulationHtml(state) : '') + '<section class="pnhud-dashboard-section"><h3>Core stats</h3>' + coverageHtml(state, coverage, mode, position, situation) + coverageHelp + analysisHelp + coreBody + '</section>' + historyDeletionHtml(state) + (mode === 'recent' ? recentComparisonHtml(state) : trendsHtml(state, mode)) + '<section class="pnhud-dashboard-section pnhud-dashboard-relational"><div class="pnhud-dashboard-section-heading"><div><h3>Relational stats</h3><small>' + esc(relationContext) + '</small></div>' + opponentControl(state) + '</div>' + relationBody + (relationalCoverage !== null ? '<p class="pnhud-dashboard-help">' + relationalCoverage + ' supported relational ' + (relationalCoverage === 1 ? 'opportunity' : 'opportunities') + ' across 3Bet, F3B, and FCB. Missing counterpart history is excluded.</p>' : '<p class="pnhud-dashboard-help">Opponent context applies only to 3Bet, F3B, and FCB.</p>') + '</section>' + (missingScopedSource || noPositionSample || noSituationSample ? '' : insightsHtml(state, cards, relationCards, mode === 'recent' ? 'career' : mode, { position: position, situation: situation, opponentMode: state.opponentMode || 'overall', tableSize: tableSize }, bucket, mode === 'recent')) + (historical || mode === 'recent' ? '' : reviewSignalsHtml(state, cards, mode, evidenceContext, bucket)) + (profileBucket ? profileHtml(state.profile, historical ? 'historical' : mode, profileBucket) : '') + '<section class="pnhud-dashboard-section"><div class="pnhud-dashboard-notes-heading"><h3>Notes</h3><span class="pnhud-dashboard-note-status" role="status" aria-live="polite">' + esc(state.noteStatus || '') + '</span></div><textarea class="pnhud-dashboard-note" maxlength="5000" aria-label="Notes for ' + esc(name) + '" placeholder="Add a private note about this player...">' + esc(noteValue || '') + '</textarea><div class="pnhud-dashboard-note-actions"><button type="button" class="pnhud-dashboard-save-note">Save Note</button><button type="button" class="pnhud-dashboard-clear-note"' + (!noteValue ? ' disabled' : '') + '>Clear Note</button></div><p class="pnhud-dashboard-help">Notes are keyed only by stable player ID and are unaffected by dashboard filters.</p></section></div><button type="button" class="pnhud-dashboard-resize" aria-label="Resize player dashboard" title="Drag to resize; arrow keys resize when focused"></button></div>';
   }
-  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, SITUATION_OPTIONS: SITUATION_OPTIONS, TABLE_SIZE_OPTIONS: TABLE_SIZE_OPTIONS, RECENT_WINDOW_OPTIONS: RECENT_WINDOW_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, TREND_IDS: TREND_IDS, CAREER_CONTEXT_POLICY: CAREER_CONTEXT_POLICY, createGeometryController: createGeometryController, careerProfile: careerProfile, fromSession: fromSession, fromCareer: fromCareer, fromCounterResult: fromCounterResult, selectTrendWindow: selectTrendWindow, trendDelta: trendDelta, careerRevisionsMatch: careerRevisionsMatch, requestMatches: requestMatches, render: render, percentageText: percentageText, afText: afText });
+  return Object.freeze({ PROFILE_ORDER: PROFILE_ORDER, POSITION_OPTIONS: POSITION_OPTIONS, SITUATION_OPTIONS: SITUATION_OPTIONS, TABLE_SIZE_OPTIONS: TABLE_SIZE_OPTIONS, RECENT_WINDOW_OPTIONS: RECENT_WINDOW_OPTIONS, CORE_IDS: CORE_IDS, RELATIONAL_IDS: RELATIONAL_IDS, TREND_IDS: TREND_IDS, CAREER_CONTEXT_POLICY: CAREER_CONTEXT_POLICY, createGeometryController: createGeometryController, careerProfile: careerProfile, fromSession: fromSession, fromCareer: fromCareer, fromCounterResult: fromCounterResult, selectTrendWindow: selectTrendWindow, trendDelta: trendDelta, careerRevisionsMatch: careerRevisionsMatch, requestMatches: requestMatches, trendDetailPage: trendDetailPage, sessionTrendChart: sessionTrendChart, sessionTrendDetails: sessionTrendDetails, render: render, percentageText: percentageText, afText: afText });
 });

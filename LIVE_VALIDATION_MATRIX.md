@@ -1,4 +1,10 @@
-# Public V1.4.0 live-validation matrix
+# Public V1.5.0 live-validation matrix
+
+**SIGNED-IN V1.5 RC2 ZIP ACCEPTED.** The project owner accepted prior A–H smoke and the focused RC2 I/J/K retest. Replace resets the selected current Session and hard reload retains the reset; Merge preserves Session; browser restart persists correct Career/Session state. The accepted artifact has Build ID `v1.5.0-rc2-20261006-2218`, 83 shipped files, size 2,651,237 bytes, and SHA-256 `560DAF7A3E7F6E586732BC8C7807482261FFF5BEBFF1CFF235BB0BA69B14573E`. The final ZIP is a byte-identical copy. RC1 is rejected and is not distributed as the accepted release.
+
+Automated fixtures, native isolated-browser checks, and signed-in observations remain separate evidence classes. The accepted 150,000-record runtime/portability target does not certify 250k or natural idle-eviction. No private transcript, capture, or profile is published.
+
+## V1.4 historical acceptance
 
 **SIGNED-IN V1.4 RC2 ZIP ACCEPTED.** The exact accepted ZIP was loaded manually and Session, Career, Recent, History, Trends, finalized-hand refresh, historical deletion, current-Session protection, Dashboard open/closed reload state, Recent/Trend selector styling, and the small unset Leaderboard size passed. The final V1.4.0 ZIP is a byte-for-byte copy of that RC2 ZIP: SHA-256 `E1F804E1FF9E47A937E857A2F65201B36CEB07C99620E633E3739DC0236AB8BB`. Dashboard mode selection returns to Session after reload; this is deferred to V1.4.1. This public record does not contain a signed-in session transcript or private capture.
 
