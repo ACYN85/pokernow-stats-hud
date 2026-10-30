@@ -24,6 +24,9 @@
       actorSource: input.actorSource || null,
       actionSource: input.actionSource || null,
       currentPot: numeric(input.currentPot) ? input.currentPot : null,
+      potAccounting: input.potAccounting || 'inclusive-before-call',
+      collectedPot: numeric(input.collectedPot) ? input.collectedPot : null,
+      liveWagerTotal: numeric(input.liveWagerTotal) ? input.liveWagerTotal : null,
       streetCommitmentTotal: streetCommitmentPlayers.reduce(function (sum, player) { return sum + player.streetContribution; }, 0),
       streetCommitmentPlayerIds: streetCommitmentPlayers.slice(0, 10).map(function (player) { return String(player.playerId); }),
       selfContribution: self && numeric(self.streetContribution) ? self.streetContribution : null,
@@ -58,15 +61,23 @@
   function playerById(players, playerId) { return (players || []).find(function (player) { return String(player.playerId) === String(playerId); }) || null; }
 
   function resolveEligiblePot(input, self, amountToCall) {
+    // currentPot and every explicit pool amount include existing eligible wagers
+    // exactly once and exclude the prospective call. Raw network pot is adapted
+    // by liveBettingState, never guessed here from the displayed table label.
+    if (input.potStateUncertain === true) return { supported: false, reason: REASONS.MISSING_POT_STATE };
     if (numeric(input.explicitEligiblePot)) return { supported: true, value: input.explicitEligiblePot, source: 'explicit eligible pot' };
     if (Array.isArray(input.sidePots)) {
       if (input.sidePots.some(function (pot) { return !pot || pot.resolved !== true || !numeric(pot.amount) || !Array.isArray(pot.eligiblePlayerIds); })) return { supported: false, reason: REASONS.SIDE_POT_UNRESOLVED };
-      return { supported: true, value: input.sidePots.filter(function (pot) { return pot.eligiblePlayerIds.map(String).includes(String(self.playerId)); }).reduce(function (sum, pot) { return sum + pot.amount; }, 0), source: 'resolved side-pot eligibility' };
+      var eligiblePools = input.sidePots.filter(function (pot) { return pot.eligiblePlayerIds.map(String).includes(String(self.playerId)); });
+      var payoffSets = eligiblePools.filter(function (pot) { return pot.amount > 0; }).map(function (pot) { return JSON.stringify(pot.eligiblePlayerIds.map(String).sort()); });
+      if (!payoffSets.length || new Set(payoffSets).size > 1) return { supported: false, reason: REASONS.SIDE_POT_UNRESOLVED };
+      return { supported: true, value: eligiblePools.reduce(function (sum, pot) { return sum + pot.amount; }, 0), source: 'resolved single-payoff eligibility' };
     }
     var players = input.players || [];
     var allInPresent = players.some(function (player) { return player.allIn === true; });
+    var undercall = players.some(function (player) { return player.folded !== true && player.active !== false && numeric(player.streetContribution) && player.streetContribution > self.streetContribution + amountToCall; });
     var completePreflopCommitments = input.street === 'preflop' && players.length > 1 && players.every(function (player) { return numeric(player.streetContribution); });
-    if (!allInPresent && input.sidePotAmbiguous !== true && input.unresolvedExcess !== true && completePreflopCommitments) {
+    if (!allInPresent && !undercall && input.sidePotAmbiguous !== true && input.unresolvedExcess !== true && completePreflopCommitments) {
       var namedPreflopPot = numeric(input.currentPot) ? input.currentPot : 0;
       var preflopCommitmentPot = players.reduce(function (sum, player) { return sum + player.streetContribution; }, 0);
       return {
@@ -78,7 +89,7 @@
         commitmentFloorApplied: preflopCommitmentPot > namedPreflopPot
       };
     }
-    if (!allInPresent && input.sidePotAmbiguous !== true && input.unresolvedExcess !== true && numeric(input.currentPot)) return { supported: true, value: input.currentPot, source: 'authoritative named current pot; no all-in eligibility ambiguity' };
+    if (!allInPresent && !undercall && input.sidePotAmbiguous !== true && input.unresolvedExcess !== true && numeric(input.currentPot)) return { supported: true, value: input.currentPot, source: 'authoritative named current pot; no all-in eligibility ambiguity' };
     var liveContenders = players.filter(function (player) { return player.folded !== true && player.active !== false && player.inHand !== false; });
     var allInOpponents = liveContenders.filter(function (player) { return String(player.playerId) !== String(self.playerId) && player.allIn === true && numeric(player.streetContribution); });
     var highestLiveContribution = liveContenders.filter(function (player) { return numeric(player.streetContribution); }).reduce(function (highest, player) { return Math.max(highest, player.streetContribution); }, 0);
@@ -86,9 +97,12 @@
     if (fullyMatchableHeadsUpAllIn && input.sidePotAmbiguous !== true && input.unresolvedExcess !== true && numeric(input.currentPot) && input.currentPot >= highestLiveContribution) {
       return { supported: true, value: input.currentPot, source: 'authoritative named current pot; fully matchable heads-up all-in', headsUpAllInProof: true };
     }
-    var totalsKnown = players.length > 1 && players.every(function (player) { return numeric(player.totalContribution); });
+    var totalsKnown = input.totalContributionsComplete !== false && players.length > 1 && players.every(function (player) { return numeric(player.totalContribution); });
     if (totalsKnown) {
       var contestableCap = self.totalContribution + amountToCall;
+      // Different live eligibility tiers require separate equities/payoffs;
+      // summing them and labeling one number "break-even equity" is unsafe.
+      if (liveContenders.some(function (player) { return String(player.playerId) !== String(self.playerId) && player.totalContribution < contestableCap; })) return { supported: false, reason: REASONS.SIDE_POT_UNRESOLVED };
       return {
         supported: true,
         value: players.reduce(function (sum, player) { return sum + Math.min(player.totalContribution, contestableCap); }, 0),
@@ -97,7 +111,7 @@
         excludedExcess: players.reduce(function (sum, player) { return sum + Math.max(0, player.totalContribution - contestableCap); }, 0)
       };
     }
-    if (input.sidePotAmbiguous === true || input.unresolvedExcess === true || allInPresent) return { supported: false, reason: input.sidePotAmbiguous === true ? REASONS.SIDE_POT_UNRESOLVED : REASONS.AMBIGUOUS_POT_ELIGIBILITY };
+    if (input.sidePotAmbiguous === true || input.unresolvedExcess === true || allInPresent || undercall) return { supported: false, reason: input.sidePotAmbiguous === true ? REASONS.SIDE_POT_UNRESOLVED : REASONS.AMBIGUOUS_POT_ELIGIBILITY };
     return { supported: false, reason: REASONS.MISSING_POT_STATE };
   }
 
@@ -113,6 +127,7 @@
     if (self.folded === true) return idle(REASONS.USER_FOLDED, input);
     if (self.allIn === true || self.stack === 0) return idle(REASONS.USER_ALL_IN, input);
     if (!numeric(self.streetContribution) || !numeric(self.stack)) return unsupported(REASONS.AMBIGUOUS_CALL_AMOUNT, input, { self: self });
+    if ((input.players || []).some(function (player) { return player.folded !== true && player.active !== false && player.inHand !== false && !numeric(player.streetContribution); })) return unsupported(REASONS.AMBIGUOUS_CALL_AMOUNT, input);
     var activePlayers = (input.players || []).filter(function (player) { return player.folded !== true && player.active !== false && numeric(player.streetContribution); });
     if (!activePlayers.length) return unsupported(REASONS.MISSING_ACTION_STATE, input);
     var highest = Math.max.apply(null, activePlayers.map(function (player) { return player.streetContribution; }));

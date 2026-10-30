@@ -1,113 +1,43 @@
-# PokerNow Stats HUD
+# PokerNow Stats HUD - V1.6.0 compatibility
 
-PokerNow Stats HUD is a Chrome extension that turns observed PokerNow hands into a real-time, configurable player-statistics overlay with persistent Session and Career history.
+Live PokerNow seat overlays, leaderboard and player dashboards with Session and
+Career statistics, notes, tracked players, local assigned names, and explicit
+user-managed account grouping with eligible weighted combined Career statistics.
+The established V1.5 ingestion engine remains the sole live gameplay writer.
+Native gameplay/account admission and native numerical Pot Odds remain disabled.
 
-This extension analyzes information visible during PokerNow games and stores derived statistics locally. It does not access hidden cards, infer hidden information, automate gameplay, make betting decisions, recommend actions, provide solver output, or calculate live equity, EV, or outs strategy. Pot Odds displays arithmetic from supported visible pot and call-cost information.
+## Install and update
 
-**Version 1.5.0** · Release Build `v1.5.0-rc2-20261006-2218`
+Extract the release ZIP into a dedicated folder. For a new installation, enable
+Developer mode in desktop Chrome's Extensions page, choose Load unpacked, and
+select the folder containing manifest.json. Verify version 1.6.0 and popup build
+v1.6.0-compatibility-20261030-final.
 
-## Demo
+For an existing unpacked installation, back up files and complete extension data
+first. Keep the same loaded folder and extension ID, replace runtime files with
+Chrome fully closed, and then reopen Chrome. Do not uninstall, clear storage or
+load another copy to update. A different folder can create a separate ID with
+separate history. Refresh PokerNow between hands after an extension update,
+before the next deal; incomplete observations may be excluded. Runtime rollback
+does not undo later storage writes. No automatic updater is included.
 
-![Live PokerNow table with Stats HUD seat overlays, leaderboard, and Pot Odds](docs/media/live-table-overview.png)
+The runtime ZIP contains 107 files with manifest.json at its root. This public
+source tree contains the same loadable JavaScript/HTML/CSS runtime plus these
+reviewed documents. It contains no profiles, captures, backups or private test
+records. The development repository's inherited source manifest is not the
+release identity; the prepared release projection supplies the public metadata.
 
-*The live table view combines per-seat finalized-hand statistics, a compact leaderboard, and in-hand Pot Odds without covering the core table controls.*
+## Scope and limitations
 
-### Career dashboard and opponent context
-
-![Player dashboard showing persistent Career statistics, showdown metrics, and relational opponent statistics](docs/media/player-dashboard.png)
-
-*The dashboard exposes persistent Career samples, WTSD/W$SD showdown results, and relational 3Bet, F3B, and FCB statistics with opponent-context filtering.*
-
-### Configurable Seat HUD
-
-![HUD configuration with customizable statistics, Session and Career sources, overlay controls, and live preview](docs/media/hud-configuration.png)
-
-*HUD Settings provides Session/Career source selection, draggable overlay controls, statistic ordering, visibility choices, and an immediate live preview.*
-
-## Key features
-
-- Real-time player statistics calculated from finalized hands, including VPIP, PFR, aggression factor, 3Bet/F3B, flop CBet/FCB, WTSD, and W$SD.
-- Separate Session history and persistent local Career history for cross-session tracking.
-- Browse exact historical Sessions, open Session detail, compare Recent Career windows with Career totals, and inspect Session Trends. Filters use recorded table, situation, and position provenance where supported; visible history refreshes after finalized hands.
-- Delete a selected historical Session from Career for every affected player while preserving the current live Session. Older Career records without exact Session provenance remain in Career and are never inferred into historical Sessions. Backup v2 adds large-history streaming portability; Backup v1 compatibility is retained.
-- Settings → Data offers Backup v2 streaming export, Replace, and Merge with a certified 150,000-record runtime/portability target. Replace replaces Career and resets the selected current Session; Merge deduplicates compatible histories, rejects conflicts, and preserves Session. Backup v1 and legacy JSON remain supported within their existing small-history limits.
-- A successful Career Restore resets Session; a failed restore leaves Session intact. Export and Import do not reset Session.
-- Session/Career Leaderboard sources plus a Settings → Players browser for every tracked Career player.
-- Hand-state, lifecycle, position, action-opportunity, and showdown inference with conservative handling of incomplete evidence.
-- Movable and resizable player dashboards with Reset Position, notes, position/opponent filters, and exact heads-up-postflop IP/OOP analysis.
-- Statistical Evidence labels and exact support counts for dashboard statistics; low-support values retain their count without an “Insufficient” suffix. These labels describe sample support, not predictive certainty.
-- Table-size-aware HU, 3–5, and 6+ Dashboard statistics and supported Profile explanations, with lightweight Career summaries and Recent Trends windows for the latest 25/50/100/250 eligible hands.
-- Evidence-gated opponent Insights and Strategic Implications, plus self-only Review Signals, use the selected supported Dashboard population.
-- In-hand Pot Odds showing call cost, eligible pot, and required equity.
-- Configurable Seat HUD visibility, statistic ordering, display modes, and draggable persistent overlays.
-- Hardened Reset Session identity, Pause/Resume, first-fresh-hand-after-Restore ownership, Career/Leaderboard pending-state presentation, cache/race/quarantine, and per-hand Pot Odds placement lifecycles.
-
-## How it works
-
-```text
-PokerNow game events
-  → Manifest V3 MAIN-world bridge
-  → event normalization, hand-state inference, and exactly-once finalization
-  → Session storage + separate IndexedDB Career contributions
-  → Seat HUD, leaderboard, player dashboard, profiles, and Pot Odds
-```
-
-The extension observes PokerNow's existing WebSocket event stream and builds statistics from hands it observes while active. Statistics are attached only after a supported hand is finalized, so the active hand does not prematurely affect displayed totals.
-
-Session and Career persistence remain separate, and no extension-controlled external server is used.
-
-## Installation
-
-### Load from source
-
-1. Download or clone this repository into a stable directory with `manifest.json` at its root.
-2. Open `chrome://extensions` in desktop Chrome.
-3. Enable **Developer mode**.
-4. Select **Load unpacked** and choose the repository directory.
-5. Open or reload a PokerNow game page.
-
-### Install from a release ZIP
-
-Extract the exact `pokernow-hud-v1.5.0.zip` release archive and load the extracted directory through **Load unpacked**.
-
-Chrome does not load the ZIP directly.
-
-Keep only one copy of the extension enabled at a time. Export a Career backup before replacing an existing installation, since uninstalling the extension or clearing its data can remove locally stored history.
-
-## Backup v2
-
-From Settings → Data, use **Export Backup v2** or **Restore or Merge Backup v2**. Keep the transfer page open until completion. Always choose a fresh export filename; incomplete backups are invalid and interrupted transfers are not durably resumable. See [Career Data](CAREER_DATA.md) for Replace/Merge behavior and [Known Limitations](KNOWN_LIMITATIONS.md) for large-history boundaries.
-
-## Testing
-
-The final ZIP is byte-identical to the manually accepted V1.5 RC2 archive (SHA-256 `560DAF7A3E7F6E586732BC8C7807482261FFF5BEBFF1CFF235BB0BA69B14573E`). Public mechanical release checks validate the 83-file inventory, exact runtime hashes, manifest dependencies, documentation links, and deterministic archive identity. Existing behavioral tests and synthetic fixtures remain available; they are separate from the completed private RC2 certification and signed-in acceptance. No npm installation is required.
-
-```powershell
-node runTests.js release
-node scripts/release.js validate
-```
-
-See [Testing](TESTING.md) and [V1.5 release notes](release/v1.5.0-notes.md).
-
-## Privacy, limitations, and non-affiliation
-
-- Runtime Session and Career data stay in the browser's extension storage.
-- Public test fixtures are privacy-sanitized, de-identified behavioral fixtures derived from captured event shapes. Identifying player, game, session, hand, URL, timestamp, and account data has been removed or replaced.
-- Career tracking begins when the extension observes accepted hands; it does not backfill earlier PokerNow history.
-- Incomplete or ambiguous evidence can cause a statistic opportunity to be withheld rather than guessed.
-- This independent project is not affiliated with, endorsed by, or maintained by PokerNow.
-
-See [Privacy](PRIVACY.md) and [Known Limitations](KNOWN_LIMITATIONS.md) for additional details.
+See [release notes](CHANGELOG.md) for supported features, backup scope, the
+conditional-GO acceptance limits and deferred Pot Odds dialog layering.
+[Privacy](PRIVACY.md) describes local storage, permissions and opt-in diagnostics.
+Only desktop Chrome and supported PokerNow observations are in scope; native
+gameplay is excluded. User grouping does not prove account ownership. Missing
+history is not fabricated, and no universal statistical accuracy is claimed.
+The TEST-only 1.6.0.8 installation is separate; public 1.6.0 is numerically lower.
+Prepared for final approval; publication requires explicit authorization.
 
 ## Development Disclosure
 
-This project was developed in part with OpenAI Codex assistance. I directed the product and feature decisions, tested the extension in live PokerNow sessions, reproduced and prioritized defects, validated fixes, and iterated on the implementation.
-
-## Technical documentation
-
-- [Architecture](ARCHITECTURE.md) — runtime boundaries, ownership, data flow, and packaging.
-- [Statistics support](STAT_SUPPORT.md) and [Statistics design](STATISTICS_DESIGN.md) — definitions, evidence requirements, reducers, and exclusions.
-- [Semantic hand ledger](SEMANTIC_HAND_LEDGER.md) — normalized finalized-hand model and reducer boundary.
-- [Career Data](CAREER_DATA.md) — local persistence, aggregation, backup, and restore behavior.
-- [BoardCompanion layout](BOARD_COMPANION_LAYOUT.md) — stable table-local geometry used by Pot Odds.
-- [Testing](TESTING.md), [Release audit](RELEASE_AUDIT.md), and [Changelog](CHANGELOG.md) — validation scope and release history.
+This project was built with OpenAI Codex, which wrote most of the code. I directed the product and feature decisions, wrote the requirements, tested the extension in live PokerNow sessions, reproduced and prioritized defects, validated fixes, and set the statistical modeling parameters.

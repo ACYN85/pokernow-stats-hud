@@ -140,7 +140,26 @@
     return normalized;
   }
 
+  function renderNative(value,section) {
+    value=normalize(value).value;section=SECTIONS.includes(section)?section:'general';
+    var esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    var controls='';
+    if(section==='appearance'){
+      ['settingsBackgroundOpacity','dashboardBackgroundOpacity','hudOpacity'].forEach(function(key){controls+='<label class="pnhud-settings-field"><span>'+({settingsBackgroundOpacity:'Settings opacity',dashboardBackgroundOpacity:'Dashboard opacity',hudOpacity:'HUD opacity'})[key]+'</span><input data-native-preference="'+key+'" type="range" min="10" max="100" step="1" value="'+Math.round(value[key]*100)+'"></label>';});
+      controls+='<label class="pnhud-settings-field">Accent<select data-native-preference="accentTheme">'+Object.keys(ACCENT_THEMES).map(k=>'<option value="'+k+'"'+(value.accentTheme===k?' selected':'')+'>'+ACCENT_THEMES[k].label+'</option>').join('')+'</select></label>';
+      controls+='<label class="pnhud-settings-field">HUD size<select data-native-preference="hudSize">'+HUD_SIZES.map(k=>'<option'+(value.hudSize===k?' selected':'')+'>'+k+'</option>').join('')+'</select></label>';
+    }else if(['general','overlay','hud'].includes(section)){
+      controls='<p>Visibility changes apply to the selected native HUD. Statistics require a current explicit HUD refresh. Pot Odds stays disabled when the current source cannot authenticate the local player or decision.</p>';
+      ['seatOverlaysEnabled','leaderboardEnabled','showPlayerProfiles','showPotOdds'].forEach(k=>{controls+='<label class="pnhud-settings-check"><input data-native-preference="'+k+'" type="checkbox"'+(value[k]?' checked':'')+'> '+esc(({seatOverlaysEnabled:'Seat overlays',leaderboardEnabled:'Leaderboard',showPlayerProfiles:'Player profiles',showPotOdds:'Pot Odds'})[k])+'</label>';});
+    }else if(section==='players')controls='<p>Select exact typed players and manually reviewed Persons. Equal names never link identities.</p><div data-native-players></div>';
+    else if(section==='career-data')controls='<h2>Data</h2><p>Review exact portable Replace or Merge. Source authorization and unfinished recovery are excluded.</p><div data-native-data></div>';
+    else if(section==='diagnostics')controls='<p>Source admission remains blocked for genuine gameplay. This interface never restores authorization from stored labels.</p>';
+    else controls='<h2>PokerNow Stats HUD</h2><p>Selected native generation. Production activation remains disabled.</p>';
+    var labels={general:'General',overlay:'Seat overlays',hud:'HUD',appearance:'Appearance',players:'Players','career-data':'Data',diagnostics:'Diagnostics',about:'About'};
+    return '<div class="pnhud-settings-window" role="document"><header><div><strong>PokerNow Stats HUD</strong><span>Settings</span></div><button type="button" class="pnhud-settings-close" aria-label="Close settings">×</button></header><div class="pnhud-settings-layout"><nav aria-label="Settings sections">'+SECTIONS.map(k=>'<button type="button" class="pnhud-settings-nav-button'+(k===section?' active':'')+'" data-native-section="'+k+'" aria-current="'+(k===section?'page':'false')+'">'+labels[k]+'</button>').join('')+'</nav><main tabindex="-1">'+controls+'</main></div></div>';
+  }
   var api = Object.freeze({
+    renderNative:renderNative,
     VERSION: VERSION,
     SECTIONS: SECTIONS,
     HUD_SIZES: HUD_SIZES,

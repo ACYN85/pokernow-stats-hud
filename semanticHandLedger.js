@@ -777,6 +777,48 @@
     return list;
   }
 
+  // Publication quality for the existing mapped tB stream. Reuse the ledger's
+  // source actions, never fallback/recovered events as proof of missing actions.
+  // Unknown coverage withholds the whole contribution, including all opportunity
+  // reducers; it must not turn an absent voluntary action into a negative result.
+  function statisticalCoverage(state, handId) {
+    var hand=state.activeHands[String(handId)], obs=hand && hand.observations || [];
+    var first=obs[0] && obs[0].currentState, reasons=[];
+    function missing(reason) { if (!reasons.includes(reason)) reasons.push(reason); }
+    if (!first || !Object.prototype.hasOwnProperty.call(first,'hI') || !Array.isArray(first.gT) || !isObject(first.tB)) return { applicable:false, supported:true, reasons:[] };
+    if (!hand.historyComplete || hand.observationLimitReached) missing('INCOMPLETE_RETAINED_HISTORY');
+    // The existing source ledger identifies forced posts by sBPI/bBPI and the
+    // initial wager map. Some supported frames omit the redundant blind config;
+    // when supplied it must agree. Never accept prior voluntary wagers as blinds.
+    var small=first.tB[first.sBPI], big=first.tB[first.bBPI];
+    if (phaseToStreet(first.gT)!=='preflop' || first.pot!==0 || !numeric(small) || small<=0 || !numeric(big) || big<small ||
+        first.smallBlind!==undefined && first.smallBlind!==small || first.bigBlind!==undefined && first.bigBlind!==big ||
+        Object.keys(first.tB).some(function(p){return p!==first.sBPI && p!==first.bBPI && numeric(first.tB[p]) && first.tB[p]>0;})) missing('UNPROVEN_FORCED_BET_BASELINE');
+    var positions=new Map();obs.forEach(function(o,i){if(!positions.has(o.sourceSequence))positions.set(o.sourceSequence,i);});
+    var actions=extractActions(obs,first,[]), actor=currentActor(first), activated=0, street=phaseToStreet(first.gT);
+    function alreadyClosed(player, at, snapshot) {
+      return actions.some(function(a){return a.playerId===String(player) && positions.get(a.sourceSequence)<at &&
+        (a.isAllIn===true && snapshot.pGS && snapshot.pGS[player]==='allIn' || a.type==='fold' && snapshot.pGS && snapshot.pGS[player]==='fold');});
+    }
+    var total=numeric(first.pot)?first.pot:0;
+    function bets(s) { return Object.keys(s && s.tB || {}).reduce(function(n,p){var v=s.tB[p];return n+(numeric(v)?v:0);},0); }
+    total+=bets(first);
+    for (var i=1;i<obs.length;i++) {
+      var o=obs[i], before=obs[i-1].currentState || {}, after=o.currentState || {}, next=phaseToStreet(after.gT), nextActor=currentActor(after);
+      Object.keys(after.tB || {}).forEach(function(p){var a=after.tB[p],b=before.tB && before.tB[p];if(numeric(a))total+=Math.max(0,a-(numeric(b)?b:0));});
+      // Collected chips cannot exceed observed commitments. Wager deletion alone
+      // is not a refund; lower pools at settlement are not a financial accusation.
+      if (next!=='terminal' && numeric(after.pot) && after.pot+bets(after)>total+1e-7) missing('UNOBSERVED_CHIP_CONTRIBUTIONS');
+      if (actor && actor!=='<D>' && (next!==street || nextActor!==actor)) {
+        var explained=actions.some(function(a){var at=positions.get(a.sourceSequence);return a.playerId===String(actor) && a.street===street && a.type!=='post_blind' && at>=activated && at<=i;});
+        if (!explained && !alreadyClosed(actor,activated,before)) missing('UNOBSERVED_'+String(street || 'UNKNOWN').toUpperCase()+'_DECISION');
+      }
+      if (next!==street || nextActor!==actor) { actor=nextActor;activated=i;street=next; }
+    }
+    if (actor && actor!=='<D>' && street!=='terminal' && !alreadyClosed(actor,activated,obs[obs.length-1].currentState) && !actions.some(function(a){return a.playerId===String(actor) && a.street===street && a.type!=='post_blind' && positions.get(a.sourceSequence)>=activated;})) missing('UNOBSERVED_'+String(street || 'UNKNOWN').toUpperCase()+'_DECISION');
+    return {applicable:true,supported:reasons.length===0,reasons:reasons};
+  }
+
   function buildRecord(hand, details) {
     var observations = hand.observations.slice();
     var startObservation = observations[0] || null;
@@ -900,6 +942,18 @@
     };
   }
 
+  // cHB may remain at the last wager after terminal <D> cleanup. It is not
+  // a live price then. This comparison supplies no contribution/identity proof.
+  function highestBetMatches(snapshot) {
+    snapshot = snapshot || {};
+    var street = phaseToStreet(snapshot.gT), bets = snapshot.tB;
+    function amount(v) { return numeric(v) && v >= 0 && !Object.is(v, -0); }
+    if (!street || street === 'terminal' || !amount(snapshot.cHB) || !isObject(bets)) return null;
+    var values = Object.keys(bets).map(function (id) { return bets[id]; });
+    if (!values.every(function (v) { return amount(v) || v === 'check' || v === CLEANUP_SENTINEL; })) return null;
+    return Math.abs(snapshot.cHB - Math.max.apply(null, [0].concat(values.filter(amount)))) < 1e-8;
+  }
+
   function liveBettingState(state, handId) {
     handId = handId === null || handId === undefined ? null : String(handId);
     var hand = handId && state.activeHands[handId];
@@ -915,23 +969,55 @@
       if (action.playerId && numeric(action.amountBy) && action.amountBy >= 0) totalContributions[action.playerId] = Number(totalContributions[action.playerId] || 0) + action.amountBy;
     });
     var street = phaseToStreet(currentState.gT) || actions.length && actions[actions.length - 1].street || 'preflop';
+    var bettingActive = street !== 'terminal';
     var tB = isObject(currentState.tB) ? currentState.tB : {};
+    // PokerNow's network pot is collected chips ONLY. The current merged tB
+    // contains uncollected wagers (including blinds and folded dead money).
+    // Normalize here exactly once; consumers receive an inclusive pre-call pot.
+    // Action history must not resurrect bets after <D> collection or a refund.
     var streetCommitments = {};
-    actions.filter(function (action) { return action.street === street && action.playerId && numeric(action.resultingCommitment); }).forEach(function (action) { streetCommitments[action.playerId] = action.resultingCommitment; });
-    Object.keys(tB).forEach(function (playerId) { if (!Object.prototype.hasOwnProperty.call(streetCommitments, playerId) && numeric(tB[playerId])) streetCommitments[playerId] = tB[playerId]; });
+    Object.keys(tB).forEach(function (playerId) { streetCommitments[playerId] = numeric(tB[playerId]) && tB[playerId] >= 0 ? tB[playerId] : tB[playerId] === 'check' || tB[playerId] === CLEANUP_SENTINEL ? 0 : null; });
+    var pendingCollection = 0;
+    var previous = null;
+    var accountingUncertain = hand.observationLimitReached === true;
+    observations.forEach(function (observation) {
+      var snapshot = observation.currentState || {};
+      var bets = isObject(snapshot.tB) ? snapshot.tB : {};
+      var valid = isObject(snapshot.tB) && numeric(snapshot.pot) && snapshot.pot >= 0 && Object.keys(bets).every(function (id) { return numeric(bets[id]) && bets[id] >= 0 || bets[id] === 'check' || bets[id] === CLEANUP_SENTINEL; });
+      if (previous && phaseToStreet(snapshot.gT) !== 'terminal') {
+        var removed = Object.keys(previous.tB || {}).reduce(function (sum, id) { return sum + Math.max(0, (numeric(previous.tB[id]) ? previous.tB[id] : 0) - (numeric(bets[id]) ? bets[id] : 0)); }, 0);
+        if (removed > 0 && numeric(previous.pot)) pendingCollection = Math.max(pendingCollection, previous.pot + removed);
+        // A pot decrease or a refund cannot be reconstructed from action sums.
+        if (numeric(previous.pot) && numeric(snapshot.pot) && snapshot.pot < previous.pot) accountingUncertain = true;
+      }
+      if (valid && snapshot.pot >= pendingCollection) pendingCollection = 0;
+      previous = snapshot;
+    });
+    var liveWagerTotal = Object.keys(streetCommitments).reduce(function (sum, id) { return sum + (streetCommitments[id] || 0); }, 0);
+    var currentAccountingKnown = isObject(currentState.tB) && numeric(currentState.pot) && currentState.pot >= 0 && Object.keys(streetCommitments).every(function (id) { return streetCommitments[id] !== null; });
+    // A joined-mid-hand action list is not complete hand contribution proof.
+    // Only a retained blind start whose entire sum reconciles with the current
+    // inclusive pot may authorize the capped short-call fallback.
+    var contributionTotal = Object.keys(totalContributions).reduce(function (sum, id) { return sum + totalContributions[id]; }, 0);
+    var totalsComplete = bettingActive && hand.historyComplete && phaseToStreet(startState.gT) === 'preflop' && startState.pot === 0 && startState.sBPI && startState.bBPI && currentAccountingKnown && !pendingCollection && !accountingUncertain && Math.abs(contributionTotal - currentState.pot - liveWagerTotal) < 1e-8;
     var playerIds = Array.from(new Set(Object.keys(currentState.players || {}).concat(Object.keys(tB), Object.keys(streetCommitments), Object.keys(totalContributions), currentState.iHPI || [])));
     return clone({
       handId: hand.authoritativeHandId || hand.handId,
       lifecycleHandId: hand.handId,
       street: street,
-      actingPlayerId: currentActor(currentState),
-      currentPot: numeric(currentState.pot) ? currentState.pot : null,
+      actingPlayerId: bettingActive ? currentActor(currentState) : null,
+      currentPot: bettingActive && currentAccountingKnown && !pendingCollection && !accountingUncertain ? currentState.pot + liveWagerTotal : null,
+      potAccounting: 'inclusive-before-call',
+      collectedPot: numeric(currentState.pot) ? currentState.pot : null,
+      liveWagerTotal: bettingActive ? liveWagerTotal : null,
+      potStateUncertain: !bettingActive || !currentAccountingKnown || pendingCollection > 0 || accountingUncertain,
+      totalContributionsComplete: !!totalsComplete,
       players: playerIds.map(function (playerId) {
         var player = currentState.players && currentState.players[playerId] || {};
         var status = currentState.pGS && currentState.pGS[playerId];
         return {
           playerId: String(playerId),
-          streetContribution: numeric(streetCommitments[playerId]) ? streetCommitments[playerId] : 0,
+          streetContribution: !bettingActive ? null : Object.prototype.hasOwnProperty.call(streetCommitments, playerId) ? streetCommitments[playerId] : 0,
           totalContribution: hand.historyComplete && numeric(totalContributions[playerId]) ? totalContributions[playerId] : null,
           stack: numeric(player.stack) ? player.stack : null,
           folded: status === 'fold',
@@ -940,7 +1026,7 @@
           inHand: !Array.isArray(currentState.iHPI) || currentState.iHPI.map(String).includes(String(playerId))
         };
       }),
-      evidence: { source: 'semantic-hand-ledger live merged observations', observationCount: observations.length, latestSourceSequence: latest.sourceSequence, actionCount: actions.length, fields: ['tB', 'pITT/cPI', 'pGS', 'players.stack'] }
+      evidence: { source: 'semantic-hand-ledger live merged observations', observationCount: observations.length, latestSourceSequence: latest.sourceSequence, actionCount: actions.length, fields: ['pot (collected only)', 'tB (uncollected wagers)', 'pITT/cPI', 'pGS', 'players.stack'] }
     });
   }
 
@@ -954,9 +1040,11 @@
     restoreActiveHandSnapshot: restoreActiveHandSnapshot,
     observe: observe,
     finalizationReadiness: finalizationReadiness,
+    statisticalCoverage: statisticalCoverage,
     finalize: finalize,
     discard: discard,
     liveBettingState: liveBettingState,
+    highestBetMatches: highestBetMatches,
     inspect: inspect
   });
   root.PokerSemanticHandLedger = api;

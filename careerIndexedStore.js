@@ -5,15 +5,17 @@
   var aggregator = root.PokerCareerStatsAggregator;
   var phaseOne = root.PokerCareerContributionStore;
   var filteredStats = root.PokerFilteredStats;
+  var identityEligibility = root.PokerPlayerIdentityEligibility;
   if (typeof module !== 'undefined' && module.exports) {
     aggregator = require('./careerStatsAggregator.js');
     phaseOne = require('./careerContributionStore.js');
     filteredStats = require('./filteredStats.js');
+    identityEligibility = require('./playerIdentityEligibility.js');
   }
-  var api = factory(aggregator, phaseOne, filteredStats);
+  var api = factory(aggregator, phaseOne, filteredStats, identityEligibility);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PokerCareerIndexedStore = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Aggregator, PhaseOneStore, FilteredStats) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Aggregator, PhaseOneStore, FilteredStats, IdentityEligibility) {
   'use strict';
 
   var DATABASE_NAME = 'PokerNowHUDCareer';
@@ -1819,6 +1821,7 @@
         var state = request.result || emptyProjectionState();
         state.ledgerRevision = projectionToken(); state.status = 'stale'; state.reason = reason;
         store.put(state);
+        if (IdentityEligibility) tx.objectStore(STORE_CONTROL).put(IdentityEligibility.control({ bank: tx.route.bank, careerGeneration: tx.route.careerGeneration, ledgerRevision: state.ledgerRevision }, projectionToken()));
         var membershipRequest = store.get(HAND_MEMBERSHIP_STATE_KEY);
         membershipRequest.onsuccess = function () { try {
           if (membershipRequest.result) {
@@ -2799,6 +2802,99 @@
     }
     var dashboardCache = new Map(); var trendCache = new Map(); var trendPending = new Map(); var trendGeneration = 0;
     function invalidateDashboardPlayers(playerIds) { (playerIds || []).map(String).forEach(function (playerId) { Array.from(dashboardCache.keys()).forEach(function (key) { if (key.indexOf(playerId + '|') === 0) dashboardCache.delete(key); }); Array.from(trendCache.keys()).forEach(function (key) { if (key.indexOf(playerId + '|') === 0) trendCache.delete(key); }); }); }
+    // Only link-validity metadata is maintained here. No Person query or statistic
+    // is enabled. Existing route/ledger fences invalidate all older evidence on
+    // bulk removal/Replace/Merge/import; this bounded hook diagnoses an accepted
+    // hand immediately without scanning any other hand or the identity population.
+    function maintainIdentityConflictAppend(tx, record, ledgerRevision, fail) {
+      if (record.players.length > 32) return; // Old evidence is route-stale regardless.
+      var control = tx.objectStore(STORE_CONTROL), identityNS = 'pnhudIdentityV1', proofNS = 'pnhudIdentityValidationV1';
+      var ids = new Set(), persons = new Set();
+      record.players.forEach(function (entry) {
+        var id = entry.playerId;
+        if (typeof id !== 'string' && typeof id !== 'number') return;
+        ids.add(JSON.stringify([typeof id, id]));
+        // Probe the other exact legacy type too, diagnosing rather than coercing it.
+        if (typeof id === 'number') ids.add(JSON.stringify(['string', String(id)]));
+        else if (Number.isSafeInteger(Number(id)) && Number(id) >= 0 && String(Number(id)) === id) ids.add(JSON.stringify(['number', Number(id)]));
+      });
+      ids.forEach(function (key) {
+        var rawRequest = control.get([identityNS, 'player', JSON.parse(key)]);
+        rawRequest.onsuccess = function () { try {
+          var raw = rawRequest.result;
+          if (!raw || typeof raw.personId !== 'string' || persons.has(raw.personId)) return;
+          persons.add(raw.personId);
+          var personRequest = control.get([identityNS, 'person', raw.personId]);
+          var revisionRequest = control.get([identityNS, 'control']);
+          var values = {}, loaded = 0;
+          function publish() {
+            if (++loaded !== 2) return;
+            var person = values.person, revision = values.revision;
+            if (!person || person.personId !== raw.personId || !Array.isArray(person.members) || person.members.length > 32 ||
+                person.members.some(function (id) { return !(typeof id === 'string' && id.length > 0 && id.length <= 500 || typeof id === 'number' && Number.isSafeInteger(id) && id >= 0); }) ||
+                !revision || !Number.isSafeInteger(revision.identityRevision)) return;
+            var keys = new Set(person.members.map(function (id) { return JSON.stringify([typeof id, id]); }));
+            var aliases = new Map(person.members.map(function (id) { return [String(id), JSON.stringify([typeof id, id])]; }));
+            var aliasConflict = record.players.some(function (entry) { return aliases.has(String(entry.playerId)) && !keys.has(JSON.stringify([typeof entry.playerId, entry.playerId])); });
+            var positive = record.players.filter(function (entry) { return keys.has(JSON.stringify([typeof entry.playerId, entry.playerId])) && entry.counters.hands > 0; }).map(function (entry) { return entry.playerId; });
+            var proof = { key: [proofNS, person.personId], schemaVersion: 1, personId: person.personId, members: person.members,
+              identityRevision: revision.identityRevision, route: { bank: tx.route.bank, careerGeneration: tx.route.careerGeneration, ledgerRevision: ledgerRevision },
+              status: aliasConflict ? 'UNRESOLVED' : positive.length > 1 ? 'CONFLICTING' : 'UNRESOLVED',
+              overlaps: !aliasConflict && positive.length > 1 ? [{ handKey: record.handKey, playerIds: positive }] : [],
+              unresolved: aliasConflict ? [{ code: 'TYPED_ID_ALIAS' }] : positive.length > 1 ? [] : [{ code: 'CAREER_CHANGED_REVALIDATE' }], combinedAvailable: false };
+            if (new TextEncoder().encode(JSON.stringify(proof)).length <= 65536) control.put(proof);
+            // Oversize/malformed sidecars cannot renew a certificate: its old route
+            // is already stale. Career raw-ID publication remains independent.
+          }
+          personRequest.onsuccess = function () { try { values.person = personRequest.result; publish(); } catch (e) { fail(e); } };
+          revisionRequest.onsuccess = function () { try { values.revision = revisionRequest.result; publish(); } catch (e) { fail(e); } };
+        } catch (e) { fail(e); } };
+      });
+    }
+    async function maintainPublishedIdentityAppend(tx, record, handValues, supersession, ledgerRevision) {
+      var E = IdentityEligibility;
+      // A writer without this policy cannot silently preserve permission: the
+      // publication controller's ledger fence then differs from the current route.
+      if (!E) return;
+      var store = tx.objectStore(STORE_CONTROL), before = tx.route;
+      var after = { bank: before.bank, careerGeneration: before.careerGeneration, ledgerRevision: ledgerRevision };
+      var prior = await requestPromise(store.get(E.key('control')));
+      var tracked = E.validControl(prior, before), epoch = tracked ? prior.epoch : projectionToken();
+      var physical = handValues.map(function (w) { return w.record; }).concat([record]);
+      var bounded = record.players.length <= 32 && physical.length <= 32 &&
+        new TextEncoder().encode(JSON.stringify(physical)).length <= 2 * 1024 * 1024 &&
+        physical.every(function (r) { return r && Array.isArray(r.players) && r.players.length <= 32; }) &&
+        handValues.every(function (w) { return JSON.stringify(w.playerIds) === JSON.stringify(w.record.players.map(function (p) { return String(p.playerId); })); });
+      if (!bounded) { store.put(E.control(after, projectionToken())); return; }
+      var keys = new Set(), persons = new Set();
+      // Include earlier versions: a changed legacy type must reach its old Person.
+      physical.forEach(function (r) { r.players.forEach(function (p) {
+        var id = p.playerId;
+        if (!E.usableRawId(id)) { bounded = false; return; }
+        keys.add(JSON.stringify([typeof id, id]));
+        if (typeof id === 'number') keys.add(JSON.stringify(['string', String(id)]));
+        else if (Number.isSafeInteger(Number(id)) && Number(id) >= 0 && String(Number(id)) === id) keys.add(JSON.stringify(['number', Number(id)]));
+      }); });
+      if (!bounded || keys.size > 64) { store.put(E.control(after, projectionToken())); return; }
+      store.put(E.control(after, epoch));
+      var rawRows = await Promise.all(Array.from(keys, function (k) { return requestPromise(store.get(['pnhudIdentityV1', 'player', JSON.parse(k)])); }));
+      rawRows.forEach(function (raw) { if (raw && typeof raw.personId === 'string') persons.add(raw.personId); });
+      if (!persons.size || !tracked) return; // Fresh epoch invalidates every prior certificate.
+      var revision = await requestPromise(store.get(['pnhudIdentityV1', 'control']));
+      await Promise.all(Array.from(persons, async function (personId) {
+        var values = await Promise.all([requestPromise(store.get(['pnhudIdentityV1', 'person', personId])),
+          requestPromise(store.get(E.key('membership', personId))), requestPromise(store.get(E.key('certificate', personId)))]);
+        var person = values[0], member = values[1], saved = values[2];
+        if (!saved) return;
+        if (!person || !Array.isArray(person.members) || person.members.length > 32) { store.delete(E.key('certificate', personId)); return; }
+        var rows = await Promise.all(person.members.map(function (id) { return requestPromise(store.get(['pnhudIdentityV1', 'player', [typeof id, id]])); }));
+        var state;
+        try { state = E.scopedState(person, rows, revision); }
+        catch (_invalid) { store.delete(E.key('certificate', personId)); return; }
+        var next = E.advance(saved, state, personId, before, after, prior, member, physical, record, supersession, Date.now());
+        if (next) store.put(next); else store.delete(E.key('certificate', personId));
+      }));
+    }
     async function append(record) {
       var error = Aggregator.validateRecord(record); if (error) return { accepted: false, duplicate: false, conflict: false, reason: error };
       await ensureContextAggregates();
@@ -2823,6 +2919,8 @@
           var oldLedgerRevision = projectionState.ledgerRevision;
           maintainSessionProjectionAppend(tx, planned.record, handValues, planned.supersession, projectionState, fail);
           maintainMembershipAppend(tx, planned.record, handValues, planned.supersession, membershipState, oldLedgerRevision, projectionState.ledgerRevision, fail);
+          maintainIdentityConflictAppend(tx, planned.record, projectionState.ledgerRevision, fail);
+          maintainPublishedIdentityAppend(tx, planned.record, handValues, planned.supersession, projectionState.ledgerRevision).catch(fail);
           var situations = Aggregator.careerSituationMap(record);
           record.players.forEach(function (entry) {
             var id = String(entry.playerId);
@@ -3715,7 +3813,7 @@
 
   // Local extension-page/dedicated-worker reader. Never dispatched through MV3
   // messaging, never initializes/migrates/repairs Career, never reads sidecars.
-  async function createBackupV2Source(indexedDB, codec) {
+  async function createBackupV2Source(indexedDB, codec, participant) {
     var db = await new Promise(function (resolve, reject) {
       var request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION), blocked = false;
       request.onupgradeneeded = function () { request.transaction.abort(); };
@@ -3735,6 +3833,9 @@
       var completion = transactionPromise(tx); completion.catch(function () {});
       try {
         var metadata = await requestPromise(tx.objectStore(STORE_METADATA).get('career')), current = tokenFor(tx, metadata);
+        // An internal portable-metadata participant shares this routed native
+        // snapshot and the final close lock. Existing v2 callers omit it.
+        if (participant) current.participant = await participant.capture(tx.objectStore(STORE_CONTROL));
         if (token && canonicalJson(token) !== canonicalJson(current)) throw changed();
         return { tx: tx, completion: completion, token: current };
       } catch (error) { try { tx.abort(); } catch (_) {} await completion.catch(function () {}); throw error; }
@@ -3795,7 +3896,7 @@
         runtime.sendMessage({ type: MESSAGE_TYPE, method: method, args: Array.isArray(args) ? args : [] }, function (response) {
           var runtimeError = runtime.lastError;
           if (runtimeError) { reject(new Error(runtimeError.message || String(runtimeError))); return; }
-          if (!response || response.ok !== true) { reject(new Error(response && response.error || 'Career service worker returned no response')); return; }
+          if (!response || response.ok !== true) { var error = new Error(response && response.error || 'Career service worker returned no response'); error.code = response && response.code || null; reject(error); return; }
           resolve(response.value);
         });
       });
@@ -3811,6 +3912,9 @@
       careerHudStats: function (playerIds) { return request('careerHudStats', [normalizedPlayerIds(playerIds)]); },
       careerPlayers: function () { return request('careerPlayers'); },
       careerPlayerSummaries: function () { return request('careerPlayerSummaries'); },
+      readAssignedNames: function () { return request('readAssignedNames'); },
+      readPlayerAssignedName: function (id) { return request('readPlayerAssignedName', [id]); },
+      setPlayerAssignedName: function (id, name, revision) { return request('setPlayerAssignedName', [id, name, revision]); },
       careerSessionProjectionState: function () { return request('careerSessionProjectionState'); },
       careerHandMembershipState: function () { return request('careerHandMembershipState'); },
       backfillCareerHandMemberships: function (options) { return request('backfillCareerHandMemberships', [options || {}]); },
@@ -3849,6 +3953,9 @@
   }
 
   return Object.freeze({
+    // Internal readonly identity queries reuse these exact Career projections.
+    identityQueries: Object.freeze({ validSummaryHead: validSummaryHead, unfiltered: unfilteredResultFromCache,
+      context: contextResultFromCache, comparisons: comparisonContextsFromCache, profile: profileStatsFromCache }),
     // Local inactive-bank builder shares the established cache/head contract.
     portability: Object.freeze({ cacheForPlayer: cacheForPlayer, summaryHead: summaryHead, validCache: validCache }),
     routing: Object.freeze({ transaction: routedTransaction, openDatabase: openDatabase, controlStore: STORE_CONTROL,

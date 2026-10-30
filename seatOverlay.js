@@ -755,7 +755,7 @@
 
       accepted.forEach(function (entry, playerId) {
         var current = records.get(playerId);
-        var nextStatsKey = statsKey(entry.stats, entry.displayedStatIds, entry.opportunityStatsLayout, entry.statSource);
+        var nextStatsKey = statsKey(entry.stats, entry.displayedStatIds, entry.opportunityStatsLayout, entry.statSource) + '|' + JSON.stringify(entry.assignedName || '');
         var nextProfileKey = profilePresentationKey(entry.displayedProfile, entry.showPlayerProfiles, entry.profileStatSource, entry.statSource);
         var nextRectKey = rectKey(entry.rect);
         if (!current) {

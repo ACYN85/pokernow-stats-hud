@@ -21,7 +21,7 @@
     var backend = info && (info.backend === 'extension-service-worker-indexeddb' || info.backend === 'indexeddb');
     var schema = info && info.storageSchemaVersion === 2;
     var migrated = info && info.migration && info.migration.state === 'complete';
-    var clean = info && Number(info.quarantinedHandCount || 0) === 0;
+    var clean = info && Number(info.quarantinedHandCount || 0) === 0 && Number(info.retainedOutboxConflictCount || 0) === 0;
     return ready && backend && schema && migrated && clean
       ? { key: 'healthy', label: 'Healthy', description: 'Career database is ready.' }
       : { key: 'attention', label: 'Attention needed', description: 'Career database requires attention. Open diagnostics for details.' };
@@ -125,7 +125,8 @@
       row('Storage schema', info && info.storageSchemaVersion ? 'v' + info.storageSchemaVersion : 'Unknown') +
       row('Backup format', 'v1 / v2') +
       row('Last accepted hand', dateText(info && info.latestAcceptedAt)) +
-      row('Quarantined hands', Number(info && info.quarantinedHandCount || 0)) + '</dl></div>' +
+      row('Quarantined hands', Number(info && info.quarantinedHandCount || 0)) + row('Retained pending conflicts',Number(info && info.retainedOutboxConflictCount || 0)) + '</dl>' +
+      (Number(info && info.retainedOutboxConflictCount || 0)>0?'<p class="pnhud-career-warning" role="status">Some earlier pending hand records conflict with saved Career history. Both originals are retained for explicit review; they were not merged or deleted. Other saved history and new valid hands remain available. Backup and replacement stay blocked while these conflicts are unresolved, so no complete backup silently omits them.</p>':'')+'</div>' +
       '<section class="pnhud-career-data-group"><h3>Session</h3><p>Clear this room\'s retained Session statistics, lifecycle state, and manual seat positions. Career history, notes, tracked-player metadata, and HUD settings are kept.</p><div class="pnhud-career-data-actions"><button type="button" class="pnhud-data-reset-session"' + (state.busy ? ' disabled' : '') + '>Reset Session</button></div></section>' +
       '<section class="pnhud-career-data-group"><h3>Career</h3><p>Remove exact Career logical hands proven to belong to the currently retained Session, for every participant, then reset Session.</p><div class="pnhud-career-data-actions"><button type="button" class="pnhud-career-remove-session pnhud-destructive"' + (!ready || state.busy || !sessionHandCount ? ' disabled' : '') + '>Remove Current Session from Career &amp; Reset</button></div>' + (removalFlowActive ? flowMessage(state, 'removal') + removalPreviewHtml(state.removalPreview) : '') + '</section>' +
       '<section class="pnhud-career-data-group"><h3>Backup v2 — large history</h3><p>Export, Replace, and Merge are certified for up to 150,000 physical records. Each opens a separate transfer page; keep it open until completion. Use a NEW backup filename: interrupted overwrite can destroy existing content, and incomplete files are invalid. Replace replaces Career and resets the selected Session; Merge combines compatible histories, preserves Session, and rejects conflicts instead of overwriting them.</p><div class="pnhud-career-data-actions"><button type="button" data-career-backup-v2="export"' + (!ready || state.busy ? ' disabled' : '') + '>Export Backup v2</button><button type="button" data-career-backup-v2="import"' + (!ready || state.busy ? ' disabled' : '') + '>Restore or Merge Backup v2</button></div></section>' +
@@ -140,6 +141,7 @@
   }
   function errorMessage(error) {
     var text = String(error && error.message || error || '');
+    if (/pending.*(?:outbox|record).*rejected.*conflicting duplicate hand key/i.test(text)) return 'Backup is blocked by a conflicting pending hand. Saved history and the pending original are unchanged. Review the retained conflict before exporting or replacing data.';
     if (error && /SIZE_LIMIT/.test(String(error.code || '')) || /exceeds the (?:V1 supported|supported decompressed|supported compressed) size/i.test(text)) return text + (/database remains intact/i.test(text) ? '' : ' The career database remains intact.');
     if (error && error.code === 'CAREER_PORTABLE_API_UNAVAILABLE') return text;
     if (error && error.code === 'CAREER_PORTABLE_GZIP_INVALID' || /gzip data is invalid|gzip data is invalid or truncated/i.test(text)) return 'Compressed Career data is invalid, damaged, or truncated. Nothing was changed.';

@@ -1,3 +1,9 @@
+# V1.6.0 compatibility limitations
+
+The current limits and conditional-GO evidence are in [V1.6 release notes](release/v1.6.0-notes.md). Incomplete observations can be excluded; native gameplay stays disabled; Pot Odds dialog layering is deferred. The earlier material below describes V1.5 and is retained as history.
+
+## Preserved V1.5 documentation
+
 # Known limitations — V1.5.0
 
 - Backup v2 Export/Replace/Merge portability is certified through 150,000 physical records. 250k portability is not certified. This is a bounded fixture certification, not an unlimited-capacity promise.

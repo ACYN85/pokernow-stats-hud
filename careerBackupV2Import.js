@@ -31,6 +31,7 @@
     var mode = options.mode === undefined ? 'replace' : options.mode;
     if (!['replace', 'merge'].includes(mode)) fail('MODE', 'Unsupported import mode.');
     var merge = mode === 'merge', localProofs = 0, localHeader, localChain, mergedBoundary, noChange = false;
+    var participant = options.nativeParticipant;
     var signal = options.signal, db = await open(), S = I.STORES, R = I.routing, job, header, transport, sequence = 0;
     var started = performance.now(), metrics = { batchSize: BATCH, sortRows: SORT_ROWS, sortBytes: SORT_BYTES, sortFanIn: FAN_IN,
       maxChainRecords: MAX_CHAIN, maxBufferedRecords: 0, maxPendingWriteBatches: 1, maxWorkerPageQueueDepth: 1,
@@ -110,7 +111,7 @@
             var t = performance.now();
             await transaction([S.records], 'readwrite', function (tx) {
               var end = Math.min(rows.length, offset + BATCH), s = stores(tx);
-              for (var i = offset; i < end; i++) s.records.add(I.recordWrapper(rows[i], ++sequence));
+              for (var i = offset; i < end; i++) { if (participant && participant.recordLocal) participant.recordLocal(rows[i]); s.records.add(I.recordWrapper(rows[i], ++sequence)); }
               if (end === rows.length) s.metadata.put({ key: ['v2LocalChunk', localProofs], recordCount: rows.length,
                 firstFingerprint: rows[0].fingerprint, lastFingerprint: rows[rows.length - 1].fingerprint, chain: proof.chain });
               metrics.localCopyTransactions++; metrics.maxStagingBatchRecords = Math.max(metrics.maxStagingBatchRecords, end - offset);
@@ -354,6 +355,7 @@
       check(); var tx = db.transaction([R.controlStore, S.metadata, R.bankStore(S.metadata, 'B')], 'readwrite'), completion = done(tx); completion.catch(function () {});
       try {
         var control = await request(tx.objectStore(R.controlStore).get('active')), captured = await destination(tx, control);
+        if (participant) await participant.capture(tx.objectStore(R.controlStore));
         job = { key: JOB, mode: mode, id: crypto.randomUUID(), bank: captured.bank === 'A' ? 'B' : 'A', destination: captured,
           careerGeneration: crypto.randomUUID(), ledgerRevision: crypto.randomUUID(), status: 'staging' };
         tx.objectStore(R.controlStore).put(job); await completion;
@@ -374,6 +376,7 @@
                 var end = Math.min(records.length, offset + BATCH), store = stores(tx).records;
                 for (var i = offset; i < end; i++) {
                   var r = records[i], existing = merge ? await request(store.get(r.fingerprint)) : null;
+                  if (participant) participant.record(r);
                   if (existing) {
                     if (C.recordText(existing.record) !== C.recordText(r)) { metrics.conflicts++; fail('MERGE_CONFLICT', 'Same physical identity has different immutable content.'); }
                     metrics.identicalDuplicates++;
@@ -389,6 +392,7 @@
             }
           } });
       });
+      if (participant) await participant.verifyInput(header, transport);
       await phase('validating-career', validateGraph);
       var pass = await phase('sorting-authority', sortRuns);
       await phase('rebuilding-aggregates', function () { return rebuild(pass, false); });
@@ -401,7 +405,7 @@
       if (merge && (sequence !== metrics.localPhysicalRecords + metrics.uniqueImportedAdditions || transport.totalPhysicalRecords !== metrics.identicalDuplicates + metrics.uniqueImportedAdditions))
         fail('STAGED_INVALID', 'Merge duplicate accounting differs.');
       var finalChain = merge ? (await phase('verifying-union', unionDigest)).finalChain : transport.finalChain;
-      noChange = merge && metrics.uniqueImportedAdditions === 0 && equal(mergedBoundary, job.destination.careerMetadata);
+      noChange = !participant && merge && metrics.uniqueImportedAdditions === 0 && equal(mergedBoundary, job.destination.careerMetadata);
       await phase('removing-scratch', removeScratch);
       var metadata = I.replacementPlan([], mergedBoundary, { backupFormatVersion: 2, payloadDigest: finalChain }).metadata;
       Object.assign(metadata, { physicalRecordCount: sequence, activeRecordCount: metrics.activeRecords, nextSequence: sequence });
@@ -426,6 +430,10 @@
             if (owner.status !== 'ready' || owner.mode !== mode || owner.finalChain !== finalChain) fail('STAGED_INVALID', 'Import staging is not verified.');
             var m = stores(tx).metadata, saved = await request(m.get('career'));
             if (!equal(saved, metadata)) fail('STAGED_INVALID', 'Staged Career metadata changed.');
+            // Internal v3 participant writes only shared native metadata. Its
+            // CAS and writes commit with this exact bank flip, never afterward.
+            if (participant) await participant.publish(tx.objectStore(R.controlStore), {
+              bank: job.bank, careerGeneration: job.careerGeneration, ledgerRevision: job.ledgerRevision });
             if (noChange) { owner.status = 'no-change'; tx.objectStore(R.controlStore).put(owner); return; }
             tx.objectStore(R.controlStore).put({ key: 'active', version: 1, bank: job.bank, careerGeneration: job.careerGeneration });
             m.put({ key: I.SESSION_PROJECTION_STATE_KEY, version: 1, status: 'absent', careerGeneration: job.careerGeneration, ledgerRevision: job.ledgerRevision });

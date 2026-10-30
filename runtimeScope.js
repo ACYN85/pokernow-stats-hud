@@ -1,7 +1,10 @@
 /* Shared PokerNow game-page scope contract for one Chrome execution world. */
 (function (root) {
   'use strict';
-  var PNHUD_BUILD_ID = 'v1.5.0-rc2-20261006-2218';
+  var PNHUD_BUILD_ID = 'v1.6.0-compatibility-20261030-final';
+  // Set only by the explicit local compatibility-candidate assembly.
+  var PNHUD_COMPATIBILITY_ONLY = true;
+  var PNHUD_COMPATIBILITY_PERSON_POLICY = "manual-opaque-ledger-v1";
   console.log('[HUD BUILD] runtimeScope ' + PNHUD_BUILD_ID);
 
   function locationParts(locationLike) {
@@ -36,6 +39,8 @@
 
   var runtimeScope = Object.freeze({
     buildId: PNHUD_BUILD_ID,
+    compatibilityOnly: PNHUD_COMPATIBILITY_ONLY,
+    compatibilityPersonPolicy: PNHUD_COMPATIBILITY_PERSON_POLICY,
     isPokerNowGamePage: isPokerNowGamePage,
     isSupportedLocation: isPokerNowGamePage
   });

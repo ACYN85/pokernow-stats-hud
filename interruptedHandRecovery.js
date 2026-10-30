@@ -12,6 +12,28 @@
     }).map(String))).sort();
   }
 
+  // A mapped PokerNow hand fact, not source/account authorization. hI alone is
+  // insufficient: require the observed Hold'em frame, counter, roster and blinds.
+  function pokerNowHandIdentity(s) {
+    function id(v) { return typeof v === 'string' && v.length > 0 && v.length <= 500 && v !== '<D>' && !/[\u0000-\u001f\u007f]/.test(v); }
+    if (!s || !id(s.hI) || !Number.isSafeInteger(s.gN) || s.gN < 1 || !Array.isArray(s.gT) || s.gT.length !== 2 || s.gT[0] !== 1 || ![0,1,2,3,5].includes(s.gT[1])) return null;
+    var roster = s.iHPI;
+    if (!Array.isArray(roster) || roster.length < 2 || !roster.every(id) || new Set(roster).size !== roster.length || !id(s.sBPI) || !id(s.bBPI) || s.sBPI === s.bBPI || !roster.includes(s.sBPI) || !roster.includes(s.bBPI) || !s.players || typeof s.players !== 'object' || roster.some(function (p) { return !s.players[p] || typeof s.players[p] !== 'object'; })) return null;
+    if (['handId','hand_id','handUuid','currentHandId'].some(function (k) { return s[k] !== undefined && s[k] !== s.hI; })) return null;
+    return { handId:s.hI, gameNumber:s.gN, dealer: id(s.dealerID) && roster.includes(s.dealerID) ? s.dealerID : null };
+  }
+
+  function retainedFingerprint(hand) {
+    var meta=hand && hand.recoveryMetadata, original=meta && meta.fingerprint;
+    if (!original || !meta.boundaryVerified) return original;
+    var shadow=hand.semanticHandLedgerSnapshot, saved=shadow && shadow.schemaVersion===1 && shadow.kind==='semantic-active-hand-shadow' && shadow.hand;
+    if (!saved || String(saved.handId)!==String(hand.handId) || saved.historyComplete!==true || !Array.isArray(saved.observations) || !saved.observations.length) return original;
+    var fact=pokerNowHandIdentity(saved.observations[0].currentState);
+    if (!fact || saved.observations.some(function (o) { var s=o.currentState;return !s || s.hI!==fact.handId || s.gN!==fact.gameNumber; })) return original;
+    if (original.explicitHandId && String(original.explicitHandId)!==fact.handId || original.dealerOrButton && fact.dealer && original.dealerOrButton!==fact.dealer || original.pokerNowGameNumber && original.pokerNowGameNumber!==fact.gameNumber) return original;
+    return Object.assign({}, original, { explicitHandId:original.explicitHandId || fact.handId, dealerOrButton:original.dealerOrButton || fact.dealer, pokerNowGameNumber:fact.gameNumber });
+  }
+
   function sameArray(left, right) {
     left = sorted(left);
     right = sorted(right);
@@ -49,7 +71,7 @@
 
   function fingerprint(input) {
     input = input || {};
-    return {
+    var result = {
       explicitHandId: input.explicitHandId === null || input.explicitHandId === undefined ? null : String(input.explicitHandId),
       participantIds: sorted(input.participantIds),
       smallBlindPlayerId: input.smallBlindPlayerId === null || input.smallBlindPlayerId === undefined ? null : String(input.smallBlindPlayerId),
@@ -58,6 +80,8 @@
       boardCardCount: Number(input.boardCardCount || 0),
       settlementPresent: Boolean(input.settlementPresent)
     };
+    if(Number.isSafeInteger(input.pokerNowGameNumber) && input.pokerNowGameNumber>0)result.pokerNowGameNumber=input.pokerNowGameNumber;
+    return result;
   }
 
   function compare(persisted, current) {
@@ -84,7 +108,11 @@
     var boardCompatible = current.boardCardCount >= persisted.boardCardCount;
     if (boardCompatible) evidence.push('board progression is non-regressive');
     else missing.push('board regressed relative to persisted unfinished hand');
-    var verified = !current.settlementPresent && boardCompatible && (
+    var explicitConflict=Boolean(persisted.explicitHandId && current.explicitHandId && !explicitMatch);
+    var sourceCounterConflict=Boolean(persisted.pokerNowGameNumber && persisted.pokerNowGameNumber!==current.pokerNowGameNumber);
+    var positionConflict=['smallBlindPlayerId','bigBlindPlayerId','dealerOrButton'].some(function(k){return persisted[k] && current[k] && persisted[k]!==current[k];});
+    if(sourceCounterConflict)missing.push('PokerNow game counter is missing or changed');
+    var verified = !explicitConflict && !sourceCounterConflict && !positionConflict && !current.settlementPresent && boardCompatible && (
       explicitMatch && participantsMatch ||
       participantsMatch && blindsMatch && dealerMatch
     );
@@ -150,6 +178,8 @@
   var api = Object.freeze({
     createState: createState,
     fingerprint: fingerprint,
+    pokerNowHandIdentity: pokerNowHandIdentity,
+    retainedFingerprint: retainedFingerprint,
     compare: compare,
     attempt: attempt,
     remainsSameHand: remainsSameHand,

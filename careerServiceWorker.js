@@ -4,11 +4,95 @@
 importScripts('runtimeScope.js');
 var PNHUD_BUILD_ID = globalThis.PokerNowRuntimeScope && globalThis.PokerNowRuntimeScope.buildId || 'unavailable';
 
-importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'statEvidence.js', 'careerContributionStore.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js');
+importScripts('stats.js', 'careerStatsAggregator.js', 'filteredStats.js', 'statEvidence.js', 'careerContributionStore.js', 'playerIdentity.js', 'playerIdentityValidation.js', 'playerIdentityEligibility.js', 'careerIndexedStore.js', 'careerBackupPolicy.js', 'careerBackup.js');
+importScripts('playerIdentityStore.js');
 
 var careerServicePromise = null;
+var assignedNameStorePromise = null;
+// Optional private cold-start owner. No production import, route, gate or
+// persistence is installed here. Binding after bootstrap/replay started is
+// refused: an old native/Chrome ACK cannot be enrolled retrospectively.
+var careerLegacyWriterOwner = null;
+var careerLegacyWriterAttempts = 0, careerLegacyWriterPending = 0, careerLegacyWriterUnresolved = 0;
+function bindCareerLegacyWriterOwner(owner) {
+  if (globalThis.PokerNowRuntimeScope.compatibilityOnly) throw new Error('COMPATIBILITY_LEGACY_WRITER_REQUIRED');
+  if (careerLegacyWriterOwner) throw new Error('LEGACY_WRITER_OWNER_REUSE');
+  if (!owner || typeof owner.run !== 'function' || typeof owner.isCurrent !== 'function') throw new Error('LEGACY_WRITER_OWNER_REQUIRED');
+  if (careerLegacyWriterAttempts || careerLegacyWriterPending || careerLegacyWriterUnresolved) throw new Error('LEGACY_WRITER_COLD_START_REQUIRED');
+  careerLegacyWriterOwner = owner;
+}
+function inspectCareerLegacyWriter() {
+  return { bound: Boolean(careerLegacyWriterOwner), attempts: careerLegacyWriterAttempts,
+    pending: careerLegacyWriterPending, unresolved: careerLegacyWriterUnresolved };
+}
+function runCareerLegacyWriter(operation) {
+  careerLegacyWriterAttempts++; careerLegacyWriterPending++;
+  function check() {
+    if (careerLegacyWriterOwner && careerLegacyWriterOwner.isCurrent() !== true)
+      throw Object.assign(new Error('LEGACY_WRITE_FENCED'), { code: 'LEGACY_WRITE_FENCED' });
+  }
+  var pending, started = false;
+  try {
+    check();
+    function dispatch() {
+      if (started) throw new Error('LEGACY_WRITER_DISPATCH_REUSED');
+      started = true; check(); return operation();
+    }
+    pending = careerLegacyWriterOwner ? careerLegacyWriterOwner.run('storage-write', dispatch) : dispatch();
+  } catch (error) { pending = Promise.reject(error); }
+  return Promise.resolve(pending).then(function (value) {
+    careerLegacyWriterPending--;
+    try { if (!started) throw new Error('LEGACY_WRITER_DISPATCH_UNKNOWN'); check(); }
+    catch (error) { careerLegacyWriterUnresolved++; throw error; }
+    return value;
+  }, function (error) { careerLegacyWriterPending--; careerLegacyWriterUnresolved++; throw error; });
+}
+var sessionProducerProtocolEnabled = false;
+var sessionProducerProtocolBoundary = null;
+if (sessionProducerProtocolEnabled) {
+importScripts('sessionPublication.js', 'sessionLegacyMigration.js', 'sessionParticipationWitness.js', 'sessionAuthorityStore.js', 'sessionProducerCoordination.js', 'sessionFinalizedIntention.js', 'sessionQueueAssociation.js', 'sessionCheckpoint.js', 'sessionProducerProtocol.js', 'sessionProducerCoordinationStore.js', 'positionResolver.js', 'walkDetection.js', 'handFinalization.js', 'browserSourceEffects.js', 'browserSourceObserver.js', 'nativeSourceIssuer.js', 'nativeWaitingEffects.js', 'nativeWaitingStore.js', 'nativeSourceWorker.js');
+globalThis.nativeSourceWorker = PokerNativeSourceWorker.install(chrome, { enabled: true, indexedDB: indexedDB });
+}
+
+// UI-N5 activation preparation. This literal gate is independent of Session authority.
+var personManagementEnabled = false;
+if (personManagementEnabled) {
+importScripts('personAuthorization.js', 'playerIdentityLinkStore.js', 'playerIdentityCareer.js', 'playerIdentityCareerStore.js', 'playerIdentityCatalog.js', 'personAuthorityObservation.js');
+PokerPersonAuthorization.install({ runtime: chrome.runtime, enabled: function () { return personManagementEnabled; }, model: PokerPlayerIdentity,
+  openOwners: async function () {
+    var owners = {};
+    try {
+      owners.identity = await PokerPlayerIdentityStore.open(indexedDB);
+      owners.links = await PokerPlayerIdentityLinkStore.open(indexedDB);
+      owners.reader = await PokerPlayerIdentityCareerStore.open(indexedDB);
+      owners.catalog = await PokerPlayerIdentityCatalog.open(indexedDB);
+      owners.observer = await PokerPersonAuthorityObservation.open(indexedDB);
+      return owners;
+    } catch (e) { Object.values(owners).forEach(function (o) { o.close(); }); throw e; }
+  }
+});
+}
+function producerProtocolBoundary() {
+  if (!sessionProducerProtocolBoundary) sessionProducerProtocolBoundary = PokerSessionProducerProtocolBoundary.create({ enabled: true, indexedDB: indexedDB, extensionId: chrome.runtime.id });
+  return sessionProducerProtocolBoundary;
+}
+function protectedOutboxRecoverySelected() {
+  return sessionProducerProtocolEnabled && producerProtocolBoundary().preAcceptanceSelected();
+}
+function assignedNameStore() {
+  if (!assignedNameStorePromise) assignedNameStorePromise = PokerPlayerIdentityStore.open(indexedDB).catch(function (error) { assignedNameStorePromise = null; throw error; });
+  return assignedNameStorePromise;
+}
+async function notifyAssignedNamesChanged(revision) {
+  // Tab IDs are available without requesting access to tab URLs or titles.
+  try {
+    var tabs = await chrome.tabs.query({});
+    await Promise.all(tabs.map(function (tab) { return chrome.tabs.sendMessage(tab.id,
+      { type: 'PNHUD_ASSIGNED_NAMES_CHANGED', identityRevision: revision }).catch(function () {}); }));
+  } catch (_unavailable) { /* Opening an editor or Players always rereads DB5. */ }
+}
 var careerMutationQueue = Promise.resolve();
-var careerRuntimeDiagnostics = { initializationDurationMs: null, lastAppendDurationMs: null, lastReplaceDurationMs: null, lastMergeDurationMs: null };
+var careerRuntimeDiagnostics = { initializationDurationMs: null, lastAppendDurationMs: null, lastReplaceDurationMs: null, lastMergeDurationMs: null, retainedOutboxConflictCount:0 };
 var SESSION_PROJECTION_ALARM = 'pnhud-career-session-projections';
 var sessionProjectionDriverWork = null;
 var sessionProjectionScheduleWork = null;
@@ -128,21 +212,25 @@ async function readCareerBootstrapStorage() {
 }
 
 async function replayCareerOutbox(service) {
+  return runCareerLegacyWriter(async function () {
   if (typeof chrome.storage.local.getKeys !== 'function') return;
   var keys = await chrome.storage.local.getKeys();
   var outboxKeys = keys.filter(function (key) { return key.indexOf(PokerCareerIndexedStore.OUTBOX_PREFIX) === 0; });
   if (!outboxKeys.length) return;
   var saved = await chrome.storage.local.get(outboxKeys);
   var pending = PokerCareerIndexedStore.outboxRecords(saved);
+  if (pending.length && protectedOutboxRecoverySelected()) throw new Error('PRE_ACCEPTANCE_OUTBOX_RECOVERY_SUSPENDED');
   for (var index = 0; index < pending.length; index += 1) {
     var result = await service.append(pending[index].record);
     if (!result.accepted && !result.duplicate) throw new Error('Pending Career outbox record was rejected before data management: ' + result.reason);
     await chrome.storage.local.remove(pending[index].key);
   }
   if (pending.length) scheduleSessionProjectionWork().catch(function () {});
+  });
 }
 
 async function initializeCareerService() {
+  return runCareerLegacyWriter(async function () {
   var startedAt = monotonicNow();
   var saved = await readCareerBootstrapStorage();
   var service = await PokerCareerIndexedStore.createIndexedService(indexedDB, saved, {
@@ -150,8 +238,15 @@ async function initializeCareerService() {
     buildId: PNHUD_BUILD_ID
   });
   var pending = PokerCareerIndexedStore.outboxRecords(saved);
-  for (var index = 0; index < pending.length; index += 1) {
+  // An explicitly selected protected producer may inspect old obligations, but
+  // a worker restart never acquires its once-only first-delivery authorization.
+  careerRuntimeDiagnostics.retainedOutboxConflictCount=0;
+  for (var index = 0; index < pending.length && !protectedOutboxRecoverySelected(); index += 1) {
     var result = await service.append(pending[index].record);
+    // Valid but contradictory originals remain in the original outbox. They
+    // cannot overwrite Career or silently disappear, but need not block reads
+    // and unrelated valid hands. Data export/publication keeps its strict drain.
+    if(result.conflict===true && !result.accepted && !result.duplicate){careerRuntimeDiagnostics.retainedOutboxConflictCount++;continue;}
     if (!result.accepted && !result.duplicate) throw new Error('Pending career outbox record was rejected: ' + result.reason);
     await chrome.storage.local.remove(pending[index].key);
   }
@@ -165,6 +260,7 @@ async function initializeCareerService() {
   await chrome.storage.local.set(markerUpdate);
   careerRuntimeDiagnostics.initializationDurationMs = Math.round((monotonicNow() - startedAt) * 100) / 100;
   return service;
+  });
 }
 
 function careerService() {
@@ -178,7 +274,9 @@ function careerService() {
 }
 
 async function careerLedgerInfoWithBackupPolicy(service) {
-  return PokerCareerBackupPolicy.withDiagnostics(await service.careerLedgerInfo());
+  var info=PokerCareerBackupPolicy.withDiagnostics(await service.careerLedgerInfo());
+  info.retainedOutboxConflictCount=careerRuntimeDiagnostics.retainedOutboxConflictCount;
+  return info;
 }
 
 async function requireSupportedCareerExport(service) {
@@ -345,8 +443,41 @@ async function measuredCareerQueries(service, playerId) {
 }
 
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+  if (message && message.type === 'PNHUD_OPEN_PERSON_MANAGEMENT_V1') {
+    if (!personManagementEnabled) { sendResponse({ ok: false, code: 'PERSON_FEATURE_DISABLED' }); return false; }
+    if (!sender || sender.id !== chrome.runtime.id || sender.frameId !== 0 || sender.documentLifecycle !== 'active' || !sender.tab ||
+        !globalThis.PokerNowRuntimeScope.isPokerNowGamePage(sender.url) || Object.keys(message).join(',') !== 'type') {
+      sendResponse({ ok: false, code: 'PERSON_UNAUTHORIZED' }); return false;
+    }
+    // Opening the extension page grants no consent or mutation authority.
+    chrome.tabs.create({ url: chrome.runtime.getURL('personManagement.html'), openerTabId: sender.tab.id }).then(function () { sendResponse({ ok: true }); }, function () { sendResponse({ ok: false, code: 'PERSON_OPEN_FAILED' }); });
+    return true;
+  }
+  if (message && message.type === 'PNHUD_DORMANT_SESSION_PRODUCER_V1') {
+    if (!sessionProducerProtocolEnabled) { sendResponse({ ok: false, error: 'PRODUCER_PROTOCOL_INACTIVE', code: 'PRODUCER_PROTOCOL_INACTIVE' }); return false; }
+    producerProtocolBoundary().handle(message, sender).then(function (value) { sendResponse({ ok: true, value: value }); },
+      function (error) { sendResponse({ ok: false, error: String(error.message || error), code: error.code || null }); });
+    return true;
+  }
   if (!message || message.type !== PokerCareerIndexedStore.MESSAGE_TYPE) return false;
   (async function () {
+    if (['readAssignedNames', 'readPlayerAssignedName', 'setPlayerAssignedName'].indexOf(message.method) >= 0) {
+      if (!sender || sender.id !== chrome.runtime.id || !sender.tab ||
+          !globalThis.PokerNowRuntimeScope.isPokerNowGamePage(sender.url))
+        throw new Error('Assigned names are available only to the PokerNow HUD');
+      var args = message.args;
+      var count = message.method === 'readAssignedNames' ? 0 : message.method === 'readPlayerAssignedName' ? 1 : 3;
+      if (!Array.isArray(args) || args.length !== count) throw new Error('Invalid assigned-name request');
+      if (count) PokerPlayerIdentity.rawId(args[0]);
+      var names = await assignedNameStore();
+      if (message.method === 'readAssignedNames') return names.readAssignedNames();
+      if (message.method === 'readPlayerAssignedName') return names.readPlayerAssignedName(args[0]);
+      return queueCareerMutation(async function () {
+        var value = await names.setPlayerAssignedName(args[0], args[1], args[2]);
+        await notifyAssignedNamesChanged(value.identityRevision);
+        return value;
+      });
+    }
     if (message.method === 'openBackupV2Page') {
       var pages = { export: 'careerBackupV2Transfer.html', import: 'careerBackupV2Import.html' };
       var action = message.args && message.args[0];
@@ -359,7 +490,7 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     }
     var service = await careerService();
     if (message.method === 'prepareBackupV2Publication') {
-      if (!sender || sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL('careerBackupV2Import.html'))
+      if (!sender || sender.id !== chrome.runtime.id || !(sender.url === chrome.runtime.getURL('careerBackupV2Import.html') || globalThis.PokerNowRuntimeScope.compatibilityPersonPolicy === 'manual-opaque-ledger-v1' && sender.url === chrome.runtime.getURL('personManagement.html')))
         throw new Error('Backup v2 publication preparation is internal only');
       return queueCareerMutation(async function () { await replayCareerOutbox(service); await ensureSessionProjectionAlarm(); return { outboxReplayed: true }; });
     }
@@ -496,7 +627,7 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
       scheduleSessionProjectionWork().catch(function () {});
     sendResponse({ ok: true, value: value });
   }).catch(function (error) {
-    sendResponse({ ok: false, error: String(error && error.message || error) });
+    sendResponse({ ok: false, error: String(error && error.message || error), code: error && error.code || null });
   });
   return true;
 });

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Person account management — PokerNow HUD</title>
+  <link rel="stylesheet" href="hud.css"><link rel="stylesheet" href="personManagement.css">
+</head>
+<body>
+  <main>
+    <p id="page-context" class="page-context">Player Dashboard</p><h1 id="page-title">Link player accounts</h1><p id="page-intro">Keep original account records separate while viewing one person’s combined Career.</p>
+    <p id="authorization-status" role="status" aria-live="polite">Checking availability…</p>
+    <section id="consent" hidden aria-labelledby="consent-heading">
+      <h2 id="consent-heading">Choose whether to use Person linking</h2>
+      <ul id="consent-policy">
+        <li>You manually assert that selected PokerNow IDs belong to the same Person. The extension cannot verify real-world ownership.</li>
+        <li>Linking combines eligible Career presentation. Original hand statistics, raw IDs and notes stay unchanged.</li>
+        <li>Equal nicknames never establish the same identity. Historical IDs without trustworthy original type evidence are unavailable.</li>
+        <li>Grouped Session, Recent, History and Trends views are unavailable.</li>
+        <li>Backup v1/v2 omit Persons, custom names and typed memberships. Profile loss loses that work. Production activation requires a safe V1.6 backup policy.</li>
+      </ul>
+      <p>Consent applies to this document for up to 30 minutes. New documents, cached-page returns and worker/browser restarts require consent again. Each link and unlink has a separate review.</p>
+      <label><input id="consent-assertion" type="checkbox" aria-describedby="consent-policy"> I understand and choose manual Person management.</label>
+      <p><button id="accept-consent" type="button" disabled>Accept and continue</button> <button id="decline-consent" type="button">Keep disabled</button></p>
+    </section>
+    <p id="access-controls" hidden><button id="revoke-consent" type="button">End consent in all open account pages</button></p><section id="management" hidden aria-labelledby="management-heading">
+      <h2 id="management-heading">1. Choose a saved account</h2><ol class="linking-steps"><li>Choose an eligible account.</li><li>Create or choose a Person, then link another account.</li><li>Review linked accounts and combined Career. Unlink keeps original records.</li></ol><section id="account-state" class="account-state" role="status"><h3 id="account-state-title">Loading saved accounts…</h3><p id="account-state-message"></p><ul id="ineligible-accounts"></ul><p><button id="refresh-accounts" type="button" data-person-action="refresh">Refresh saved accounts</button> <button id="open-data-settings" type="button">Open Settings → Data</button></p></section>
+      <label for="raw-player">Saved account</label> <select id="raw-player" disabled><option value="">No saved accounts available</option></select>
+      <label id="statistics-view-label">Statistics view <select id="person-view"><option value="individual">Individual account</option><option value="combined">Combined Person</option></select></label>
+      <section id="pnhud-player-dashboard"></section><p id="catalog-status" role="status"></p>
+    </section>
+    <section id="person-backup" hidden><h2>Person + Career Backup</h2><p>Includes local Person associations and Career. Notes and Settings remain local and are not included. Older v1/v2 files contain Career only and cannot recover associations in a fresh profile.</p><p>Choose a NEW filename. Incomplete output is invalid.</p><button id="person-export">Export Person + Career</button><label>Import Person + Career file <input type="file" id="person-import"></label><label>Mode <select id="person-import-mode"><option value="merge">Merge and preserve live Session</option><option value="replace">Replace and reset selected Session</option></select></label><label>Selected Session <select id="person-import-session"><option value="">No live Session</option></select></label><button id="person-preview">Preview import</button><button id="person-cancel" disabled>Cancel / discard preview</button><p id="person-backup-status" role="status">Accept consent to use Person-aware backup.</p><pre id="person-backup-preview"></pre><label><input type="checkbox" id="person-backup-reviewed"> I reviewed the exact accounts, Persons, Career and replacement/merge scope.</label><button id="person-publish" disabled>Confirm import</button><p><a href="careerBackupV2Import.html">Import older v2 Career-only backup</a> (keeps local associations but cannot recover omitted associations). Backup v1 remains available in table Settings.</p></section>
+  </main>
+  <script src="stats.js"></script><script src="careerStatsAggregator.js"></script><script src="careerContributionStore.js"></script><script src="filteredStats.js"></script><script src="statEvidence.js"></script>
+  <script src="careerIndexedStore.js"></script><script src="playerIdentity.js"></script><script src="playerIdentityStore.js"></script><script src="playerIdentityValidation.js"></script><script src="playerIdentityEligibility.js"></script><script src="playerIdentityCatalog.js"></script>
+  <script src="playerInsights.js"></script><script src="personalLeakAnalysis.js"></script><script src="strategicImplications.js"></script><script src="playerDashboard.js"></script>
+  <script src="personCareerUi.js"></script><script src="personLinkingUi.js"></script><script src="personAuthorization.js"></script><script src="personManagementTransport.js"></script><script src="runtimeScope.js"></script><script src="compatibilityPersonCatalog.js"></script><script src="personManagementPage.js"></script><script src="compatibilityPersonBackupPage.js"></script>
+</body>
+</html>

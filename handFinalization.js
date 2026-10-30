@@ -117,7 +117,7 @@
 
   // Staged events never contribute to statistics. Only verified settlement or the
   // boundary of a distinct next hand may move a staged hand into finalizedEvents.
-  function commitHand(state, handId, reason, timestamp) {
+  function commitHand(state, handId, reason, timestamp, options) {
     handId = String(handId);
     var hand = state.stagedHands[handId];
     if (!hand) return { committed: false, duplicate: state.finalizedHandIds.has(handId), discarded: false, reason: 'no staged hand exists', addedEvents: [] };
@@ -127,7 +127,15 @@
       if (state.activeHandId === handId) state.activeHandId = null;
       return { committed: false, duplicate: false, discarded: true, reason: 'hand has no corroborated participants', addedEvents: [] };
     }
-    var staged = hand.events.filter(function (event) { return participants.includes(String(event.player)); });
+    // Optional inactive witness sidecar or read-only diagnostic request:
+    // preserve original staging ordinals without adding a property to the hand.
+    // This metadata never changes legacy participant filtering or event merging.
+    var witnessEventSources = hand.sessionParticipationCapture || options && options.observeEventSources === true ? [] : null;
+    var staged = hand.events.filter(function (event, ordinal) {
+      var included = participants.includes(String(event.player));
+      if (included && witnessEventSources) witnessEventSources.push(ordinal);
+      return included;
+    });
     var wasFinalized = state.finalizedHandIds.has(handId);
     var existingForHand = [];
     var retainedEvents = null;
@@ -143,6 +151,7 @@
     participants.forEach(function (player) {
       if (!staged.some(function (event) { return event.player === player; }) && !existingForHand.some(function (event) { return event.player === player; })) {
         staged.push({ handId: handId, playerId: hand.participants[player].playerId, player: player, action: 'dealt', street: 'preflop', amount: 0, timestamp: Number(timestamp || hand.updatedAt || Date.now()) });
+        if (witnessEventSources) witnessEventSources.push(null);
       }
     });
     var tableContextFact = {
@@ -165,7 +174,7 @@
     state.finalizedHandIds.add(handId);
     delete state.stagedHands[handId];
     if (state.activeHandId === handId) state.activeHandId = null;
-    return {
+    var result = {
       committed: !wasFinalized || addedEvents.length > 0,
       duplicate: wasFinalized && addedEvents.length === 0,
       reconciled: wasFinalized && addedEvents.length > 0,
@@ -177,6 +186,8 @@
       finalizedRangeLength: mergedForHand.length,
       work: { fullHistoryScans: fullHistoryScans, handEventsRead: existingForHand.length + staged.length }
     };
+    if (witnessEventSources && !wasFinalized) result.sessionParticipationEventSources = witnessEventSources;
+    return result;
   }
 
   function discardHand(state, handId, reason) {
@@ -194,7 +205,7 @@
     if (options.activate !== false && state.activeHandId && state.activeHandId !== handId) {
       var prior = state.stagedHands[state.activeHandId];
       if (prior && prior.recovered && !prior.observedAfterRecovery) priorResult = discardHand(state, state.activeHandId, 'recovered incomplete hand was not observed again before the next boundary');
-      else priorResult = commitHand(state, state.activeHandId, options.priorReason || 'next distinct hand began', options.timestamp);
+      else priorResult = commitHand(state, state.activeHandId, options.priorReason || 'next distinct hand began', options.timestamp, options);
     }
     var hand = ensureHand(state, handId, options.timestamp);
     if (options.activate !== false) state.activeHandId = handId;

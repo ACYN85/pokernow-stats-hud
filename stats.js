@@ -922,6 +922,9 @@
     var pending = null;
     var history = [];
     var maxHistory = Math.max(1, Number(options.maxHistory || 50));
+    // Optional dormant admission hooks use this same queue/scheduler. Ordinary
+    // callers never enter this branch or acquire asynchronous admission state.
+    var admissions = [], admitting = false, deferredCompletion = null;
 
     function record(entry) {
       history.push(entry);
@@ -930,8 +933,12 @@
 
     function start(item) {
       inFlight = item;
+      var settled = false;
       record({ type: 'started', revision: item.revision });
-      write(cloneJsonSafe(item.payload), item.revision, function (error) {
+      function complete(error) {
+        if (settled) return;
+        if (options.admit && admitting) { deferredCompletion = function () { complete(error); }; return; }
+        settled = true;
         completedRevision = Math.max(completedRevision, item.revision);
         record({ type: error ? 'failed' : 'completed', revision: item.revision, error: error ? String(error.message || error) : null });
         var callbacks = item.callbacks.slice();
@@ -942,10 +949,61 @@
           pending = null;
           start(next);
         }
-      });
+      }
+      try {
+        if (options.admit) write(cloneJsonSafe(item.payload), item.revision, complete, item.evidence || null);
+        else write(cloneJsonSafe(item.payload), item.revision, complete);
+      } catch (error) {
+        // A synchronous dispatch failure has the same failed completion boundary
+        // as an asynchronous storage error. Do not leave the queue in flight or
+        // confuse it with an exception thrown by a completion consumer.
+        if (settled) throw error;
+        complete(error);
+      }
     }
 
-    function enqueue(payload, callback) {
+    function admitNext() {
+      if (admitting || !admissions.length) return;
+      admitting = true;
+      var item = admissions.shift(), prior = pending || inFlight;
+      var proposal = { revision: item.revision, input: cloneJsonSafe(item.payload), inputEvidence: item.evidence,
+        payload: prior ? Object.assign({}, cloneJsonSafe(prior.payload), item.payload) : item.payload,
+        prior: prior ? { kind: pending ? 'pending' : 'in-flight', payload: cloneJsonSafe(prior.payload), evidence: prior.evidence || null } : null };
+      var inserted = false, settled = false;
+      function release(error) {
+        if (settled) return; settled = true;
+        if (error) {
+          if (inserted && pending === item) pending = null;
+          record({ type: 'admission-failed', revision: item.revision, error: String(error.message || error) });
+          item.callbacks.forEach(function (fn) { fn(error); });
+        }
+        admitting = false;
+        if (deferredCompletion) { var finish = deferredCompletion; deferredCompletion = null; finish(); }
+        if (!inFlight && pending) { var next = pending; pending = null; start(next); }
+        admitNext();
+      }
+      try {
+        options.admit(proposal, function (error, evidence) {
+          if (error) { release(error); return; }
+          if (inserted || settled) return;
+          item.payload = cloneJsonSafe(proposal.payload); item.evidence = evidence || null;
+          if (pending) item.callbacks = pending.callbacks.concat(item.callbacks);
+          pending = item; inserted = true;
+          if (prior) record({ type: 'coalesced', revision: item.revision });
+          try { options.queued(proposal, item.evidence, release); } catch (e) { release(e); }
+        });
+      } catch (e) { release(e); }
+    }
+    function enqueue(payload, callback, evidence) {
+      if (options.admit) {
+        if (admissions.length + (admitting ? 1 : 0) >= 8) {
+          var error = new Error('PRE_ENQUEUE_CAPACITY'); error.code = 'PRE_ENQUEUE_CAPACITY';
+          if (typeof callback === 'function') callback(error); return null;
+        }
+        var admittedItem = { revision: ++nextRevision, payload: cloneJsonSafe(payload || {}), evidence: evidence ? cloneJsonSafe(evidence) : null,
+          callbacks: typeof callback === 'function' ? [callback] : [] };
+        admissions.push(admittedItem); admitNext(); return admittedItem.revision;
+      }
       var item = {
         revision: ++nextRevision,
         payload: cloneJsonSafe(payload || {}),
@@ -973,13 +1031,15 @@
     }
 
     function inspect() {
-      return {
+      var result = {
         latestRevision: nextRevision,
         completedRevision: completedRevision,
         inFlightRevision: inFlight && inFlight.revision || null,
         pendingRevision: pending && pending.revision || null,
         history: history.map(function (entry) { return Object.assign({}, entry); })
       };
+      if (options.admit) { result.admissionPending = admissions.length + (admitting ? 1 : 0); result.admitting = admitting; }
+      return result;
     }
 
     return Object.freeze({ enqueue: enqueue, observeRevision: observeRevision, inspect: inspect });

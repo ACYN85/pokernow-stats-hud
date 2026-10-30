@@ -1,3 +1,9 @@
+# V1.6.0 publication boundary
+
+Final publication is not yet authorized. Publish only the separately verified V1.6.0 runtime ZIP and reviewed public documents. Preserve existing releases/tags/history; never push private development history or backups. The frozen V1.5 packaging commands below are historical and must not generate the V1.6 package.
+
+## Preserved V1.5 documentation
+
 # Public V1.5.0 release runbook
 
 V1.5.0 promotes the exact manually accepted RC2 archive. The final asset is a byte-identical copy named `pokernow-hud-v1.5.0.zip`: 83 files, 2,651,237 bytes, SHA-256 `560DAF7A3E7F6E586732BC8C7807482261FFF5BEBFF1CFF235BB0BA69B14573E`. Build ID `v1.5.0-rc2-20261006-2218` is retained. Never rebuild, recompress, or rewrite the accepted artifact.

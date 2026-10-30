@@ -1,0 +1,41 @@
+/* Same dark surfaces, teal accent, rounded controls and focus treatment as HUD Settings. */
+:root { color-scheme:dark; --pnhud-accent:#5eead4; --pnhud-radius:10px; }
+body { margin:0; background:#0a1915; color:#ecfdf5; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+body > main { max-width:60rem; margin:auto; padding:24px; }
+h1 { font-size:26px; margin:4px 0 8px; } h2 { font-size:19px; margin:0 0 12px; } h3 { font-size:16px; margin:0 0 8px; }
+p { margin:10px 0; } li { margin-bottom:7px; } a { color:var(--pnhud-accent); }
+.page-context { color:var(--pnhud-accent); text-transform:uppercase; letter-spacing:.1em; font-size:12px; font-weight:700; }
+#page-intro,.pnhud-dashboard-help { color:#b4cfc5; }
+button,select,input { font:inherit; max-width:100%; box-sizing:border-box; }
+button { color:#d9fffa; background:#123b32; border:1px solid #438c78; border-radius:7px; padding:9px 14px; margin:4px 6px 4px 0; cursor:pointer; font-weight:600; }
+button:hover:not(:disabled) { background:#1d5548; border-color:var(--pnhud-accent); }
+button:disabled { color:#9aaba4; background:#172b24; border-color:#354d43; cursor:default; opacity:.7; }
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible { outline:2px solid var(--pnhud-accent); outline-offset:3px; }
+select,input:not([type=checkbox]) { color:#ecfdf5; background:#102b23; border:1px solid #416356; border-radius:6px; padding:9px 11px; width:min(100%,42rem); }
+input[type=checkbox] { accent-color:var(--pnhud-accent); width:18px; height:18px; vertical-align:middle; }
+label { display:block; margin:12px 0; } label > select,label > input:not([type=checkbox]) { display:block; margin-top:5px; }
+[hidden] { display:none !important; }
+#consent,.account-state,.pnhud-person-linking,#person-backup { padding:18px; margin:16px 0; border:1px solid #355c4e; border-radius:var(--pnhud-radius); background:#10261f; }
+.account-state[data-state=EMPTY],.account-state[data-state=INELIGIBLE],.account-state[data-state=ONE] { border-color:#8c8051; }
+.linking-steps { color:#b4cfc5; padding-left:23px; }
+#account-state[data-state=READY] { padding:12px 16px; }
+#access-controls { text-align:right; }
+#pnhud-player-dashboard { position:static; top:auto; right:auto; z-index:auto; transform:none; width:100%; max-width:none; height:auto; max-height:none; margin-top:16px; overflow-wrap:anywhere; border:0; background:transparent; box-shadow:none; }
+#pnhud-player-dashboard .pnhud-dashboard-window { display:block; height:auto; }
+#pnhud-player-dashboard .pnhud-dashboard-filter-row,#pnhud-player-dashboard .pnhud-dashboard-section:has(.pnhud-dashboard-note),#pnhud-player-dashboard .pnhud-dashboard-close,#pnhud-player-dashboard .pnhud-dashboard-resize,#pnhud-player-dashboard .pnhud-dashboard-controls,#pnhud-player-dashboard .pnhud-assigned-name-editor { display:none; }
+#pnhud-player-dashboard .pnhud-dashboard-body { max-height:none; overflow:visible; }
+#pnhud-player-dashboard .pnhud-person-linking { display:block; }
+#pnhud-player-dashboard.person-combined-view .pnhud-account-individual { display:none; }
+#pnhud-player-dashboard:not(.person-combined-view) .pnhud-person-career { display:none; }
+.pnhud-person-confirmation { border:2px solid var(--pnhud-accent); border-radius:8px; padding:16px; margin-top:16px; }
+#person-backup-preview { max-height:20rem; overflow:auto; white-space:pre-wrap; }
+@media(max-width:600px) { body > main { padding:14px; } button { min-height:42px; } }
+#pnhud-player-dashboard .pnhud-person-linking button { min-height:36px; padding:8px 13px; border-radius:7px; font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#123b32; color:#d9fffa; border-color:#438c78; }
+#pnhud-player-dashboard .pnhud-person-linking button:hover:not(:disabled) { background:#1d5548; border-color:var(--pnhud-accent); }
+#pnhud-player-dashboard .pnhud-person-linking { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+#pnhud-player-dashboard .pnhud-person-linking .pnhud-dashboard-help { font-size:13px; line-height:1.5; }
+#pnhud-player-dashboard .pnhud-person-linking input:not([type=checkbox]),#pnhud-player-dashboard .pnhud-person-linking select { font-size:14px; min-height:36px; }
+input[type=file]::file-selector-button { color:#d9fffa; background:#123b32; border:1px solid #438c78; border-radius:6px; padding:7px 10px; margin-right:8px; cursor:pointer; }
+#pnhud-person-confirm-reason { padding:10px 12px; margin:10px 0; border-left:3px solid #d9b968; background:#192c23; }
+#pnhud-person-confirm-reason ul { margin:0; padding-left:20px; }
+.pnhud-person-success { padding:12px; border:1px solid var(--pnhud-accent); border-radius:7px; background:#123b32; font-size:16px; font-weight:700; }

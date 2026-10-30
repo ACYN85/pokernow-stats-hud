@@ -35,9 +35,12 @@
       var playerId = text(row && row.playerId);
       if (!playerId) return;
       var normalized = {
-        playerId: playerId,
+        playerId: playerId,identityLabel:text(row.identityLabel),
         latestDisplayName: displayName(row.latestDisplayName),
+        nativeName: displayName(row.nativeName || row.latestDisplayName),
+        assignedName: text(row.assignedName),
         hands: hands(row.hands),
+        handsAvailable: row.handsAvailable !== false,
         lastSeenAt: timestamp(row.lastSeenAt),
         revision: Number.isFinite(Number(row.revision)) ? Number(row.revision) : 0,
         summaryVersion: Number.isFinite(Number(row.summaryVersion)) ? Number(row.summaryVersion) : 0
@@ -50,7 +53,7 @@
 
   function compareId(left, right) { return left.playerId.localeCompare(right.playerId); }
   function compareName(left, right) {
-    var compared = normalizedText(left.latestDisplayName).localeCompare(normalizedText(right.latestDisplayName));
+    var compared = normalizedText(left.assignedName || left.nativeName).localeCompare(normalizedText(right.assignedName || right.nativeName));
     return compared || compareId(left, right);
   }
   function compareRecent(left, right) {
@@ -68,7 +71,7 @@
   function visibleRows(summaries, search, sort) {
     var needle = normalizedText(search);
     var filtered = normalizeSummaries(summaries).filter(function (row) {
-      return !needle || normalizedText(row.latestDisplayName).includes(needle) || normalizedText(row.playerId).includes(needle);
+      return !needle || normalizedText(row.assignedName).includes(needle) || normalizedText(row.nativeName).includes(needle) || normalizedText(row.latestDisplayName).includes(needle) || normalizedText(row.playerId).includes(needle);
     });
     return filtered.sort(validSort(sort) === SORT_HANDS ? compareHands : validSort(sort) === SORT_NAME ? compareName : compareRecent);
   }
@@ -98,10 +101,11 @@
 
   function rowHtml(row, now) {
     var seen = formatLastSeen(row.lastSeenAt, now);
-    var id = shortId(row.playerId);
-    return '<button type="button" class="pnhud-tracked-player-row" data-tracked-player-id="' + esc(row.playerId) + '" data-tracked-player-name="' + esc(row.latestDisplayName) + '" aria-label="Open ' + esc(row.latestDisplayName) + ' player dashboard">' +
-      '<span class="pnhud-tracked-player-primary"><strong>' + esc(row.latestDisplayName) + '</strong><small>' + esc(row.hands) + ' ' + (row.hands === 1 ? 'hand' : 'hands') + ' \u00b7 <span title="' + esc(seen.title) + '">' + esc(seen.text) + '</span></small></span>' +
-      '<span class="pnhud-tracked-player-id" title="Stable player ID: ' + esc(row.playerId) + '">' + esc(id) + '</span></button>';
+    var id = shortId(row.identityLabel||row.playerId);
+    var label = row.assignedName || row.nativeName;
+    return '<button type="button" class="pnhud-tracked-player-row" data-tracked-player-id="' + esc(row.playerId) + '" data-tracked-player-name="' + esc(row.nativeName) + '" aria-label="Open ' + esc(label) + ' player dashboard">' +
+      '<span class="pnhud-tracked-player-primary"><strong>' + esc(label) + '</strong>' + (row.assignedName ? '<small>PokerNow: ' + esc(row.nativeName) + '</small>' : '') + '<small>' + (row.handsAvailable ? esc(row.hands) + ' ' + (row.hands === 1 ? 'hand' : 'hands') : 'Hand count unavailable') + ' \u00b7 <span title="' + esc(seen.title) + '">' + esc(seen.text) + '</span></small></span>' +
+      '<span class="pnhud-tracked-player-id" title="Stable player ID: ' + esc(row.identityLabel||row.playerId) + '">' + esc(id) + '</span></button>';
   }
 
   function bodyHtml(state, rows) {
@@ -114,12 +118,14 @@
 
   function render(state) {
     state = state || {};
-    var summaries = normalizeSummaries(state.summaries); var rows = visibleRows(summaries, state.search, state.sort);
+    var summaries = normalizeSummaries(state.summaries); var rows = visibleRows(summaries, state.search, state.sort),matching=rows.length;
+    var paged=Number.isInteger(state.pageSize)&&state.pageSize>0,pageSize=paged?Math.min(50,state.pageSize):Math.max(1,matching),pages=Math.max(1,Math.ceil(matching/pageSize)),page=Math.max(1,Math.min(pages,Number.isInteger(state.page)?state.page:1));
+    if(paged)rows=rows.slice((page-1)*pageSize,page*pageSize);
     var loading = state.loading && summaries.length ? '<span class="pnhud-tracked-players-updating" role="status">Updating\u2026</span>' : '';
     return '<div class="pnhud-tracked-players-window" ><header><div><h2>Tracked Players</h2><p>Browse Career identities and open the existing Player Dashboard.</p></div></header>' +
       '<div class="pnhud-tracked-players-controls"><label><span>Search</span><input type="search" class="pnhud-tracked-players-search" autocomplete="off" placeholder="Name or stable ID" value="' + esc(state.search) + '"></label><label><span>Sort</span><select class="pnhud-tracked-players-sort"><option value="recent"' + (validSort(state.sort) === SORT_RECENT ? ' selected' : '') + '>Most recent</option><option value="hands"' + (validSort(state.sort) === SORT_HANDS ? ' selected' : '') + '>Most hands</option><option value="name"' + (validSort(state.sort) === SORT_NAME ? ' selected' : '') + '>Name A\u2013Z</option></select></label></div>' +
-      '<div class="pnhud-tracked-players-meta"><span>' + esc(resultCount(rows.length, summaries.length, state.search)) + '</span>' + loading + '</div>' +
-      '<div class="pnhud-tracked-players-results">' + bodyHtml(Object.assign({}, state, { summaries: summaries }), rows) + '</div></div>';
+      '<div class="pnhud-tracked-players-meta"><span>' + esc(resultCount(matching, summaries.length, state.search)) + '</span>' + loading + '</div>' +
+      '<div class="pnhud-tracked-players-results">' + bodyHtml(Object.assign({}, state, { summaries: summaries }), rows) + '</div>'+(paged?'<nav aria-label="Tracked player pages"><button data-tracked-page="previous"'+(page===1?' disabled':'')+'>Previous</button><span>Page '+page+' of '+pages+' · '+matching+' matches</span><button data-tracked-page="next"'+(page===pages?' disabled':'')+'>Next</button></nav>':'')+'</div>';
   }
 
   return Object.freeze({

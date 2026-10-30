@@ -3,7 +3,7 @@
   'use strict';
 
   var VERSION = 1;
-  var DEFAULTS = Object.freeze({ version: VERSION, x: null, y: null, locked: true });
+  var DEFAULTS = Object.freeze({ version: VERSION, x: null, y: null, locked: false });
   var VIEWPORT_GAP = 8;
   var DEFAULT_TOP = 18;
   var DEFAULT_RIGHT = 18;
@@ -20,7 +20,7 @@
         version: VERSION,
         x: coordinatesValid ? stored.x : null,
         y: coordinatesValid ? stored.y : null,
-        locked: validObject && typeof stored.locked === 'boolean' ? stored.locked : true
+        locked: validObject ? (typeof stored.locked === 'boolean' ? stored.locked : true) : false
       },
       defaultUsed: !validObject,
       coordinatesValid: coordinatesValid
